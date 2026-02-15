@@ -17,6 +17,11 @@ const FEATURES = [
     desc: "基于 Streaming 架构，发出问题后 1-2 秒即可看到响应，接近实时对话体验。",
   },
   {
+    icon: "🔒",
+    title: "安全防护",
+    desc: "代码层强制只读执行，即使 AI 被 prompt injection 欺骗，也无法执行删表等破坏性操作。",
+  },
+  {
     icon: "🚀",
     title: "轻量部署",
     desc: "Docker 一键部署，10 分钟上线，对接企业现有 MySQL / PostgreSQL 数据库。",

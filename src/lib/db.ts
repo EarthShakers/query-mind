@@ -158,6 +158,18 @@ if (!g._db) {
 export const db = g._db;
 
 export function query(sql: string): Record<string, unknown>[] {
+  const normalized = sql.trim().toLowerCase();
+
+  // Defense-in-depth: only allow SELECT statements
+  if (!normalized.startsWith("select")) {
+    throw new Error("Only SELECT queries are allowed.");
+  }
+
+  // Block semicolons to prevent statement chaining
+  if (sql.includes(";")) {
+    throw new Error("Multiple statements are not allowed.");
+  }
+
   return db.prepare(sql).all() as Record<string, unknown>[];
 }
 

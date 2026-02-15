@@ -10,7 +10,9 @@ const dashscope = createOpenAI({
 
 // useChat sends messages with toolInvocations that streamText can't convert.
 // Strip everything except role + content text.
-function sanitizeMessages(raw: { role: string; content: string; [k: string]: unknown }[]): CoreMessage[] {
+function sanitizeMessages(
+  raw: { role: string; content: string; [k: string]: unknown }[]
+): CoreMessage[] {
   const cleaned: CoreMessage[] = [];
   for (const m of raw) {
     if (m.role === "user") {
@@ -33,7 +35,8 @@ export async function POST(req: Request) {
     const result = await streamText({
       model: dashscope("deepseek-v3.2"),
       abortSignal: abortController.signal,
-    system: `你是一个 SQL 助手。数据库 schema：
+      maxSteps: 3,
+      system: `你是一个 SQL 助手。数据库 schema：
 ${getSchema()}
 
 你必须根据用户问题选择合适的工具：
@@ -53,49 +56,71 @@ ${getSchema()}
 - 用户要求查看具体数据列表、明细、所有记录
 - 用户问具体某个值（如"张三的薪资是多少"）
 
+**SQL 错误自动修复：**
+- 如果工具执行返回错误信息，请仔细阅读错误内容，对照 schema 修正 SQL 后重新调用工具
+- 常见错误：字段名拼写错误、表名错误、JOIN 条件遗漏
+
 请务必正确选择工具，不要总是使用 execute_query。`,
-    messages: sanitizeMessages(messages),
-    tools: {
-      execute_query: {
-        description: "Execute a SQL query and display results as a table",
-        parameters: z.object({
-          sql: z.string().describe("The SQLite query to execute"),
-        }),
-        execute: async ({ sql }) => {
-          const data = query(sql);
-          return { sql, data };
+      messages: sanitizeMessages(messages),
+      tools: {
+        execute_query: {
+          description: "Execute a SQL query and display results as a table",
+          parameters: z.object({
+            sql: z.string().describe("The SQLite query to execute"),
+          }),
+          execute: async ({ sql }) => {
+            try {
+              const data = query(sql);
+              return { sql, data };
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              return { sql, data: [], error: msg };
+            }
+          },
+        },
+        show_chart: {
+          description:
+            "MUST use this tool when user asks about trends, comparisons, rankings, distributions, proportions, or any visualization. Execute SQL and render as chart.",
+          parameters: z.object({
+            sql: z.string().describe("The SQLite query to execute"),
+            chartType: z.enum(["bar", "line", "pie"]).describe("Chart type"),
+            xKey: z.string().describe("Column name for X axis"),
+            yKey: z.string().describe("Column name for Y axis / values"),
+            groupKey: z
+              .string()
+              .optional()
+              .describe(
+                "Column name to group/split data by (e.g. 'product' for comparing products). When set, each unique value becomes a separate colored series."
+              ),
+          }),
+          execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
+            try {
+              const data = query(sql);
+              return { sql, data, chartType, xKey, yKey, groupKey };
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              return {
+                sql,
+                data: [],
+                chartType,
+                xKey,
+                yKey,
+                groupKey,
+                error: msg,
+              };
+            }
+          },
         },
       },
-      show_chart: {
-        description:
-          "MUST use this tool when user asks about trends, comparisons, rankings, distributions, proportions, or any visualization. Execute SQL and render as chart.",
-        parameters: z.object({
-          sql: z.string().describe("The SQLite query to execute"),
-          chartType: z.enum(["bar", "line", "pie"]).describe("Chart type"),
-          xKey: z.string().describe("Column name for X axis"),
-          yKey: z.string().describe("Column name for Y axis / values"),
-          groupKey: z
-            .string()
-            .optional()
-            .describe(
-              "Column name to group/split data by (e.g. 'product' for comparing products). When set, each unique value becomes a separate colored series."
-            ),
-        }),
-        execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
-          const data = query(sql);
-          return { sql, data, chartType, xKey, yKey, groupKey };
-        },
-      },
-    },
-  });
+    });
 
     clearTimeout(timeout);
     return result.toDataStreamResponse();
   } catch {
     clearTimeout(timeout);
-    return new Response(
-      JSON.stringify({ error: "请求超时或失败，请重试" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: "请求超时或失败，请重试" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

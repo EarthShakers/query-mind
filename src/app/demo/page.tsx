@@ -53,6 +53,13 @@ function ToolResult({ toolInvocations }: { toolInvocations?: unknown[] }) {
           );
         }
         if (tool.toolName === "execute_query") {
+          if (tool.result.error) {
+            return (
+              <p key={tool.toolCallId} className="text-xs text-amber-500 py-1">
+                SQL 执行出错，AI 正在修正...
+              </p>
+            );
+          }
           return (
             <SqlResult
               key={tool.toolCallId}
@@ -62,6 +69,13 @@ function ToolResult({ toolInvocations }: { toolInvocations?: unknown[] }) {
           );
         }
         if (tool.toolName === "show_chart") {
+          if (tool.result.error) {
+            return (
+              <p key={tool.toolCallId} className="text-xs text-amber-500 py-1">
+                SQL 执行出错，AI 正在修正...
+              </p>
+            );
+          }
           return (
             <ChartResult
               key={tool.toolCallId}
@@ -97,6 +111,13 @@ export default function Page() {
       setInput(lastInput.current);
     },
   });
+  console.log(
+    messages,
+    input,
+    isLoading,
+    error,
+    "messages,input,isLoading,error"
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -133,7 +154,19 @@ export default function Page() {
             className="md:hidden p-1 text-slate-400 hover:text-slate-600"
             onClick={() => setSidebarOpen(false)}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
           </button>
         </div>
         <div className="px-4 pt-3 pb-1">
@@ -168,7 +201,20 @@ export default function Page() {
             className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-700"
             onClick={() => setSidebarOpen(true)}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/></svg>
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 12h18" />
+              <path d="M3 6h18" />
+              <path d="M3 18h18" />
+            </svg>
           </button>
           <p className="text-xs text-slate-400">
             用自然语言查询数据库，AI 自动生成 SQL 并可视化结果
