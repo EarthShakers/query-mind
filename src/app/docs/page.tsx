@@ -16,7 +16,7 @@ export default function DocsPage() {
     <div className="min-h-screen bg-white">
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
           <Link
             href="/"
             className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent"
@@ -57,8 +57,8 @@ export default function DocsPage() {
         </aside>
 
         {/* Content */}
-        <main className="flex-1 min-w-0 py-12 px-8 max-w-none prose prose-slate prose-headings:scroll-mt-20 prose-h2:text-2xl prose-h2:font-bold prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-3 prose-h3:text-lg prose-pre:bg-slate-900 prose-pre:text-sm">
-          <h1 className="text-3xl font-bold mb-2 not-prose">技术文档</h1>
+        <main className="flex-1 min-w-0 py-8 md:py-12 px-4 md:px-8 max-w-none prose prose-slate prose-headings:scroll-mt-20 prose-h2:text-xl md:prose-h2:text-2xl prose-h2:font-bold prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-3 prose-h3:text-lg prose-pre:bg-slate-900 prose-pre:text-sm prose-pre:overflow-x-auto">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2 not-prose">技术文档</h1>
           <p className="text-slate-500 mb-12 not-prose">
             QueryMind 核心技术原理与 API 参考
           </p>

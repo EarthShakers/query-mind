@@ -46,7 +46,7 @@ export function ChartResult({
         </summary>
         <pre className="mt-2 bg-slate-900 text-emerald-400 p-3 rounded-lg text-xs overflow-x-auto font-mono leading-relaxed">{sql}</pre>
       </details>
-      <div className="h-72 bg-slate-50/50 rounded-lg border border-slate-200 p-3">
+      <div className="h-56 md:h-72 bg-slate-50/50 rounded-lg border border-slate-200 p-2 md:p-3">
         <ResponsiveContainer width="100%" height="100%">
           {chartType === 'bar' ? (
             <BarChart data={pivoted}>
@@ -86,7 +86,7 @@ export function ChartResult({
             <PieChart>
               <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
               <Legend />
-              <Pie data={pivoted} dataKey={yKey} nameKey={xKey} cx="50%" cy="50%" outerRadius={100} innerRadius={40} label={{ fontSize: 12 }} paddingAngle={2}>
+              <Pie data={pivoted} dataKey={yKey} nameKey={xKey} cx="50%" cy="50%" outerRadius={80} innerRadius={30} label={{ fontSize: 11 }} paddingAngle={2}>
                 {pivoted.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
