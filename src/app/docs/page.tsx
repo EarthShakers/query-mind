@@ -6,9 +6,11 @@ const SECTIONS = [
   { id: "streaming", label: "流式传输" },
   { id: "generative-ui", label: "生成式 UI" },
   { id: "structured-output", label: "结构化输出" },
+  { id: "rag", label: "RAG 知识检索" },
   { id: "database", label: "数据库" },
   { id: "api", label: "API 参考" },
   { id: "deploy", label: "部署" },
+  { id: "pitfalls", label: "踩坑记录" },
   { id: "changelog", label: "版本记录" },
 ];
 
@@ -219,6 +221,108 @@ parameters: z.object({
             </li>
           </ol>
 
+          {/* RAG */}
+          <h2 id="rag">RAG 知识检索</h2>
+          <p>
+            <strong>问题：</strong>
+            传统 chatbot 只能查结构化数据（SQL），无法回答"公司报销制度"、"请假流程"等知识性问题。
+          </p>
+          <p>
+            <strong>方案：</strong>RAG（Retrieval-Augmented Generation）— 先从向量数据库中检索相关文档，再让 AI 基于文档内容生成回答。
+          </p>
+          <h3>工作原理</h3>
+          <pre className="not-prose">
+            <code>{`用户提问: "公司报销制度是什么"
+    ↓
+AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
+    ↓
+1. Embedding：将问题转为 1024 维向量（百炼 text-embedding-v3）
+    ↓
+2. 向量搜索：在 Supabase pgvector 中找最相似的文档片段（cosine similarity）
+    ↓
+3. Context Injection：将搜索到的文档片段作为上下文返回给 AI
+    ↓
+4. AI 综合文档内容，用自己的话组织回答`}</code>
+          </pre>
+          <h3>文档入库流程</h3>
+          <pre className="not-prose">
+            <code>{`用户上传 .md/.txt 文件
+    ↓
+1. 切片：按段落分割，每片约 500 字（避免超出 embedding 上下文窗口）
+    ↓
+2. 向量化：每个切片调用 embedding API 生成 1024 维向量
+    ↓
+3. 存储：向量 + 原文 + 元信息写入 Supabase documents 表
+    ↓
+后续搜索时通过向量相似度匹配最相关的片段`}</code>
+          </pre>
+          <h3>核心代码</h3>
+          <pre className="not-prose">
+            <code>{`// src/lib/rag.ts
+
+// 1. 文本 → 向量
+async function embed(text: string): Promise<number[]> {
+  const res = await fetch("https://dashscope.aliyuncs.com/.../embeddings", {
+    body: JSON.stringify({
+      model: "text-embedding-v3",
+      input: text,
+      dimensions: 1024,
+    }),
+  });
+  return res.json().data[0].embedding;
+}
+
+// 2. 向量相似度搜索
+async function searchDocuments(query: string, topK = 5) {
+  const queryEmbedding = await embed(query);
+  // Supabase RPC 调用 pgvector 的 cosine distance 搜索
+  const { data } = await supabase.rpc("match_documents", {
+    query_embedding: queryEmbedding,
+    match_count: topK,
+  });
+  return data; // [{ title, content, similarity }]
+}`}</code>
+          </pre>
+          <h3>关键设计决策</h3>
+          <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">决策点</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">选择</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">原因</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr>
+                  <td className="px-4 py-2.5">路由方式</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">Tool Calling</td>
+                  <td className="px-4 py-2.5 text-slate-500">复用现有架构，AI 自主决定查 SQL 还是查文档，无额外开销</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5">向量存储</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">Supabase pgvector</td>
+                  <td className="px-4 py-2.5 text-slate-500">免费额度够用，SQL 控制台直接管理，前端生态友好</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5">Embedding</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">text-embedding-v3</td>
+                  <td className="px-4 py-2.5 text-slate-500">复用百炼 API Key，中文效果好，1024 维平衡精度与性能</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5">索引类型</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">HNSW</td>
+                  <td className="px-4 py-2.5 text-slate-500">小数据量下比 IVFFlat 更稳定，无需指定 lists 参数</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5">切片策略</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">按段落 + 500 字上限</td>
+                  <td className="px-4 py-2.5 text-slate-500">保持语义完整性，避免句子被截断</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           {/* Database */}
           <h2 id="database">数据库</h2>
           <p>
@@ -409,6 +513,60 @@ model: provider("gpt-4o")
 // 任何 OpenAI 兼容 API
 const provider = createOpenAI({ baseURL: "https://your-api.com/v1" });`}</code>
           </pre>
+
+          {/* Pitfalls */}
+          <h2 id="pitfalls">踩坑记录</h2>
+          <p>
+            开发过程中遇到的典型问题和解决方案，供参考。
+          </p>
+
+          <h3>1. IVFFlat 索引在小数据量下搜索结果不稳定</h3>
+          <p><strong>现象：</strong>知识库有 4 篇文档，首次搜索"报销制度"能找到，后续重复搜索却找不到了，其他 3 篇文档正常返回。</p>
+          <p><strong>原因：</strong>IVFFlat 索引需要指定 <code>lists</code> 参数（聚类数）。当 <code>lists = 100</code> 但实际只有十几个向量时，大部分聚类为空，搜索时探测的聚类可能恰好不包含目标向量，导致结果不稳定。</p>
+          <p><strong>解决：</strong>换用 HNSW 索引。HNSW 是基于图的近似最近邻算法，不依赖聚类数，对小数据量友好。同时将 <code>topK</code> 从 3 提升到 5，避免文档数多于 topK 时某些文档被挤掉。</p>
+          <pre className="not-prose">
+            <code>{`-- 替换索引
+DROP INDEX IF EXISTS documents_embedding_idx;
+CREATE INDEX documents_embedding_idx
+  ON documents USING hnsw (embedding vector_cosine_ops);`}</code>
+          </pre>
+
+          <h3>2. Prompt 缺少"怎么做"导致 AI 行为失控</h3>
+          <p><strong>现象：</strong>添加了数据准确性规则"如果数据不存在，告知用户未找到"，AI 却开始生成探测性 SQL 查询，SQL 报错后 maxSteps 循环修复失败，显示多条"AI 正在修正..."。</p>
+          <p><strong>原因：</strong>Prompt 只说了<strong>做什么</strong>（告知用户不存在）和<strong>什么时候</strong>（数据不存在时），但没说<strong>怎么做</strong>（直接文字回复 vs 先查数据库验证）。AI 选择了"先查再说"这条路径，生成的 SQL 失败后进入重试死循环。</p>
+          <p><strong>解决：</strong>补全 Prompt 三要素——<strong>什么时候 + 做什么 + 怎么做</strong>：</p>
+          <pre className="not-prose">
+            <code>{`// ❌ 之前：缺少"怎么做"
+"如果数据不存在，必须告知用户'未找到相关数据'"
+
+// ✅ 之后：明确行为路径
+"如果在 schema 中明显不存在，
+  直接用文字回复告知用户（不要调用任何工具），
+  并列出数据库中可用的选项"`}</code>
+          </pre>
+
+          <h3>3. AI 用相似数据替代用户查询目标（模型幻觉）</h3>
+          <p><strong>现象：</strong>用户问"电子烟去年卖了多少"，数据库没有电子烟产品，AI 静默替换成"电子产品"类别并返回数据，用户以为查到了电子烟的数据。</p>
+          <p><strong>原因：</strong>大模型倾向于"给出答案"而非"承认不知道"，尤其是当数据库中存在语义相近的数据时。</p>
+          <p><strong>解决：</strong>在 System Prompt 中明确禁止替换，并给出具体示例：</p>
+          <pre className="not-prose">
+            <code>{`"不要用相似名称的数据替代用户查询的目标
+（例如用户问'电子烟'，不要替换成'电子产品'）"`}</code>
+          </pre>
+
+          <h3>4. <code>toDataStreamResponse()</code> 的 Content-Type</h3>
+          <p><strong>现象：</strong>文档中写了 API 响应类型是 <code>text/event-stream</code>，但实际观察是 <code>text/plain</code>。</p>
+          <p><strong>原因：</strong>Vercel AI SDK 的 <code>toDataStreamResponse()</code> 使用的是 Data Stream Protocol，Content-Type 为 <code>text/plain</code>，不是 SSE 的 <code>text/event-stream</code>。两者格式不同。</p>
+
+          <h3>5. <code>result.usage.totalTokens</code> 为 null 导致 Redis 报错</h3>
+          <p><strong>现象：</strong>控制台报 <code>UpstashError: ERR null args are not supported</code>，<code>incrby</code> 的第二个参数是 null。</p>
+          <p><strong>原因：</strong>DashScope 某些模型的流式响应不返回 token 用量数据，<code>result.usage</code> resolve 后 <code>totalTokens</code> 为 null。</p>
+          <p><strong>解决：</strong>添加防御性检查 <code>if (!totalTokens) return</code>，并在 Promise 链上加 <code>{`.catch(() => {})`}</code> 防止 unhandledRejection。</p>
+
+          <h3>6. <code>sanitizeMessages</code> 解决 toolInvocations 二次请求报错</h3>
+          <p><strong>现象：</strong><code>useChat</code> 发送的 messages 包含 <code>toolInvocations</code> 字段，<code>streamText</code> 无法解析导致报错。</p>
+          <p><strong>原因：</strong><code>useChat</code> 的客户端状态会将 tool 调用结果合并到消息中，再次发送时服务端不认识这些字段。</p>
+          <p><strong>解决：</strong>编写 <code>sanitizeMessages()</code> 函数，只保留 <code>role</code> + <code>content</code> 纯文本，丢弃所有 toolInvocations 和空内容的 assistant 消息。</p>
 
           {/* Changelog */}
           <h2 id="changelog">版本记录</h2>

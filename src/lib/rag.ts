@@ -40,7 +40,7 @@ export async function embed(text: string): Promise<number[]> {
  */
 export async function searchDocuments(
   query: string,
-  topK = 3
+  topK = 5
 ): Promise<DocResult[]> {
   const queryEmbedding = await embed(query);
 

@@ -13,10 +13,9 @@ CREATE TABLE IF NOT EXISTS documents (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. 创建向量索引（加速相似度搜索）
+-- 3. 创建向量索引（HNSW，对小数据量更稳定）
 CREATE INDEX IF NOT EXISTS documents_embedding_idx
-  ON documents USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 100);
+  ON documents USING hnsw (embedding vector_cosine_ops);
 
 -- 4. 创建相似度搜索函数（供 Supabase RPC 调用）
 CREATE OR REPLACE FUNCTION match_documents(
