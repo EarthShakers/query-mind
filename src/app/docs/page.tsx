@@ -410,6 +410,15 @@ const provider = createOpenAI({ baseURL: "https://your-api.com/v1" });`}</code>
           {/* Changelog */}
           <h2 id="changelog">版本记录</h2>
 
+          <h3>v0.5.0 — 防刷限流 & 代码重构</h3>
+          <ul>
+            <li>Upstash Redis + <code>@upstash/ratelimit</code> 实现 IP 级滑动窗口限流</li>
+            <li>每日 Token 用量熔断机制（超限自动停止服务，防止 API Key 被刷爆）</li>
+            <li>单条消息长度限制（500 字），防止超长 prompt 消耗大量 token</li>
+            <li>前端错误提示优化：限流 / 熔断 / 超长等场景展示具体错误信息</li>
+            <li>代码重构：<code>route.ts</code> 拆分为 <code>lib/ratelimit.ts</code>（限流）+ <code>lib/prompt.ts</code>（提示词）+ 路由骨架</li>
+          </ul>
+
           <h3>v0.4.0 — 安全加固 & 自我修复</h3>
           <ul>
             <li>

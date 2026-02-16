@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.0 — 防刷限流 & 代码重构
+
+- Upstash Redis + `@upstash/ratelimit` 实现 IP 级滑动窗口限流
+- 每日 Token 用量熔断机制（超限自动停止服务，防止 API Key 被刷爆）
+- 单条消息长度限制（500 字），防止超长 prompt 消耗大量 token
+- 流结束后异步记录 token 用量，不阻塞用户响应
+- 前端错误提示优化：限流 / 熔断 / 超长等场景展示具体错误信息
+- 代码重构：`route.ts` 拆分为三个模块
+  - `lib/ratelimit.ts` — 限流、熔断、用量记录
+  - `lib/prompt.ts` — System prompt 独立维护
+  - `route.ts` — 仅保留路由骨架（190 行 → 111 行）
+
 ## v0.4.0 — 安全加固 & 自我修复
 
 - `query()` 新增 SELECT 前缀校验 + 分号拦截，defense-in-depth 防止破坏性 SQL

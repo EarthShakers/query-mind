@@ -291,7 +291,7 @@ export default function Page() {
           {error && (
             <div className="flex justify-start">
               <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 text-sm">
-                请求失败，请重试
+                {error.message || "请求失败，请重试"}
               </div>
             </div>
           )}
