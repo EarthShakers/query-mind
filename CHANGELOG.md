@@ -5,7 +5,7 @@
 - `query()` 新增 SELECT 前缀校验 + 分号拦截，defense-in-depth 防止破坏性 SQL
 - `maxSteps: 3` — AI 生成的 SQL 执行报错时自动修正并重试，用户无感知
 - Tool execute 增加 try/catch，错误信息回传 AI 触发 self-healing
-- System prompt 新增 SQL 错误修复指示
+- System prompt 新增 SQL 错误修复指示, 优化提示词防止大模型错误行为
 - 前端识别 error 态，显示"SQL 执行出错，AI 正在修正..."
 
 ## v0.3.0 — 多端适配 & 部署
