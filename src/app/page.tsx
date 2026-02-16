@@ -7,6 +7,11 @@ const FEATURES = [
     desc: "用自然语言提问，AI 自动生成 SQL 并执行查询，业务人员无需学习任何技术。",
   },
   {
+    icon: "📚",
+    title: "知识库问答",
+    desc: "上传企业文档（政策、手册、FAQ），AI 自动检索并回答知识性问题，数据 + 知识双引擎。",
+  },
+  {
     icon: "🎨",
     title: "智能可视化",
     desc: "AI 根据问题语义自动选择表格、折线图、柱状图或饼图，无需手动配置。",
@@ -159,12 +164,12 @@ export default function LandingPage() {
           <h1 className="text-3xl md:text-5xl font-bold leading-tight mb-6">
             用自然语言
             <span className="bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent">
-              查询数据库
+              查询数据与知识
             </span>
           </h1>
           <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed">
-            告别 SQL，让每个人都能用对话方式获取数据洞察。 AI
-            自动生成查询、执行分析、智能选择可视化方式。
+            告别 SQL，让每个人都能用对话方式获取数据洞察与知识问答。 AI
+            自动查询数据库、检索知识文档，智能选择最佳回答方式。
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
@@ -192,7 +197,7 @@ export default function LandingPage() {
               <span className="w-3 h-3 rounded-full bg-yellow-400" />
               <span className="w-3 h-3 rounded-full bg-green-400" />
               <span className="ml-3 text-xs text-slate-400 hidden sm:inline">
-                QueryMind — AI SQL Assistant
+                QueryMind — AI 智能数据助手
               </span>
             </div>
             <div className="p-4 md:p-8 space-y-4">
@@ -269,13 +274,13 @@ export default function LandingPage() {
               },
               {
                 step: "02",
-                title: "AI 生成 SQL",
-                desc: "大模型理解意图，生成精确的 SQL 查询语句",
+                title: "AI 智能路由",
+                desc: "大模型判断意图，数据问题生成 SQL，知识问题检索文档",
               },
               {
                 step: "03",
                 title: "智能展示",
-                desc: "执行查询，AI 自动选择最佳可视化方式呈现结果",
+                desc: "执行查询或检索文档，AI 自动选择最佳方式呈现结果",
               },
             ].map((s) => (
               <div key={s.step} className="text-center">

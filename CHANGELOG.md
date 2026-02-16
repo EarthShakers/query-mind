@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.0 — RAG 知识库 & SQL 混合驱动
+
+- 新增 `search_knowledge` 工具 — AI 自动判断：数据问题查 SQL，知识问题查文档
+- Supabase pgvector 向量存储 + 百炼 text-embedding-v3 嵌入模型
+- 知识库文档上传功能（.txt / .md），自动切片 + 向量化 + 入库
+- 预置 4 篇示例文档（报销制度 / 员工手册 / 产品指南 / FAQ）
+- System prompt 升级：新增知识库路由规则，AI 三选一（SQL 表格 / SQL 图表 / 知识搜索）
+
 ## v0.5.0 — 防刷限流 & 代码重构
 
 - Upstash Redis + `@upstash/ratelimit` 实现 IP 级滑动窗口限流

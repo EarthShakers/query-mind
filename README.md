@@ -2,9 +2,9 @@
 
 # QueryMind
 
-### AI-Powered Natural Language SQL Query Assistant
+### AI-Powered Natural Language Data & Knowledge Assistant
 
-Ask questions in plain language. Get tables and charts back instantly.
+Ask questions in plain language. Get tables, charts, and knowledge answers back instantly.
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-query--mind--kohl.vercel.app-indigo?style=for-the-badge)](https://query-mind-kohl.vercel.app)
 
@@ -22,6 +22,7 @@ Ask questions in plain language. Get tables and charts back instantly.
 ## Features
 
 - **Natural Language Query** — No SQL knowledge required, just ask in plain language
+- **Knowledge Base (RAG)** — Upload company docs, AI retrieves relevant content to answer policy and knowledge questions
 - **Generative UI** — AI decides whether to render a table or chart (bar / line / pie)
 - **Streaming** — Token-level streaming via `streamText` for real-time response
 - **Structured Output** — Zod schema enforces reliable, type-safe AI output
@@ -53,6 +54,7 @@ User Question → useChat (stream) → POST /api/chat → streamText + Zod Tools
 |:------|:-----------|
 | Framework | **Next.js 15** (App Router) |
 | AI | **Vercel AI SDK** (`streamText` + `useChat`) |
+| RAG | **Supabase** (pgvector) + **DashScope Embedding** |
 | Validation | **Zod** (structured output) |
 | Database | **SQLite** in-memory (`better-sqlite3`) |
 | Charts | **Recharts** |

@@ -2,6 +2,7 @@ import { streamText, type CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { query } from "@/lib/db";
+import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
 import {
   checkRateLimit,
@@ -89,6 +90,24 @@ export async function POST(req: Request) {
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
               return { sql, data: [], chartType, xKey, yKey, groupKey, error: msg };
+            }
+          },
+        },
+        search_knowledge: {
+          description:
+            "Search the knowledge base for company policies, product docs, FAQs, and general information. Use when the question is NOT about querying database numbers or statistics.",
+          parameters: z.object({
+            query: z
+              .string()
+              .describe("The search query in natural language"),
+          }),
+          execute: async ({ query: q }) => {
+            try {
+              const results = await searchDocuments(q);
+              return { query: q, results };
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              return { query: q, results: [], error: msg };
             }
           },
         },

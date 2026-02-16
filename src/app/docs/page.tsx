@@ -69,9 +69,9 @@ export default function DocsPage() {
           {/* Overview */}
           <h2 id="overview">概述</h2>
           <p>
-            QueryMind 是一款 AI 数据查询助手，核心能力是将自然语言转换为 SQL
-            查询，并智能选择可视化方式展示结果。 技术栈基于 Next.js + Vercel AI
-            SDK + Zod，通过三个核心技术实现：
+            QueryMind 是一款 AI 智能数据助手，核心能力是将自然语言转换为 SQL
+            查询并智能可视化，同时支持知识库检索回答政策和知识性问题。
+            技术栈基于 Next.js + Vercel AI SDK + Zod + Supabase，通过四个核心技术实现：
           </p>
           <ul>
             <li>
@@ -83,6 +83,9 @@ export default function DocsPage() {
             <li>
               <strong>Structured Output</strong> — 结构化输出，Zod 强制约束 AI
               返回格式
+            </li>
+            <li>
+              <strong>RAG</strong> — 检索增强生成，向量搜索知识库辅助 AI 回答
             </li>
           </ul>
 
@@ -409,6 +412,15 @@ const provider = createOpenAI({ baseURL: "https://your-api.com/v1" });`}</code>
 
           {/* Changelog */}
           <h2 id="changelog">版本记录</h2>
+
+          <h3>v0.6.0 — RAG 知识库 & SQL 混合驱动</h3>
+          <ul>
+            <li>新增 <code>search_knowledge</code> 工具 — AI 自动判断：数据问题查 SQL，知识问题查文档</li>
+            <li>Supabase pgvector 向量存储 + 百炼 text-embedding-v3 嵌入模型</li>
+            <li>知识库文档上传功能（.txt / .md），自动切片 + 向量化 + 入库</li>
+            <li>预置 4 篇示例文档 + <code>pnpm seed-docs</code> 一键导入</li>
+            <li><code>KnowledgeResult</code> 组件渲染搜索结果</li>
+          </ul>
 
           <h3>v0.5.0 — 防刷限流 & 代码重构</h3>
           <ul>

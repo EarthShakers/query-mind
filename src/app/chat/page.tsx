@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useChat } from "ai/react";
 import { SqlResult } from "@/components/sql-result";
 import { ChartResult } from "@/components/chart-result";
+import { KnowledgeResult } from "@/components/knowledge-result";
 
 const QUICK_QUESTIONS = [
   { icon: "👥", text: "显示所有员工及其部门" },
@@ -88,6 +89,22 @@ function ToolResult({ toolInvocations }: { toolInvocations?: unknown[] }) {
             />
           );
         }
+        if (tool.toolName === "search_knowledge") {
+          if (tool.result.error) {
+            return (
+              <p key={tool.toolCallId} className="text-xs text-amber-500 py-1">
+                知识库搜索出错，AI 正在重试...
+              </p>
+            );
+          }
+          return (
+            <KnowledgeResult
+              key={tool.toolCallId}
+              query={tool.result.query}
+              results={tool.result.results}
+            />
+          );
+        }
         return null;
       })}
     </>
@@ -96,6 +113,9 @@ function ToolResult({ toolInvocations }: { toolInvocations?: unknown[] }) {
 
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastInput = useRef("");
   const {
     messages,
@@ -119,6 +139,30 @@ export default function Page() {
     "messages,input,isLoading,error"
   );
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadMsg("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("title", file.name.replace(/\.\w+$/, ""));
+      const res = await fetch("/api/documents", { method: "POST", body: form });
+      if (!res.ok) {
+        setUploadMsg(await res.text());
+      } else {
+        const json = await res.json();
+        setUploadMsg(`"${json.title}" 已导入（${json.chunks} 个片段）`);
+      }
+    } catch {
+      setUploadMsg("上传失败，请重试");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -191,6 +235,33 @@ export default function Page() {
             </button>
           ))}
         </div>
+        {/* Upload */}
+        <div className="p-3 border-t border-slate-100">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md"
+            onChange={handleUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors disabled:opacity-40"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            {uploading ? "上传中..." : "上传知识文档"}
+          </button>
+          {uploadMsg && (
+            <p className={`text-xs mt-2 px-1 ${uploadMsg.includes("已导入") ? "text-green-600" : "text-red-500"}`}>
+              {uploadMsg}
+            </p>
+          )}
+        </div>
       </aside>
 
       {/* Main */}
@@ -217,7 +288,7 @@ export default function Page() {
             </svg>
           </button>
           <p className="text-xs text-slate-400">
-            用自然语言查询数据库，AI 自动生成 SQL 并可视化结果
+            用自然语言查询数据、搜索知识库，AI 自动选择最佳方式回答
           </p>
         </header>
 

@@ -2,9 +2,9 @@
 
 # QueryMind
 
-### AI 自然语言数据查询助手
+### AI 智能数据与知识助手
 
-用自然语言提问，即时获得表格和图表结果。
+用自然语言提问，即时获得表格、图表和知识问答结果。
 
 [![在线体验](https://img.shields.io/badge/在线体验-query--mind--kohl.vercel.app-indigo?style=for-the-badge)](https://query-mind-kohl.vercel.app)
 
@@ -22,6 +22,7 @@
 ## 核心特性
 
 - **零 SQL 门槛** — 用自然语言提问，AI 自动生成 SQL 并执行查询
+- **知识库问答 (RAG)** — 上传企业文档，AI 自动检索相关内容回答政策和知识性问题
 - **智能可视化** — AI 根据问题语义自动选择表格、折线图、柱状图或饼图
 - **流式响应** — 基于 Streaming 架构，发出问题后即可看到响应，接近实时对话
 - **结构化输出** — Zod Schema 强制约束 AI 输出格式，杜绝格式错误
@@ -62,6 +63,7 @@
 | :----- | :------------------------------------------- |
 | 框架   | **Next.js 15** (App Router)                  |
 | AI     | **Vercel AI SDK** (`streamText` + `useChat`) |
+| RAG    | **Supabase** (pgvector) + **百炼 Embedding** |
 | 校验   | **Zod** (结构化输出)                         |
 | 数据库 | **SQLite** 内存数据库 (`better-sqlite3`)     |
 | 图表   | **Recharts**                                 |
