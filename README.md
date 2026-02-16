@@ -86,7 +86,7 @@ Open [http://localhost:3000](http://localhost:3000)
 src/
 ├── app/
 │   ├── page.tsx              # Landing page
-│   ├── demo/page.tsx         # Chat demo UI
+│   ├── chat/page.tsx         # Chat UI
 │   ├── docs/page.tsx         # Technical documentation
 │   ├── api/chat/route.ts     # AI streaming endpoint (core)
 │   ├── layout.tsx

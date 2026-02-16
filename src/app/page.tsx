@@ -141,7 +141,7 @@ export default function LandingPage() {
               文档
             </Link>
             <Link
-              href="/demo"
+              href="/chat"
               className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
             >
               在线体验
@@ -168,10 +168,10 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/demo"
+              href="/chat"
               className="px-8 py-3.5 bg-indigo-500 text-white rounded-xl text-base font-medium hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-200"
             >
-              免费体验 Demo
+              免费体验
             </Link>
             <Link
               href="/docs"
@@ -183,7 +183,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Demo Preview */}
+      {/* Chat Preview */}
       <section className="pb-14 md:pb-20 px-4 md:px-6">
         <div className="max-w-5xl mx-auto">
           <div className="rounded-2xl border border-slate-200 shadow-2xl shadow-slate-200/50 overflow-hidden bg-slate-50">
@@ -426,7 +426,7 @@ export default function LandingPage() {
             免费体验 QueryMind，让数据说人话。
           </p>
           <Link
-            href="/demo"
+            href="/chat"
             className="inline-block px-8 py-3.5 bg-white text-indigo-600 rounded-xl text-base font-medium hover:bg-indigo-50 transition-colors shadow-lg"
           >
             立即体验
@@ -441,7 +441,7 @@ export default function LandingPage() {
             QueryMind
           </span>
           <div className="flex gap-6 text-sm text-slate-400">
-            <Link href="/demo">在线体验</Link>
+            <Link href="/chat">在线体验</Link>
             <Link href="/docs">技术文档</Link>
             <a href="#pricing">定价</a>
           </div>

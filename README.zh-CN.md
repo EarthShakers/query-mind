@@ -95,7 +95,7 @@ pnpm dev
 src/
 ├── app/
 │   ├── page.tsx              # 产品首页
-│   ├── demo/page.tsx         # AI 查询界面
+│   ├── chat/page.tsx         # AI 查询界面
 │   ├── docs/page.tsx         # 技术文档
 │   ├── api/chat/route.ts     # AI 流式接口（核心）
 │   ├── layout.tsx

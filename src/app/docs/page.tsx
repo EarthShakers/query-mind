@@ -9,6 +9,7 @@ const SECTIONS = [
   { id: "database", label: "数据库" },
   { id: "api", label: "API 参考" },
   { id: "deploy", label: "部署" },
+  { id: "changelog", label: "版本记录" },
 ];
 
 export default function DocsPage() {
@@ -28,7 +29,7 @@ export default function DocsPage() {
               首页
             </Link>
             <Link
-              href="/demo"
+              href="/chat"
               className="px-4 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
             >
               在线体验
@@ -99,7 +100,7 @@ export default function DocsPage() {
             <code>{`src/
 ├── app/
 │   ├── page.tsx              # 产品首页
-│   ├── demo/page.tsx         # AI 查询界面
+│   ├── chat/page.tsx         # AI 查询界面
 │   ├── docs/page.tsx         # 技术文档
 │   ├── api/chat/route.ts     # AI API Route（核心）
 │   ├── layout.tsx
@@ -137,7 +138,7 @@ return result.toDataStreamResponse(); // 转为 HTTP 流响应`}</code>
           </pre>
           <h3>客户端</h3>
           <pre className="not-prose">
-            <code>{`// src/app/demo/page.tsx
+            <code>{`// src/app/chat/page.tsx
 import { useChat } from "ai/react";
 
 const { messages, input, handleSubmit } = useChat();
@@ -404,9 +405,51 @@ model: provider("gpt-4o")
 const provider = createOpenAI({ baseURL: "https://your-api.com/v1" });`}</code>
           </pre>
 
+          {/* Changelog */}
+          <h2 id="changelog">版本记录</h2>
+
+          <h3>v0.4.0 — 安全加固 & 自我修复</h3>
+          <ul>
+            <li><code>query()</code> 新增 SELECT 前缀校验 + 分号拦截，defense-in-depth 防止破坏性 SQL</li>
+            <li><code>maxSteps: 3</code> — AI 生成的 SQL 执行报错时自动修正并重试，用户无感知</li>
+            <li>Tool execute 增加 try/catch，错误信息回传 AI 触发 self-healing</li>
+            <li>前端识别 error 态，显示"SQL 执行出错，AI 正在修正..."</li>
+          </ul>
+
+          <h3>v0.3.0 — 多端适配 & 部署</h3>
+          <ul>
+            <li>全站响应式适配（手机 / 平板 / 桌面）</li>
+            <li>Chat 页侧边栏改为移动端抽屉式，hamburger 按钮切换</li>
+            <li>新增 Dockerfile（多阶段构建 + standalone 输出）</li>
+            <li>Next.js 配置 <code>output: &apos;standalone&apos;</code></li>
+            <li>添加 <code>.dockerignore</code>、<code>.gitignore</code>、<code>.env.local.example</code></li>
+          </ul>
+
+          <h3>v0.2.0 — 产品化</h3>
+          <ul>
+            <li>产品官网首页（Hero / 功能 / 竞品对比 / 定价 / CTA）</li>
+            <li>技术文档页（侧边栏导航 + prose 排版）</li>
+            <li>Chat 页移至 <code>/chat</code>，首页改为 Landing Page</li>
+            <li>数据库扩充至 5 张表（departments / employees / products / sales / expenses），共 94 条数据</li>
+            <li>12 个快捷提问按钮</li>
+            <li>图表 groupKey 支持（多系列柱状图 / 折线图）</li>
+            <li>Chat UI 重构：气泡式消息、可折叠 SQL、多阶段 loading</li>
+          </ul>
+
+          <h3>v0.1.0 — MVP</h3>
+          <ul>
+            <li>自然语言 → SQL → 表格 / 图表，核心流程跑通</li>
+            <li>Vercel AI SDK <code>streamText</code> + <code>useChat</code> 流式架构</li>
+            <li>Zod Schema 结构化输出（Tool Calling）</li>
+            <li>两个 Tool：<code>execute_query</code>（表格）、<code>show_chart</code>（Bar / Line / Pie）</li>
+            <li>内存 SQLite（<code>better-sqlite3</code>）</li>
+            <li>消息清洗（sanitizeMessages）解决 toolInvocations 二次请求报错</li>
+            <li><code>toDataStreamResponse()</code> 替代 <code>toAIStreamResponse()</code> 解决工具结果不回传</li>
+          </ul>
+
           <div className="not-prose mt-16 pt-8 border-t border-slate-100 text-center">
             <Link
-              href="/demo"
+              href="/chat"
               className="inline-block px-6 py-3 bg-indigo-500 text-white rounded-xl text-sm font-medium hover:bg-indigo-600 transition-colors"
             >
               前往体验 →
