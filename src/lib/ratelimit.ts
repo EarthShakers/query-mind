@@ -8,7 +8,7 @@ const redis = new Redis({
 
 const ratelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(1, "1 m"),
+  limiter: Ratelimit.slidingWindow(10, "1 m"),
 });
 
 const DAILY_TOKEN_LIMIT = 200000;
