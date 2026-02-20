@@ -71,7 +71,7 @@ export async function POST(req: Request) {
         },
         show_chart: {
           description:
-            "MUST use this tool when user asks about trends, comparisons, rankings, distributions, proportions, or any visualization.",
+            "Generate and display a chart. Only use when user EXPLICITLY requests a chart (e.g. '用图表展示', '生成图表').",
           parameters: z.object({
             sql: z.string().describe("The SQLite query to execute"),
             chartType: z.enum(["bar", "line", "pie"]).describe("Chart type"),
@@ -82,6 +82,30 @@ export async function POST(req: Request) {
               .optional()
               .describe(
                 "Column to group/split data by. Each unique value becomes a separate series."
+              ),
+          }),
+          execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
+            try {
+              return { sql, data: query(sql), chartType, xKey, yKey, groupKey };
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              return { sql, data: [], chartType, xKey, yKey, groupKey, error: msg };
+            }
+          },
+        },
+        suggest_chart: {
+          description:
+            "Suggest a chart visualization to the user. Use after answering with text, when the data would benefit from a chart. The user can then choose to view it.",
+          parameters: z.object({
+            sql: z.string().describe("The SQLite query for the chart"),
+            chartType: z.enum(["bar", "line", "pie"]).describe("Chart type"),
+            xKey: z.string().describe("Column name for X axis"),
+            yKey: z.string().describe("Column name for Y axis / values"),
+            groupKey: z
+              .string()
+              .optional()
+              .describe(
+                "Column to group/split data by."
               ),
           }),
           execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
