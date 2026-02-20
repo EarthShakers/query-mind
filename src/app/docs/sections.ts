@@ -1,0 +1,13 @@
+export const SECTIONS = [
+  { id: "overview", label: "概述" },
+  { id: "architecture", label: "架构" },
+  { id: "streaming", label: "流式传输" },
+  { id: "generative-ui", label: "生成式 UI" },
+  { id: "structured-output", label: "结构化输出" },
+  { id: "rag", label: "RAG 知识检索" },
+  { id: "database", label: "数据库" },
+  { id: "api", label: "API 参考" },
+  { id: "deploy", label: "部署" },
+  { id: "pitfalls", label: "踩坑记录" },
+  { id: "changelog", label: "版本记录" },
+];
