@@ -86,7 +86,7 @@ function ThinkingDetails({
   intermediateTexts: string[];
 }) {
   return (
-    <div className="mt-1.5 ml-6 space-y-2 border-l-2 border-slate-100 pl-3 text-xs text-slate-400">
+    <div className="mt-1.5 ml-6 max-h-[40vh] overflow-y-auto space-y-2 border-l-2 border-slate-100 pl-3 text-xs text-slate-400">
       {intermediateTexts.map((text, i) => (
         <p key={`text-${i}`} className="leading-relaxed">
           {text}
@@ -95,7 +95,10 @@ function ThinkingDetails({
       {allTools.map((tool) => {
         if (tool.state !== "result") {
           return (
-            <div key={tool.toolCallId} className="flex items-center gap-2 py-0.5">
+            <div
+              key={tool.toolCallId}
+              className="flex items-center gap-2 py-0.5"
+            >
               <SmallSpinner />
               <span>正在{TOOL_LABELS[tool.toolName] || "执行"}...</span>
             </div>
@@ -111,7 +114,9 @@ function ThinkingDetails({
         if (tool.toolName === "execute_query") {
           return (
             <div key={tool.toolCallId} className="py-0.5 space-y-1">
-              <span className="text-slate-500">{TOOL_LABELS[tool.toolName]}</span>
+              <span className="text-slate-500">
+                {TOOL_LABELS[tool.toolName]}
+              </span>
               {tool.result.sql && (
                 <pre className="p-2 bg-slate-50 rounded text-[11px] text-slate-500 overflow-x-auto">
                   {tool.result.sql}
@@ -123,10 +128,15 @@ function ThinkingDetails({
             </div>
           );
         }
-        if (tool.toolName === "show_chart" || tool.toolName === "suggest_chart") {
+        if (
+          tool.toolName === "show_chart" ||
+          tool.toolName === "suggest_chart"
+        ) {
           return (
             <div key={tool.toolCallId} className="py-0.5">
-              <span className="text-slate-500">{TOOL_LABELS[tool.toolName]}</span>
+              <span className="text-slate-500">
+                {TOOL_LABELS[tool.toolName]}
+              </span>
               {tool.result.sql && (
                 <pre className="mt-1 p-2 bg-slate-50 rounded text-[11px] text-slate-500 overflow-x-auto">
                   {tool.result.sql}
@@ -194,7 +204,16 @@ function ChartSuggestion({
   if (accepted) {
     return (
       <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <path d="M20 6 9 17l-5-5" />
         </svg>
         <span>已生成{label}</span>
@@ -206,7 +225,16 @@ function ChartSuggestion({
       onClick={onAccept}
       className="mt-3 flex items-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-sm text-indigo-600 font-medium transition-colors"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect width="18" height="18" x="3" y="3" rx="2" />
         <path d="M7 17V9" />
         <path d="M12 17V5" />
@@ -300,14 +328,18 @@ function AssistantTurn({
   // Direct charts from show_chart (user explicitly asked for chart)
   const directCharts = useMemo(() => {
     return allTools.filter(
-      (t) => t.state === "result" && !t.result?.error && t.toolName === "show_chart"
+      (t) =>
+        t.state === "result" && !t.result?.error && t.toolName === "show_chart"
     );
   }, [allTools]);
 
   // Chart suggestions from suggest_chart
   const chartSuggestions = useMemo(() => {
     return allTools.filter(
-      (t) => t.state === "result" && !t.result?.error && t.toolName === "suggest_chart"
+      (t) =>
+        t.state === "result" &&
+        !t.result?.error &&
+        t.toolName === "suggest_chart"
     );
   }, [allTools]);
 
@@ -327,7 +359,9 @@ function AssistantTurn({
   const isStillThinking = isStreaming;
 
   const toolNames = useMemo(
-    () => [...new Set(allTools.map((t) => TOOL_LABELS[t.toolName] || t.toolName))],
+    () => [
+      ...new Set(allTools.map((t) => TOOL_LABELS[t.toolName] || t.toolName)),
+    ],
     [allTools]
   );
 
@@ -360,13 +394,26 @@ function AssistantTurn({
                 </div>
               ) : (
                 <div className="flex items-center gap-2 py-1.5 text-xs text-slate-400">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-300 shrink-0">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-slate-300 shrink-0"
+                  >
                     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
                   </svg>
                   <span>
                     已深度思考
                     {toolNames.length > 0 && (
-                      <span className="text-slate-300"> ({toolNames.join("、")})</span>
+                      <span className="text-slate-300">
+                        {" "}
+                        ({toolNames.join("、")})
+                      </span>
                     )}
                   </span>
                 </div>
@@ -374,12 +421,23 @@ function AssistantTurn({
               {hasThinkingContent && (
                 <details className="group">
                   <summary className="flex items-center gap-1 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-400 transition-colors list-none [&::-webkit-details-marker]:hidden ml-6">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="transition-transform group-open:rotate-90 shrink-0">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      className="transition-transform group-open:rotate-90 shrink-0"
+                    >
                       <path d="m9 18 6-6-6-6" />
                     </svg>
                     <span>查看过程</span>
                   </summary>
-                  <ThinkingDetails allTools={allTools} intermediateTexts={thinkingTexts} />
+                  <ThinkingDetails
+                    allTools={allTools}
+                    intermediateTexts={thinkingTexts}
+                  />
                 </details>
               )}
             </div>
@@ -400,7 +458,11 @@ function AssistantTurn({
 
           {/* Final text answer */}
           {finalText && (
-            <p className={`text-sm text-slate-700 whitespace-pre-wrap leading-relaxed${directCharts.length > 0 ? " mt-3" : ""}`}>
+            <p
+              className={`text-sm text-slate-700 whitespace-pre-wrap leading-relaxed${
+                directCharts.length > 0 ? " mt-3" : ""
+              }`}
+            >
               {finalText}
             </p>
           )}
@@ -420,7 +482,11 @@ function AssistantTurn({
 
       {/* ── Accepted chart bubbles (separate, full-width) ── */}
       {acceptedCharts.map((tool) => (
-        <ChartBubble key={`chart-${tool.toolCallId}`} tool={tool} onReady={onScrollNeeded} />
+        <ChartBubble
+          key={`chart-${tool.toolCallId}`}
+          tool={tool}
+          onReady={onScrollNeeded}
+        />
       ))}
     </>
   );
@@ -445,15 +511,25 @@ export default function Page() {
     },
   });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledUp = useRef(false);
   const turns = useMemo(() => groupTurns(messages), [messages]);
 
   const scrollToBottom = useCallback(() => {
+    if (userScrolledUp.current) return;
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
     });
+  }, []);
+
+  // Detect user scroll: if not at bottom, pause auto-scroll; if back at bottom, resume
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    userScrolledUp.current = !atBottom;
   }, []);
 
   useEffect(scrollToBottom, [messages, isLoading, scrollToBottom]);
@@ -473,24 +549,46 @@ export default function Page() {
         }`}
       >
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent">
+          <Link
+            href="/"
+            className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent"
+          >
             QueryMind
           </Link>
-          <button className="md:hidden p-1 text-slate-400 hover:text-slate-600" onClick={() => setSidebarOpen(false)}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+          <button
+            className="md:hidden p-1 text-slate-400 hover:text-slate-600"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
             </svg>
           </button>
         </div>
         <div className="px-4 pt-3 pb-1">
           <span className="text-sm font-semibold text-slate-700">快捷提问</span>
-          <span className="text-xs ml-2 text-slate-400 mt-1">(点击直接查询)</span>
+          <span className="text-xs ml-2 text-slate-400 mt-1">
+            (点击直接查询)
+          </span>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {QUICK_QUESTIONS.map(({ icon, text }) => (
             <button
               key={text}
-              onClick={() => { append({ role: "user", content: text }); setSidebarOpen(false); }}
+              onClick={() => {
+                userScrolledUp.current = false;
+                append({ role: "user", content: text });
+                setSidebarOpen(false);
+              }}
               disabled={isLoading}
               className="flex items-start gap-2 w-full text-left px-3 py-2.5 text-sm text-slate-600 rounded-lg hover:bg-indigo-50 hover:text-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -504,7 +602,16 @@ export default function Page() {
             href="/knowledge"
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
             </svg>
             知识库管理
@@ -514,9 +621,23 @@ export default function Page() {
 
       <main className="flex-1 flex flex-col min-w-0">
         <header className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-white/60 backdrop-blur flex items-center gap-3">
-          <button className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-700" onClick={() => setSidebarOpen(true)}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12h18" /><path d="M3 6h18" /><path d="M3 18h18" />
+          <button
+            className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-700"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 12h18" />
+              <path d="M3 6h18" />
+              <path d="M3 18h18" />
             </svg>
           </button>
           <p className="text-xs text-slate-400">
@@ -524,12 +645,18 @@ export default function Page() {
           </p>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4"
+        >
           {messages.length === 0 && !isLoading && (
             <div className="flex items-center justify-center h-full text-slate-300">
               <div className="text-center">
                 <p className="text-4xl mb-3">🔍</p>
-                <p className="text-sm">在下方输入问题，或点击左侧快捷提问开始</p>
+                <p className="text-sm">
+                  在下方输入问题，或点击左侧快捷提问开始
+                </p>
               </div>
             </div>
           )}
@@ -563,7 +690,11 @@ export default function Page() {
 
         <div className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-t border-slate-200 bg-white/60 backdrop-blur">
           <form
-            onSubmit={(e) => { lastInput.current = input; handleSubmit(e); }}
+            onSubmit={(e) => {
+              lastInput.current = input;
+              userScrolledUp.current = false;
+              handleSubmit(e);
+            }}
             className="flex gap-2 md:gap-3 max-w-3xl mx-auto"
           >
             <input
