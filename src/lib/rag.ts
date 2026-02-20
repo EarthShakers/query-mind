@@ -88,11 +88,16 @@ export async function ingestDocument(
 }
 
 /**
- * 按段落 + 字数上限切片
+ * 按段落 + 字数上限切片，相邻 chunk 保留 overlap 重叠区
  */
-function splitChunks(text: string, maxLen: number): string[] {
+function splitChunks(
+  text: string,
+  maxLen: number,
+  overlap = 100
+): string[] {
+  // 先按段落合并成粗切块
   const paragraphs = text.split(/\n{2,}/);
-  const chunks: string[] = [];
+  const rawChunks: string[] = [];
   let current = "";
 
   for (const para of paragraphs) {
@@ -100,15 +105,26 @@ function splitChunks(text: string, maxLen: number): string[] {
     if (!trimmed) continue;
 
     if (current.length + trimmed.length + 1 > maxLen && current) {
-      chunks.push(current.trim());
+      rawChunks.push(current.trim());
       current = "";
     }
     current += (current ? "\n\n" : "") + trimmed;
   }
-
   if (current.trim()) {
-    chunks.push(current.trim());
+    rawChunks.push(current.trim());
   }
 
-  return chunks.length ? chunks : [text.trim()];
+  if (rawChunks.length <= 1) {
+    return rawChunks.length ? rawChunks : [text.trim()];
+  }
+
+  // 在相邻 chunk 之间添加重叠区
+  const chunks: string[] = [rawChunks[0]];
+  for (let i = 1; i < rawChunks.length; i++) {
+    const prev = rawChunks[i - 1];
+    const overlapText = prev.slice(-overlap);
+    chunks.push(overlapText + "\n\n" + rawChunks[i]);
+  }
+
+  return chunks;
 }

@@ -240,7 +240,7 @@ export default function Page() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".txt,.md"
+            accept=".txt,.md,.pdf,.docx"
             onChange={handleUpload}
             className="hidden"
           />

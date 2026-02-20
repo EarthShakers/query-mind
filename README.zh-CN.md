@@ -22,7 +22,7 @@
 ## 核心特性
 
 - **零 SQL 门槛** — 用自然语言提问，AI 自动生成 SQL 并执行查询
-- **知识库问答 (RAG)** — 上传企业文档，AI 自动检索相关内容回答政策和知识性问题
+- **知识库问答 (RAG)** — 上传企业文档（.txt / .md / .pdf / .docx），AI 自动检索相关内容回答政策和知识性问题
 - **智能可视化** — AI 根据问题语义自动选择表格、折线图、柱状图或饼图
 - **流式响应** — 基于 Streaming 架构，发出问题后即可看到响应，接近实时对话
 - **结构化输出** — Zod Schema 强制约束 AI 输出格式，杜绝格式错误
@@ -180,6 +180,8 @@ docker run -p 3000:3000 -e DASHSCOPE_API_KEY=sk-xxx querymind
 
 - [x] **SQL 安全防护** — SELECT 前缀校验 + 分号拦截 + `prepare().all()` 只读执行
 - [x] **SQL 自我修复** — `maxSteps: 3` + 错误回传，AI 自动修正错误 SQL 并重试
+- [x] **多格式文档支持** — PDF、Word (.docx) 解析与入库，使用 `pdf-parse` 和 `mammoth`
+- [ ] **RAG 检索质量优化** — 父子文档检索（命中子片段时返回完整父文档）、混合搜索（关键词 BM25 + 向量）、Rerank（交叉编码器重排序提升精度）
 - [ ] **两阶段 Schema 注入** — 当前 `getSchema()` 将所有表的 DDL 全量注入 system prompt。当数据库表数量多时（100+ 张表），会导致 Token 浪费、响应变慢、注意力分散（Lost in the Middle）以及字段名幻觉。优化方案：先用低成本快速模型（如 Gemini Flash）从表名列表中筛选出最相关的 3 张表，再将这 3 张表的详细 DDL 注入主 prompt。
 - [ ] 多数据库支持（MySQL / PostgreSQL）
 - [ ] 查询历史与收藏

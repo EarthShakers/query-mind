@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0 — RAG 增强：多格式文档 & 切片优化
+
+- 新增 PDF 文档上传支持（`pdf-parse` 文本提取）
+- 新增 Word (.docx) 文档上传支持（`mammoth` 文本提取）
+- 新增 `src/lib/parsers.ts` 文件解析模块，统一分发 .txt / .md / .pdf / .docx 解析逻辑
+- 文件大小上限从 1MB 提升至 5MB（适配 PDF/Word 文件）
+- 扫描件 PDF / 空 Word 文档上传时给出明确提示
+- 切片策略优化：相邻 chunk 保留 ~100 字 Overlap 重叠区，防止语义断裂
+- 文档新增 RAG 优化方案对比表（Overlap / Context Enrichment / 父子文档 / 混合搜索 / Rerank）
+- 文档新增踩坑记录：为什么不用 LangChain.js
+
 ## v0.6.0 — RAG 知识库 & SQL 混合驱动
 
 - 新增 `search_knowledge` 工具 — AI 自动判断：数据问题查 SQL，知识问题查文档

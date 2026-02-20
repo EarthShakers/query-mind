@@ -266,13 +266,15 @@ AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
           </pre>
           <h3>文档入库流程</h3>
           <pre className="not-prose overflow-x-auto">
-            <code>{`用户上传 .md/.txt 文件
+            <code>{`用户上传文件（.txt / .md / .pdf / .docx）
     ↓
-1. 切片：按段落分割，每片约 500 字（避免超出 embedding 上下文窗口）
+1. 解析：根据文件类型提取纯文本（pdf-parse / mammoth / 直接读取）
     ↓
-2. 向量化：每个切片调用 embedding API 生成 1024 维向量
+2. 切片：按段落分割，每片约 500 字，相邻 chunk 保留 ~100 字 Overlap
     ↓
-3. 存储：向量 + 原文 + 元信息写入 Supabase documents 表
+3. 向量化：每个切片调用 embedding API 生成 1024 维向量
+    ↓
+4. 存储：向量 + 原文 + 元信息写入 Supabase documents 表
     ↓
 后续搜索时通过向量相似度匹配最相关的片段`}</code>
           </pre>
@@ -336,12 +338,80 @@ async function searchDocuments(query: string, topK = 5) {
                 </tr>
                 <tr>
                   <td className="px-4 py-2.5">切片策略</td>
-                  <td className="px-4 py-2.5 font-mono text-indigo-600">按段落 + 500 字上限</td>
-                  <td className="px-4 py-2.5 text-slate-500">保持语义完整性，避免句子被截断</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">按段落 + 500 字 + Overlap</td>
+                  <td className="px-4 py-2.5 text-slate-500">保持语义完整性，相邻 chunk 保留 ~100 字重叠区防止语义断裂</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5">切片实现</td>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">手写 splitChunks + pdf-parse + mammoth</td>
+                  <td className="px-4 py-2.5 text-slate-500">PDF/Word 文本提取用轻量库，切片逻辑手写 30 行保持透明可控</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <h3>后续优化（Roadmap）</h3>
+          <p>当前 RAG 已实现 Overlap 滑动窗口切片，以下为各优化方案的对比与适用场景：</p>
+          <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">方案</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">解决的核心问题</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">适用规模</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">状态</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">Overlap 滑动窗口</td>
+                  <td className="px-4 py-2.5 text-slate-500">chunk 边界语义断裂</td>
+                  <td className="px-4 py-2.5 text-slate-500">所有规模，基础必备</td>
+                  <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded-full">已实现</span></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">Context Enrichment</td>
+                  <td className="px-4 py-2.5 text-slate-500">同上（查询时取相邻块补上下文）</td>
+                  <td className="px-4 py-2.5 text-slate-500">和 Overlap 功能重叠，二选一即可</td>
+                  <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-500 rounded-full">不需要</span></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">父子文档检索</td>
+                  <td className="px-4 py-2.5 text-slate-500">小 chunk 精准但上下文不足</td>
+                  <td className="px-4 py-2.5 text-slate-500">文档篇幅长、结构复杂时</td>
+                  <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-full">规划中</span></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">混合搜索 BM25 + 向量</td>
+                  <td className="px-4 py-2.5 text-slate-500">纯向量搜索漏召回精确关键词</td>
+                  <td className="px-4 py-2.5 text-slate-500">文档量 1000+</td>
+                  <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-full">规划中</span></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2.5 font-mono text-indigo-600">Rerank 重排序</td>
+                  <td className="px-4 py-2.5 text-slate-500">初筛精度不够</td>
+                  <td className="px-4 py-2.5 text-slate-500">候选集大、精度要求高</td>
+                  <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-full">规划中</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <strong>渐进式最佳实践：</strong>先把切片做好（Overlap），切片质量决定 RAG 效果下限。
+            后续按业务规模渐进式叠加——文档量上百加混合搜索，上千加 Rerank，文档结构复杂加父子文档。
+          </p>
+          <h4 className="text-base font-semibold">Overlap 副作用与应对</h4>
+          <p>
+            引入 Overlap 后，相邻 chunk 内容高度重叠，向量搜索可能同时返回这两个 chunk，
+            导致给 AI 的上下文出现重复内容、浪费 Token。当前数据量小（~15 chunks，topK=5）问题不明显，
+            文档量增长后可在 <code>searchDocuments</code> 返回结果后做去重：
+            同文档 + 内容重叠度 &gt; 阈值则合并或只取其一。
+          </p>
+          <h4 className="text-base font-semibold">混合搜索实现备注</h4>
+          <p>
+            Supabase 基于 PostgreSQL，原生支持 <code>tsvector / tsquery</code> 全文检索，
+            无需引入 Elasticsearch 等外部引擎。未来实现混合搜索只需：在 documents 表上添加 FTS 索引，
+            在 <code>match_documents</code> 中用 RRF（Reciprocal Rank Fusion）算法融合向量搜索和关键词搜索的结果。
+          </p>
 
           {/* Database */}
           <h2 id="database">数据库</h2>
@@ -587,6 +657,15 @@ CREATE INDEX documents_embedding_idx
           <p><strong>现象：</strong><code>useChat</code> 发送的 messages 包含 <code>toolInvocations</code> 字段，<code>streamText</code> 无法解析导致报错。</p>
           <p><strong>原因：</strong><code>useChat</code> 的客户端状态会将 tool 调用结果合并到消息中，再次发送时服务端不认识这些字段。</p>
           <p><strong>解决：</strong>编写 <code>sanitizeMessages()</code> 函数，只保留 <code>role</code> + <code>content</code> 纯文本，丢弃所有 toolInvocations 和空内容的 assistant 消息。</p>
+
+          <h3>7. 为什么切片不用 LangChain.js</h3>
+          <p><strong>背景：</strong>LangChain.js 提供了 <code>RecursiveCharacterTextSplitter</code> 等现成的切片工具，为什么不用？</p>
+          <p><strong>原因：</strong></p>
+          <ul>
+            <li><strong>依赖太重</strong> — LangChain 是大型框架，即使单独装 <code>@langchain/textsplitters</code> 也会引入大量依赖。</li>
+            <li><strong>透明可控</strong> — 手写逻辑每一步可读，方便理解 RAG 切片原理。<code>RecursiveCharacterTextSplitter</code> 的核心逻辑也是按分隔符列表 <code>{`["\\n\\n", "\\n", " ", ""]`}</code> 递归拆分 → 合并到 chunkSize → 保留 overlap，和我们的实现本质相同。</li>
+            <li><strong>文件解析用专用轻量库</strong> — PDF 用 <code>pdf-parse</code>（~100KB），Word 用 <code>mammoth</code>（~150KB），比引入整个 LangChain 生态轻量得多。这两个库只负责提取纯文本，提取后的文本走统一的 <code>splitChunks</code> 切片流程。</li>
+          </ul>
 
           {/* Changelog */}
           <h2 id="changelog">版本记录</h2>

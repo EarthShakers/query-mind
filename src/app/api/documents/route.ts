@@ -1,4 +1,8 @@
 import { ingestDocument } from "@/lib/rag";
+import { extractText } from "@/lib/parsers";
+
+const ALLOWED_EXTS = ["txt", "md", "pdf", "docx"];
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(req: Request) {
   try {
@@ -11,15 +15,15 @@ export async function POST(req: Request) {
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!["txt", "md"].includes(ext ?? "")) {
-      return new Response("仅支持 .txt 和 .md 文件", { status: 400 });
+    if (!ALLOWED_EXTS.includes(ext ?? "")) {
+      return new Response("仅支持 .txt、.md、.pdf 和 .docx 文件", { status: 400 });
     }
 
-    if (file.size > 1024 * 1024) {
-      return new Response("文件大小不能超过 1MB", { status: 400 });
+    if (file.size > MAX_SIZE) {
+      return new Response("文件大小不能超过 5MB", { status: 400 });
     }
 
-    const content = await file.text();
+    const content = await extractText(file);
     const chunks = await ingestDocument(title, content, {
       filename: file.name,
     });

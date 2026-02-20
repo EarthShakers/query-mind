@@ -22,7 +22,7 @@ Ask questions in plain language. Get tables, charts, and knowledge answers back 
 ## Features
 
 - **Natural Language Query** — No SQL knowledge required, just ask in plain language
-- **Knowledge Base (RAG)** — Upload company docs, AI retrieves relevant content to answer policy and knowledge questions
+- **Knowledge Base (RAG)** — Upload documents (.txt, .md, .pdf, .docx), AI retrieves relevant content to answer policy and knowledge questions
 - **Generative UI** — AI decides whether to render a table or chart (bar / line / pie)
 - **Streaming** — Token-level streaming via `streamText` for real-time response
 - **Structured Output** — Zod schema enforces reliable, type-safe AI output
@@ -166,6 +166,8 @@ docker run -p 3000:3000 -e DASHSCOPE_API_KEY=sk-xxx querymind
 
 - [x] **SQL security hardening** — SELECT-only prefix check + semicolon blocking + `prepare().all()` read-only execution
 - [x] **SQL self-healing** — `maxSteps: 3` + error feedback, AI auto-corrects failed SQL and retries
+- [x] **Multi-format document support** — PDF and Word (.docx) parsing and ingestion via `pdf-parse` and `mammoth`
+- [ ] **RAG quality improvements** — Parent-child document retrieval (return full parent when a chunk matches), hybrid search (keyword BM25 + vector), and rerank (cross-encoder re-scoring for better precision)
 - [ ] **Two-stage schema injection** — Currently `getSchema()` injects all table DDLs into the system prompt. For large databases (100+ tables), this wastes tokens, increases latency, and causes attention dilution. The fix: use a cheap/fast model (e.g. Gemini Flash) to first select the 3 most relevant tables from a brief table list, then inject only those DDLs into the main prompt.
 - [ ] Multi-database support (MySQL / PostgreSQL)
 - [ ] Query history & favorites
