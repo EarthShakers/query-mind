@@ -9,6 +9,19 @@ const redis = new Redis({
 const ratelimit = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(10, "1 m"),
+  prefix: "rl:chat",
+});
+
+const uploadRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(3, "1 m"),
+  prefix: "rl:upload",
+});
+
+const uploadDailyRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(20, "1 d"),
+  prefix: "rl:upload_daily",
 });
 
 const DAILY_TOKEN_LIMIT = 200000;
@@ -18,12 +31,39 @@ function dailyKey() {
   return `daily_tokens:${new Date().toISOString().slice(0, 10)}`;
 }
 
+/** 从请求中提取客户端 IP */
+export function getClientIp(req: Request): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown_" + Math.random().toString(36).slice(2, 8)
+  );
+}
+
 /** IP 限流检查，超限返回错误 Response，否则返回 null */
 export async function checkRateLimit(req: Request): Promise<Response | null> {
-  const ip = req.headers.get("x-forwarded-for") ?? "anonymous";
+  const ip = getClientIp(req);
   const { success } = await ratelimit.limit(ip);
   if (!success) {
     return new Response("请求过于频繁，请稍后再试", { status: 429 });
+  }
+  return null;
+}
+
+/** 上传限流检查：每分钟 3 次 + 每天 20 次 */
+export async function checkUploadRateLimit(
+  req: Request
+): Promise<Response | null> {
+  const ip = getClientIp(req);
+  const { success: minOk } = await uploadRatelimit.limit(ip);
+  if (!minOk) {
+    return new Response("上传过于频繁，请稍后再试", { status: 429 });
+  }
+  const { success: dayOk } = await uploadDailyRatelimit.limit(ip);
+  if (!dayOk) {
+    return new Response("今日上传次数已达上限（20 次），请明天再试", {
+      status: 429,
+    });
   }
   return null;
 }

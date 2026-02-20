@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.0 — 安全加固：上传限流 & 文件校验 & 安全头 <sub>2026-02-20</sub>
+
+- **知识库上传限流**：每 IP 每分钟 3 次 + 每天 20 次，Upstash Redis 滑动窗口
+- **文件 MIME 校验**：`file-type` 检测 magic bytes，防止改名伪造文件上传
+- **安全响应头 middleware**：`X-Frame-Options` / `X-Content-Type-Options` / `CSP` / `Referrer-Policy`
+- IP 提取优化：优先 `x-forwarded-for` 首段，fallback `x-real-ip`，避免共享限流桶
+
 ## v0.9.0 — Chat 交互重构：深度思考 & 图表建议 <sub>2026-02-20</sub>
 
 - **新增 `suggest_chart` 工具**：AI 默认文字回答，数据适合可视化时提供「用图表展示」按钮，用户点击后在独立气泡中渲染

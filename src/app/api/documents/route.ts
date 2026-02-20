@@ -1,9 +1,21 @@
 import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
+import { checkUploadRateLimit } from "@/lib/ratelimit";
+import { fileTypeFromBuffer } from "file-type";
 
 const ALLOWED_EXTS = ["txt", "md", "pdf", "docx"];
 const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+
+/** 扩展名 → 合法 MIME 类型 */
+const MIME_MAP: Record<string, string[]> = {
+  pdf: ["application/pdf"],
+  docx: [
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/zip", // docx 本质是 zip
+  ],
+  // txt/md 是纯文本，file-type 无法识别，跳过 MIME 校验
+};
 
 export async function GET(req: Request) {
   try {
@@ -61,6 +73,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    // 上传限流
+    const rateLimited = await checkUploadRateLimit(req);
+    if (rateLimited) return rateLimited;
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const title =
@@ -78,7 +94,19 @@ export async function POST(req: Request) {
     }
 
     if (file.size > MAX_SIZE) {
-      return new Response("文件大小不能超过 5MB", { status: 400 });
+      return new Response("文件大小不能超过 20MB", { status: 400 });
+    }
+
+    // MIME 类型校验（pdf / docx）
+    const allowedMimes = ext ? MIME_MAP[ext] : null;
+    if (allowedMimes) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const detected = await fileTypeFromBuffer(buffer);
+      if (!detected || !allowedMimes.includes(detected.mime)) {
+        return new Response("文件内容与扩展名不匹配，请上传真实的文件", {
+          status: 400,
+        });
+      }
     }
 
     const content = await extractText(file);
