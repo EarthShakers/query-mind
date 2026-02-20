@@ -146,6 +146,12 @@ export default function LandingPage() {
               文档
             </Link>
             <Link
+              href="/knowledge"
+              className="hidden md:inline text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              知识库
+            </Link>
+            <Link
               href="/chat"
               className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
             >

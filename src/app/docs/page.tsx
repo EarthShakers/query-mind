@@ -50,6 +50,9 @@ export default function DocsPage() {
             <Link href="/" className="text-slate-500 hover:text-slate-800">
               首页
             </Link>
+            <Link href="/knowledge" className="text-slate-500 hover:text-slate-800">
+              知识库
+            </Link>
             <Link
               href="/chat"
               className="px-4 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
