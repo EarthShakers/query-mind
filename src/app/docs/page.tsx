@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 const SECTIONS = [
   { id: "overview", label: "概述" },
@@ -13,6 +15,24 @@ const SECTIONS = [
   { id: "pitfalls", label: "踩坑记录" },
   { id: "changelog", label: "版本记录" },
 ];
+
+/** 从 CHANGELOG.md 解析版本记录 */
+function parseChangelog(): { version: string; items: string[] }[] {
+  const raw = readFileSync(join(process.cwd(), "CHANGELOG.md"), "utf-8");
+  const sections: { version: string; items: string[] }[] = [];
+  let current: { version: string; items: string[] } | null = null;
+
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("## ")) {
+      if (current) sections.push(current);
+      current = { version: line.replace("## ", ""), items: [] };
+    } else if (line.startsWith("- ") && current) {
+      current.items.push(line.replace("- ", ""));
+    }
+  }
+  if (current) sections.push(current);
+  return sections;
+}
 
 export default function DocsPage() {
   return (
@@ -60,7 +80,7 @@ export default function DocsPage() {
         </aside>
 
         {/* Content */}
-        <main className="flex-1 min-w-0 py-8 md:py-12 px-4 md:px-8 max-w-none prose prose-slate prose-headings:scroll-mt-20 prose-h2:text-xl md:prose-h2:text-2xl prose-h2:font-bold prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-3 prose-h3:text-lg prose-pre:bg-slate-900 prose-pre:text-sm prose-pre:overflow-x-auto">
+        <main className="flex-1 min-w-0 overflow-x-hidden py-8 md:py-12 px-4 md:px-8 max-w-none prose prose-slate prose-headings:scroll-mt-20 prose-h2:text-xl md:prose-h2:text-2xl prose-h2:font-bold prose-h2:border-b prose-h2:border-slate-100 prose-h2:pb-3 prose-h3:text-lg prose-pre:bg-slate-900 prose-pre:text-sm prose-pre:overflow-x-auto">
           <h1 className="text-2xl md:text-3xl font-bold mb-2 not-prose">
             技术文档
           </h1>
@@ -93,7 +113,7 @@ export default function DocsPage() {
 
           {/* Architecture */}
           <h2 id="architecture">架构</h2>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`用户输入 → useChat (流式) → POST /api/chat → streamText + Zod Tools → AI 模型
                                                           ↓
                                                execute_query / show_chart
@@ -103,7 +123,7 @@ export default function DocsPage() {
                                     客户端根据 toolName 渲染 <SqlResult> / <ChartResult>`}</code>
           </pre>
           <h3>文件结构</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`src/
 ├── app/
 │   ├── page.tsx              # 产品首页
@@ -131,7 +151,7 @@ export default function DocsPage() {
             逐块推送到前端。
           </p>
           <h3>服务端</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`// src/app/api/chat/route.ts
 import { streamText } from "ai";
 
@@ -144,7 +164,7 @@ const result = await streamText({
 return result.toDataStreamResponse(); // 转为 HTTP 流响应`}</code>
           </pre>
           <h3>客户端</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`// src/app/chat/page.tsx
 import { useChat } from "ai/react";
 
@@ -167,7 +187,7 @@ const { messages, input, handleSubmit } = useChat();
             机制决定调用哪个工具，客户端根据 <code>toolName</code> 渲染对应的
             React 组件。
           </p>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`AI 判断意图
 ├── 需要数据列表 → 调用 execute_query → 前端渲染 <SqlResult>
 └── 需要可视化   → 调用 show_chart    → 前端渲染 <ChartResult>`}</code>
@@ -178,7 +198,7 @@ const { messages, input, handleSubmit } = useChat();
             UI 的核心。
           </p>
           <h3>客户端渲染逻辑</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`// 根据 tool 调用结果渲染不同组件
 {message.toolInvocations?.map((tool) => {
   if (tool.toolName === "execute_query")
@@ -197,7 +217,7 @@ const { messages, input, handleSubmit } = useChat();
             <strong>方案：</strong>用 Zod Schema 定义 Tool 参数，AI SDK
             强制模型输出必须符合 schema。
           </p>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`import { z } from "zod";
 
 // show_chart tool 的参数约束
@@ -231,7 +251,7 @@ parameters: z.object({
             <strong>方案：</strong>RAG（Retrieval-Augmented Generation）— 先从向量数据库中检索相关文档，再让 AI 基于文档内容生成回答。
           </p>
           <h3>工作原理</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`用户提问: "公司报销制度是什么"
     ↓
 AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
@@ -245,7 +265,7 @@ AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
 4. AI 综合文档内容，用自己的话组织回答`}</code>
           </pre>
           <h3>文档入库流程</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`用户上传 .md/.txt 文件
     ↓
 1. 切片：按段落分割，每片约 500 字（避免超出 embedding 上下文窗口）
@@ -257,7 +277,7 @@ AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
 后续搜索时通过向量相似度匹配最相关的片段`}</code>
           </pre>
           <h3>核心代码</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`// src/lib/rag.ts
 
 // 1. 文本 → 向量
@@ -404,7 +424,7 @@ async function searchDocuments(query: string, topK = 5) {
           <h3>POST /api/chat</h3>
           <p>主要 API 端点，接收对话消息，返回流式响应。</p>
           <h4 className="text-base font-semibold">请求</h4>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`POST /api/chat
 Content-Type: application/json
 
@@ -464,7 +484,7 @@ Content-Type: application/json
           {/* Deploy */}
           <h2 id="deploy">部署</h2>
           <h3>本地开发</h3>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`git clone <repo>
 cd ai-sql-demo
 pnpm install
@@ -499,7 +519,7 @@ pnpm dev`}</code>
             修改 <code>src/app/api/chat/route.ts</code> 中的 provider 和 model
             即可：
           </p>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`// 阿里云百炼 (当前)
 const provider = createOpenAI({
   baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -524,7 +544,7 @@ const provider = createOpenAI({ baseURL: "https://your-api.com/v1" });`}</code>
           <p><strong>现象：</strong>知识库有 4 篇文档，首次搜索"报销制度"能找到，后续重复搜索却找不到了，其他 3 篇文档正常返回。</p>
           <p><strong>原因：</strong>IVFFlat 索引需要指定 <code>lists</code> 参数（聚类数）。当 <code>lists = 100</code> 但实际只有十几个向量时，大部分聚类为空，搜索时探测的聚类可能恰好不包含目标向量，导致结果不稳定。</p>
           <p><strong>解决：</strong>换用 HNSW 索引。HNSW 是基于图的近似最近邻算法，不依赖聚类数，对小数据量友好。同时将 <code>topK</code> 从 3 提升到 5，避免文档数多于 topK 时某些文档被挤掉。</p>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`-- 替换索引
 DROP INDEX IF EXISTS documents_embedding_idx;
 CREATE INDEX documents_embedding_idx
@@ -535,7 +555,7 @@ CREATE INDEX documents_embedding_idx
           <p><strong>现象：</strong>添加了数据准确性规则"如果数据不存在，告知用户未找到"，AI 却开始生成探测性 SQL 查询，SQL 报错后 maxSteps 循环修复失败，显示多条"AI 正在修正..."。</p>
           <p><strong>原因：</strong>Prompt 只说了<strong>做什么</strong>（告知用户不存在）和<strong>什么时候</strong>（数据不存在时），但没说<strong>怎么做</strong>（直接文字回复 vs 先查数据库验证）。AI 选择了"先查再说"这条路径，生成的 SQL 失败后进入重试死循环。</p>
           <p><strong>解决：</strong>补全 Prompt 三要素——<strong>什么时候 + 做什么 + 怎么做</strong>：</p>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`// ❌ 之前：缺少"怎么做"
 "如果数据不存在，必须告知用户'未找到相关数据'"
 
@@ -549,7 +569,7 @@ CREATE INDEX documents_embedding_idx
           <p><strong>现象：</strong>用户问"电子烟去年卖了多少"，数据库没有电子烟产品，AI 静默替换成"电子产品"类别并返回数据，用户以为查到了电子烟的数据。</p>
           <p><strong>原因：</strong>大模型倾向于"给出答案"而非"承认不知道"，尤其是当数据库中存在语义相近的数据时。</p>
           <p><strong>解决：</strong>在 System Prompt 中明确禁止替换，并给出具体示例：</p>
-          <pre className="not-prose">
+          <pre className="not-prose overflow-x-auto">
             <code>{`"不要用相似名称的数据替代用户查询的目标
 （例如用户问'电子烟'，不要替换成'电子产品'）"`}</code>
           </pre>
@@ -571,93 +591,16 @@ CREATE INDEX documents_embedding_idx
           {/* Changelog */}
           <h2 id="changelog">版本记录</h2>
 
-          <h3>v0.6.0 — RAG 知识库 & SQL 混合驱动</h3>
-          <ul>
-            <li>新增 <code>search_knowledge</code> 工具 — AI 自动判断：数据问题查 SQL，知识问题查文档</li>
-            <li>Supabase pgvector 向量存储 + 百炼 text-embedding-v3 嵌入模型</li>
-            <li>知识库文档上传功能（.txt / .md），自动切片 + 向量化 + 入库</li>
-            <li>预置 4 篇示例文档 + <code>pnpm seed-docs</code> 一键导入</li>
-            <li><code>KnowledgeResult</code> 组件渲染搜索结果</li>
-          </ul>
-
-          <h3>v0.5.0 — 防刷限流 & 代码重构</h3>
-          <ul>
-            <li>Upstash Redis + <code>@upstash/ratelimit</code> 实现 IP 级滑动窗口限流</li>
-            <li>每日 Token 用量熔断机制（超限自动停止服务，防止 API Key 被刷爆）</li>
-            <li>单条消息长度限制（500 字），防止超长 prompt 消耗大量 token</li>
-            <li>前端错误提示优化：限流 / 熔断 / 超长等场景展示具体错误信息</li>
-            <li>代码重构：<code>route.ts</code> 拆分为 <code>lib/ratelimit.ts</code>（限流）+ <code>lib/prompt.ts</code>（提示词）+ 路由骨架</li>
-          </ul>
-
-          <h3>v0.4.0 — 安全加固 & 自我修复</h3>
-          <ul>
-            <li>
-              <code>query()</code> 新增 SELECT 前缀校验 +
-              分号拦截，defense-in-depth 防止破坏性 SQL
-            </li>
-            <li>
-              <code>maxSteps: 3</code> — AI 生成的 SQL
-              执行报错时自动修正并重试，优化提示词防止大模型错误行为
-            </li>
-            <li>
-              Tool execute 增加 try/catch，错误信息回传 AI 触发 self-healing
-            </li>
-            <li>前端识别 error 态，显示"SQL 执行出错，AI 正在修正..."</li>
-          </ul>
-
-          <h3>v0.3.0 — 多端适配 & 部署</h3>
-          <ul>
-            <li>全站响应式适配（手机 / 平板 / 桌面）</li>
-            <li>Chat 页侧边栏改为移动端抽屉式，hamburger 按钮切换</li>
-            <li>新增 Dockerfile（多阶段构建 + standalone 输出）</li>
-            <li>
-              Next.js 配置 <code>output: &apos;standalone&apos;</code>
-            </li>
-            <li>
-              添加 <code>.dockerignore</code>、<code>.gitignore</code>、
-              <code>.env.local.example</code>
-            </li>
-          </ul>
-
-          <h3>v0.2.0 — 产品化</h3>
-          <ul>
-            <li>产品官网首页（Hero / 功能 / 竞品对比 / 定价 / CTA）</li>
-            <li>技术文档页（侧边栏导航 + prose 排版）</li>
-            <li>
-              Chat 页移至 <code>/chat</code>，首页改为 Landing Page
-            </li>
-            <li>
-              数据库扩充至 5 张表（departments / employees / products / sales /
-              expenses），共 94 条数据
-            </li>
-            <li>12 个快捷提问按钮</li>
-            <li>图表 groupKey 支持（多系列柱状图 / 折线图）</li>
-            <li>Chat UI 重构：气泡式消息、可折叠 SQL、多阶段 loading</li>
-          </ul>
-
-          <h3>v0.1.0 — MVP</h3>
-          <ul>
-            <li>自然语言 → SQL → 表格 / 图表，核心流程跑通</li>
-            <li>
-              Vercel AI SDK <code>streamText</code> + <code>useChat</code>{" "}
-              流式架构
-            </li>
-            <li>Zod Schema 结构化输出（Tool Calling）</li>
-            <li>
-              两个 Tool：<code>execute_query</code>（表格）、
-              <code>show_chart</code>（Bar / Line / Pie）
-            </li>
-            <li>
-              内存 SQLite（<code>better-sqlite3</code>）
-            </li>
-            <li>
-              消息清洗（sanitizeMessages）解决 toolInvocations 二次请求报错
-            </li>
-            <li>
-              <code>toDataStreamResponse()</code> 替代{" "}
-              <code>toAIStreamResponse()</code> 解决工具结果不回传
-            </li>
-          </ul>
+          {parseChangelog().map((section) => (
+            <div key={section.version}>
+              <h3>{section.version}</h3>
+              <ul>
+                {section.items.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
 
           <div className="not-prose mt-16 pt-8 border-t border-slate-100 text-center">
             <Link
