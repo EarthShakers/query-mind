@@ -114,7 +114,7 @@ const PRICING = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-white text-slate-800">
+    <div className="min-h-screen bg-white text-slate-800 overflow-x-hidden">
       <PageAnimations />
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur">
@@ -124,7 +124,7 @@ export default function LandingPage() {
               QueryMind
             </span>
           </div>
-          <div className="flex items-center gap-4 md:gap-6 text-sm">
+          <div className="flex items-center gap-2 md:gap-6 text-sm shrink-0">
             <a
               href="#features"
               className="hidden md:inline text-slate-500 hover:text-slate-800 transition-colors"
@@ -145,7 +145,7 @@ export default function LandingPage() {
             </a>
             <Link
               href="/knowledge"
-              className="hidden md:inline text-slate-500 hover:text-slate-800 transition-colors"
+              className="text-slate-500 hover:text-slate-800 transition-colors"
             >
               知识库
             </Link>
@@ -194,7 +194,7 @@ export default function LandingPage() {
           </p>
           <div
             data-hero="cta"
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            className="flex flex-row items-center justify-center gap-4"
           >
             <Link
               href="/chat"
