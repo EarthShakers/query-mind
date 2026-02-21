@@ -64,7 +64,7 @@ export default function DocsLayout({
             </Link>
             <Link
               href="/chat"
-              className="px-4 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+              className="px-4 py-1.5 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
             >
               在线体验
             </Link>

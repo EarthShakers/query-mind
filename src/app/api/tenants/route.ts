@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       .from("spaces")
       .insert({
         tenant_id: tenant.id,
-        name: "默认空间",
+        name: "企业用户初始空间",
         is_default: true,
       })
       .select("id, name")
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
       tenantId: tenant.id,
       displayName: dbUser.display_name,
       tenantRole: "admin",
-      spaces: [{ spaceId: space.id, spaceName: space.name, role: "admin" }],
+      spaces: [{ spaceId: space.id, spaceName: space.name, role: "admin", isDefault: true }],
       activeSpaceId: space.id,
     };
 

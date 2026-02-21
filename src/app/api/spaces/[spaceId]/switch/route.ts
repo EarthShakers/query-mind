@@ -59,7 +59,7 @@ export async function POST(
     if (tenantMember) {
       const { data: spaceMembers } = await supabase
         .from("space_members")
-        .select("space_id, role, spaces(id, name)")
+        .select("space_id, role, spaces(id, name, is_default)")
         .eq("user_id", userId);
 
       if (spaceMembers) {
@@ -67,6 +67,7 @@ export async function POST(
           spaceId: sm.space_id,
           spaceName: sm.spaces?.name ?? "",
           role: sm.role as "admin" | "editor" | "viewer",
+          isDefault: sm.spaces?.is_default ?? false,
         }));
       }
     }

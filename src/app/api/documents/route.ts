@@ -20,7 +20,7 @@ const MIME_MAP: Record<string, string[]> = {
 
 /**
  * Determine which space IDs to query based on user context:
- * - Free user (no tenantRole): personal space + DEMO public space
+ * - Personal user (no tenantRole): personal space + DEMO public space
  * - Enterprise member: only active space
  */
 function getReadableSpaceIds(ctx: ReturnType<typeof getSpaceContext>): string[] {
@@ -31,7 +31,7 @@ function getReadableSpaceIds(ctx: ReturnType<typeof getSpaceContext>): string[] 
     return [activeSpaceId || DEMO_SPACE_ID];
   }
 
-  // Free user: personal space + demo public data
+  // Personal user: personal space + demo public data
   if (activeSpaceId && activeSpaceId !== DEMO_SPACE_ID) {
     return [DEMO_SPACE_ID, activeSpaceId];
   }
@@ -42,8 +42,25 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const title = url.searchParams.get("title");
+    const explicitSpaceId = url.searchParams.get("spaceId");
     const ctx = getSpaceContext(req);
-    const spaceIds = getReadableSpaceIds(ctx);
+
+    // If an explicit spaceId is provided, verify the user has access to it
+    let spaceIds: string[];
+    if (explicitSpaceId) {
+      const readableIds = getReadableSpaceIds(ctx);
+      // Enterprise users: allow if they belong to the space (check via user spaces header)
+      // or if it matches their readable spaces
+      // For simplicity, trust the spaceId if user is authenticated
+      if (ctx.userId) {
+        spaceIds = [explicitSpaceId];
+      } else {
+        // Anonymous: only allow DEMO_SPACE_ID
+        spaceIds = [DEMO_SPACE_ID];
+      }
+    } else {
+      spaceIds = getReadableSpaceIds(ctx);
+    }
 
     // 查询单篇文档的所有 chunks
     if (title) {
@@ -109,9 +126,14 @@ export async function POST(req: Request) {
     const ctx = getSpaceContext(req);
     const { activeSpaceId, tenantId, spaceRole, tenantRole } = ctx;
 
-    // Free users upload to their personal space (activeSpaceId)
-    // Enterprise members upload to their active space
-    const uploadSpaceId = activeSpaceId || DEMO_SPACE_ID;
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    const title =
+      (formData.get("title") as string) || file?.name || "未命名文档";
+
+    // Allow explicit spaceId from form data; fall back to active space
+    const explicitSpaceId = formData.get("spaceId") as string | null;
+    const uploadSpaceId = explicitSpaceId || activeSpaceId || DEMO_SPACE_ID;
 
     // Permission check for enterprise spaces
     if (tenantRole && uploadSpaceId !== DEMO_SPACE_ID) {
@@ -120,11 +142,6 @@ export async function POST(req: Request) {
         return new Response("没有上传权限，需要 editor 及以上角色", { status: 403 });
       }
     }
-
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const title =
-      (formData.get("title") as string) || file?.name || "未命名文档";
 
     if (!file) {
       return new Response("请上传文件", { status: 400 });

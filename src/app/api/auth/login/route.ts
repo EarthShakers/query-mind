@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
       const { data: spaceMembers } = await supabase
         .from("space_members")
-        .select("space_id, role, spaces(id, name)")
+        .select("space_id, role, spaces(id, name, is_default)")
         .eq("user_id", user.id);
 
       if (spaceMembers) {
@@ -59,15 +59,16 @@ export async function POST(req: Request) {
           spaceId: sm.space_id,
           spaceName: sm.spaces?.name ?? "",
           role: sm.role as "admin" | "editor" | "viewer",
+          isDefault: sm.spaces?.is_default ?? false,
         }));
       }
 
       activeSpaceId = user.active_space_id || spaces[0]?.spaceId || null;
     } else {
-      // Free user — ensure personal space exists
+      // Personal user — ensure personal space exists
       const { data: spaceMembers } = await supabase
         .from("space_members")
-        .select("space_id, role, spaces(id, name)")
+        .select("space_id, role, spaces(id, name, is_default)")
         .eq("user_id", user.id);
 
       if (spaceMembers && spaceMembers.length > 0) {
@@ -75,6 +76,7 @@ export async function POST(req: Request) {
           spaceId: sm.space_id,
           spaceName: sm.spaces?.name ?? "",
           role: sm.role as "admin" | "editor" | "viewer",
+          isDefault: sm.spaces?.is_default ?? false,
         }));
         activeSpaceId = user.active_space_id || spaces[0]?.spaceId || null;
       } else {
@@ -100,7 +102,7 @@ export async function POST(req: Request) {
             .update({ active_space_id: personalSpace.id })
             .eq("id", user.id);
 
-          spaces = [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin" }];
+          spaces = [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin", isDefault: false }];
           activeSpaceId = personalSpace.id;
         }
       }

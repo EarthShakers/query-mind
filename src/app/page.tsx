@@ -114,7 +114,7 @@ const PRICING = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-white text-slate-800 overflow-x-hidden">
+    <div className="min-h-screen bg-white text-slate-800">
       <PageAnimations />
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/80 backdrop-blur">
@@ -151,7 +151,7 @@ export default function LandingPage() {
             </Link>
             <Link
               href="/chat"
-              className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+              className="px-4 py-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
             >
               在线体验
             </Link>

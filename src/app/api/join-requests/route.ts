@@ -13,11 +13,24 @@ export async function GET(req: Request) {
       // Admin sees pending requests for their tenant
       const { data, error } = await supabase
         .from("join_requests")
-        .select("id, tenant_id, user_id, status, message, created_at, updated_at, users(email, display_name)")
+        .select("id, tenant_id, user_id, status, message, created_at, updated_at")
         .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false });
 
       if (error) throw new Error(error.message);
+
+      // Fetch user info separately (avoids needing FK constraint on join_requests→users)
+      const userIds = [...new Set((data ?? []).map((r: any) => r.user_id))];
+      const userMap: Record<string, { email: string; display_name: string | null }> = {};
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from("users")
+          .select("id, email, display_name")
+          .in("id", userIds);
+        for (const u of users ?? []) {
+          userMap[u.id] = { email: u.email, display_name: u.display_name };
+        }
+      }
 
       const requests = (data ?? []).map((r: any) => ({
         id: r.id,
@@ -25,8 +38,8 @@ export async function GET(req: Request) {
         userId: r.user_id,
         status: r.status,
         message: r.message,
-        email: r.users?.email ?? "",
-        displayName: r.users?.display_name ?? null,
+        email: userMap[r.user_id]?.email ?? "",
+        displayName: userMap[r.user_id]?.display_name ?? null,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       }));
@@ -37,16 +50,29 @@ export async function GET(req: Request) {
     // Regular user sees their own requests
     const { data, error } = await supabase
       .from("join_requests")
-      .select("id, tenant_id, status, message, created_at, updated_at, tenants(name)")
+      .select("id, tenant_id, status, message, created_at, updated_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
 
+    // Fetch tenant names separately (avoids needing FK constraint on join_requests→tenants)
+    const tenantIds = [...new Set((data ?? []).map((r: any) => r.tenant_id))];
+    const tenantMap: Record<string, string> = {};
+    if (tenantIds.length > 0) {
+      const { data: tenants } = await supabase
+        .from("tenants")
+        .select("id, name")
+        .in("id", tenantIds);
+      for (const t of tenants ?? []) {
+        tenantMap[t.id] = t.name;
+      }
+    }
+
     const requests = (data ?? []).map((r: any) => ({
       id: r.id,
       tenantId: r.tenant_id,
-      tenantName: r.tenants?.name ?? "",
+      tenantName: tenantMap[r.tenant_id] ?? "",
       status: r.status,
       message: r.message,
       createdAt: r.created_at,

@@ -38,7 +38,7 @@ export async function GET() {
 
     const { data: spaceMembers } = await supabase
       .from("space_members")
-      .select("space_id, role, spaces(id, name)")
+      .select("space_id, role, spaces(id, name, is_default)")
       .eq("user_id", user.userId);
 
     if (spaceMembers) {
@@ -46,15 +46,16 @@ export async function GET() {
         spaceId: sm.space_id,
         spaceName: sm.spaces?.name ?? "",
         role: sm.role as "admin" | "editor" | "viewer",
+        isDefault: sm.spaces?.is_default ?? false,
       }));
     }
 
     activeSpaceId = dbUser?.active_space_id || spaces[0]?.spaceId || null;
   } else {
-    // Free user
+    // Personal user
     const { data: spaceMembers } = await supabase
       .from("space_members")
-      .select("space_id, role, spaces(id, name)")
+      .select("space_id, role, spaces(id, name, is_default)")
       .eq("user_id", user.userId);
 
     if (spaceMembers && spaceMembers.length > 0) {
@@ -62,6 +63,7 @@ export async function GET() {
         spaceId: sm.space_id,
         spaceName: sm.spaces?.name ?? "",
         role: sm.role as "admin" | "editor" | "viewer",
+        isDefault: sm.spaces?.is_default ?? false,
       }));
       activeSpaceId = dbUser?.active_space_id || spaces[0]?.spaceId || null;
     } else {
@@ -87,7 +89,7 @@ export async function GET() {
           .update({ active_space_id: personalSpace.id })
           .eq("id", user.userId);
 
-        spaces = [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin" }];
+        spaces = [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin", isDefault: false }];
         activeSpaceId = personalSpace.id;
       }
     }

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
 
+const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
+
 interface DocItem {
   title: string;
   chunkCount: number;
@@ -16,6 +18,15 @@ interface ChunkItem {
   id: number;
   content: string;
   created_at: string;
+}
+
+interface SpaceCard {
+  spaceId: string;
+  spaceName: string;
+  role: "admin" | "editor" | "viewer" | null;
+  isPublic?: boolean;
+  isDefault?: boolean;
+  memberCount?: number;
 }
 
 const FORMAT_FILTERS = [
@@ -60,8 +71,610 @@ const FORMAT_META: Record<
   },
 };
 
-export default function KnowledgePage() {
-  const { activeSpace } = useAuth();
+const ROLE_LABELS: Record<string, { text: string; color: string; bg: string }> = {
+  admin: { text: "管理员", color: "text-indigo-600", bg: "bg-indigo-50" },
+  editor: { text: "编辑者", color: "text-emerald-600", bg: "bg-emerald-50" },
+  viewer: { text: "查看者", color: "text-slate-500", bg: "bg-slate-100" },
+};
+
+/* ─── Nav (shared) ─── */
+function Nav() {
+  return (
+    <nav className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/80 backdrop-blur-lg">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
+        <Link
+          href="/"
+          className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent"
+        >
+          QueryMind
+        </Link>
+        <div className="flex items-center gap-4 md:gap-6 text-sm">
+          <Link
+            href="/"
+            className="text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            首页
+          </Link>
+          <Link
+            href="/chat"
+            className="px-4 py-1.5 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
+          >
+            在线体验
+          </Link>
+          <NavAuth />
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+/* ─── Space Switcher Dropdown ─── */
+function SpaceSwitcher({
+  spaces,
+  currentSpaceId,
+  onSwitch,
+}: {
+  spaces: SpaceCard[];
+  currentSpaceId: string;
+  onSwitch: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+        切换空间
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
+          {spaces.map((s) => (
+            <button
+              key={s.spaceId}
+              onClick={() => {
+                onSwitch(s.spaceId);
+                setOpen(false);
+              }}
+              className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-slate-50 transition-colors ${
+                s.spaceId === currentSpaceId
+                  ? "text-indigo-600 font-medium bg-indigo-50/50"
+                  : "text-slate-700"
+              }`}
+            >
+              <div
+                className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                  s.spaceId === currentSpaceId
+                    ? "bg-gradient-to-br from-indigo-500 to-cyan-500 text-white"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {s.spaceName[0]}
+              </div>
+              <span className="truncate">{s.spaceName}</span>
+              {s.spaceId === currentSpaceId && (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="ml-auto shrink-0"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Space List (Level 1) ─── */
+function SpaceList({
+  spaces,
+  onSelect,
+  user,
+  onRefresh,
+}: {
+  spaces: SpaceCard[];
+  onSelect: (id: string) => void;
+  user: { tenantId: string; tenantRole: "admin" | "member" | null };
+  onRefresh: () => Promise<void>;
+}) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const ids = spaces
+      .filter((s) => !s.isPublic)
+      .map((s) => s.spaceId);
+    if (ids.length === 0) return;
+    fetch(`/api/spaces/member-counts?ids=${ids.join(",")}`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setMemberCounts)
+      .catch(() => {});
+  }, [spaces]);
+
+  async function handleDelete(spaceId: string) {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/spaces/${spaceId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "删除失败");
+      } else {
+        setConfirmDelete(null);
+        await onRefresh();
+      }
+    } catch {
+      alert("删除失败");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleRename(spaceId: string) {
+    if (!renameValue.trim()) return;
+    setRenameSaving(true);
+    try {
+      const res = await fetch(`/api/spaces/${spaceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameValue.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "重命名失败");
+      } else {
+        setRenaming(null);
+        setRenameValue("");
+        await onRefresh();
+      }
+    } catch {
+      alert("重命名失败");
+    } finally {
+      setRenameSaving(false);
+    }
+  }
+
+  async function handleCreate() {
+    if (!newName.trim()) return;
+    setCreating(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/tenants/${user.tenantId}/spaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "创建失败");
+      } else {
+        setNewName("");
+        setNewDesc("");
+        setShowCreate(false);
+        await onRefresh();
+      }
+    } catch {
+      setError("创建失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 md:px-6 pb-12">
+      {/* Compact gradient header */}
+      <div className="mt-5 mb-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-6 py-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white">知识库</h1>
+              <p className="text-xs text-indigo-100 mt-0.5">
+                选择空间管理文档，AI 自动解析向量化
+              </p>
+            </div>
+          </div>
+          {spaces.length > 0 && (
+            <span className="text-sm font-medium text-white/70">
+              {spaces.length} 个空间
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Create Space Card (admin only) */}
+      {user.tenantRole === "admin" &&
+        (showCreate ? (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">
+              创建新空间
+            </h3>
+            <div className="space-y-3">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="空间名称"
+                autoFocus
+                className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400"
+              />
+              <input
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="空间描述（可选）"
+                className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400"
+              />
+              {error && (
+                <div className="px-4 py-2.5 rounded-xl text-sm bg-red-50 text-red-600 border border-red-200">
+                  {error}
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleCreate}
+                  disabled={creating || !newName.trim()}
+                  className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm font-medium rounded-xl hover:shadow-lg hover:shadow-indigo-200/50 disabled:opacity-40 transition-all"
+                >
+                  {creating ? "创建中..." : "确认创建"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreate(false);
+                    setError("");
+                  }}
+                  className="px-5 py-2.5 text-slate-500 text-sm rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div
+            onClick={() => setShowCreate(true)}
+            className="bg-white rounded-2xl border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:shadow-md cursor-pointer transition-all mb-5"
+          >
+            <div className="flex items-center gap-4 py-5 px-6">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-sm shrink-0">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  创建新空间
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  为不同项目或团队创建独立的数据空间
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+
+      {/* Space Cards Grid */}
+      {spaces.length === 0 ? (
+        <div className="text-center py-20">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-slate-300"
+            >
+              <rect width="7" height="7" x="3" y="3" rx="1" />
+              <rect width="7" height="7" x="14" y="3" rx="1" />
+              <rect width="7" height="7" x="3" y="14" rx="1" />
+              <rect width="7" height="7" x="14" y="14" rx="1" />
+            </svg>
+          </div>
+          <p className="text-sm text-slate-500 font-medium">暂无可访问的空间</p>
+          <p className="text-xs text-slate-400 mt-1">
+            请联系管理员为你分配空间
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {spaces.map((space) => {
+            const roleInfo = space.role ? ROLE_LABELS[space.role] : null;
+            const count = memberCounts[space.spaceId];
+            const canManage = !space.isPublic && (user.tenantRole === "admin" || space.role === "admin");
+            return (
+              <div
+                key={space.spaceId}
+                onClick={() => onSelect(space.spaceId)}
+                className="group relative bg-white rounded-2xl border border-slate-200 hover:border-indigo-200 shadow-sm hover:shadow-lg hover:shadow-indigo-50 transition-all cursor-pointer overflow-hidden flex flex-col"
+              >
+                <div className="h-1 bg-slate-100 group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-cyan-400 transition-all" />
+                <div className="p-5 flex-1">
+                  {/* Member count — top right */}
+                  {!space.isPublic && count !== undefined && (
+                    <div className="float-right ml-2 flex items-center gap-1 text-xs text-slate-400">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                      {count}
+                    </div>
+                  )}
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-slate-100 group-hover:bg-gradient-to-br group-hover:from-indigo-500 group-hover:to-cyan-500 flex items-center justify-center text-sm font-bold text-slate-500 group-hover:text-white transition-all shrink-0">
+                      {space.isPublic ? (
+                        <svg
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M2 12h20" />
+                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                        </svg>
+                      ) : (
+                        space.spaceName[0]
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-800 leading-snug group-hover:text-indigo-600 transition-colors">
+                        {space.spaceName}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {space.isDefault && (
+                          <span className="px-2 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-600 rounded-md border border-amber-100">
+                            默认
+                          </span>
+                        )}
+                        {space.isPublic && (
+                          <>
+                            <span className="px-2 py-0.5 text-[10px] font-medium bg-cyan-50 text-cyan-600 rounded-md border border-cyan-100">
+                              公共
+                            </span>
+                            <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-500 rounded-md border border-slate-200">
+                              只读
+                            </span>
+                          </>
+                        )}
+                        {roleInfo && (
+                          <span
+                            className={`px-2 py-0.5 text-[10px] font-medium rounded-md border ${roleInfo.bg} ${roleInfo.color} border-current/10`}
+                          >
+                            {roleInfo.text}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Action bar — separate from content, no overlap */}
+                <div className="px-5 pb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {canManage && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenaming(space.spaceId);
+                            setRenameValue(space.spaceName);
+                          }}
+                          className="text-[11px] text-slate-400 hover:text-slate-600 font-medium transition-colors"
+                        >
+                          重命名
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDelete(space.spaceId);
+                          }}
+                          className="text-[11px] text-red-400 hover:text-red-600 font-medium transition-colors"
+                        >
+                          删除
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                    进入空间 →
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => !deleting && setConfirmDelete(null)}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-900 mb-2">
+              确认删除空间
+            </h3>
+            <p className="text-sm text-slate-500 mb-1">
+              删除后，该空间下的所有文档和成员关系将被永久清除，此操作不可撤销。
+            </p>
+            <p className="text-sm font-medium text-slate-700 mb-5">
+              空间：{spaces.find((s) => s.spaceId === confirmDelete)?.spaceName}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {deleting ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename dialog */}
+      {renaming && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => !renameSaving && setRenaming(null)}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-900 mb-4">
+              重命名空间
+            </h3>
+            <input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && renameValue.trim()) handleRename(renaming);
+              }}
+              className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400 mb-4"
+              placeholder="输入新名称"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setRenaming(null)}
+                disabled={renameSaving}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleRename(renaming)}
+                disabled={renameSaving || !renameValue.trim()}
+                className="px-4 py-2 text-sm text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {renameSaving ? "保存中..." : "确认"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function SpaceDocuments({
+  spaceId,
+  spaceName,
+  spaceRole,
+  spaces,
+  onBack,
+  onSwitch,
+  isAdmin,
+  isDefault,
+  isLoggedIn,
+}: {
+  spaceId: string;
+  spaceName: string;
+  spaceRole: "admin" | "editor" | "viewer" | null;
+  spaces: SpaceCard[];
+  onBack: () => void;
+  onSwitch: (id: string) => void;
+  isAdmin: boolean;
+  isDefault: boolean;
+  isLoggedIn: boolean;
+}) {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -77,16 +690,21 @@ export default function KnowledgePage() {
   const [chunksLoading, setChunksLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const canUpload =
+    spaceId !== DEMO_SPACE_ID &&
+    (spaceRole === "admin" || spaceRole === "editor" || isAdmin);
+
   const fetchDocs = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/documents");
+      const res = await fetch(`/api/documents?spaceId=${encodeURIComponent(spaceId)}`);
       if (res.ok) setDocs(await res.json());
     } catch {
       // ignore
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [spaceId]);
 
   useEffect(() => {
     fetchDocs();
@@ -99,6 +717,7 @@ export default function KnowledgePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("title", file.name.replace(/\.\w+$/, ""));
+      form.append("spaceId", spaceId);
       const res = await fetch("/api/documents", { method: "POST", body: form });
       if (!res.ok) {
         setUploadMsg(await res.text());
@@ -128,7 +747,7 @@ export default function KnowledgePage() {
     setChunksLoading(true);
     try {
       const res = await fetch(
-        `/api/documents?title=${encodeURIComponent(doc.title)}`
+        `/api/documents?title=${encodeURIComponent(doc.title)}&spaceId=${encodeURIComponent(spaceId)}`
       );
       if (res.ok) setChunks(await res.json());
     } catch {
@@ -157,182 +776,217 @@ export default function KnowledgePage() {
   }, [docs]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 border-b border-slate-200/60 bg-white/80 backdrop-blur-lg">
-        <div className="max-w-6xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent"
-          >
-            QueryMind
-          </Link>
-          <div className="flex items-center gap-4 md:gap-6 text-sm">
-            <Link
-              href="/"
-              className="text-slate-500 hover:text-slate-800 transition-colors"
-            >
-              首页
-            </Link>
-            <Link
-              href="/chat"
-              className="px-4 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
-            >
-              在线体验
-            </Link>
-            <NavAuth />
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Header */}
-      <div className="bg-gradient-to-br from-indigo-600 via-indigo-500 to-cyan-500 text-white">
-        <div className="max-w-5xl mx-auto px-4 md:px-6 py-10 md:py-14">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+    <>
+      <div className="max-w-5xl mx-auto px-4 md:px-6">
+        {/* Compact gradient header card */}
+        <div className="mt-5 mb-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={onBack}
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
               >
-                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" />
-              </svg>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-bold">知识库</h1>
-            {activeSpace && (
-              <span className="ml-2 px-2.5 py-0.5 text-xs font-medium bg-white/20 rounded-full">
-                {activeSpace.spaceName}
-              </span>
-            )}
-          </div>
-          <p className="text-indigo-100 text-sm md:text-base max-w-lg">
-            上传企业文档，AI 自动解析、切片、向量化。在对话中提问时，AI
-            会检索最相关的内容来回答。
-          </p>
-          {/* Stats */}
-          {!loading && docs.length > 0 && (
-            <div className="flex items-center gap-6 mt-6">
-              <div>
-                <p className="text-2xl font-bold">{docs.length}</p>
-                <p className="text-xs text-indigo-200">篇文档</p>
-              </div>
-              <div className="w-px h-8 bg-white/20" />
-              <div>
-                <p className="text-2xl font-bold">
-                  {docs.reduce((s, d) => s + d.chunkCount, 0)}
-                </p>
-                <p className="text-xs text-indigo-200">个片段</p>
-              </div>
-              <div className="w-px h-8 bg-white/20" />
-              <div>
-                <p className="text-2xl font-bold">
-                  {new Set(docs.map((d) => d.format)).size}
-                </p>
-                <p className="text-xs text-indigo-200">种格式</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto px-4 md:px-6 -mt-6">
-        {/* Upload Card */}
-        <div
-          className={`relative rounded-2xl border-2 border-dashed bg-white shadow-lg shadow-slate-200/50 transition-all cursor-pointer ${
-            dragOver
-              ? "border-indigo-400 bg-indigo-50 shadow-indigo-100"
-              : uploading
-              ? "border-indigo-300 bg-indigo-50/50"
-              : "border-slate-200 hover:border-indigo-300 hover:shadow-xl"
-          }`}
-          onClick={() => !uploading && fileInputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".txt,.md,.pdf,.docx"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleUpload(f);
-            }}
-            className="hidden"
-          />
-          <div className="flex flex-col sm:flex-row items-center gap-5 py-8 px-8">
-            {uploading ? (
-              <span className="w-12 h-12 border-[3px] border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
-            ) : (
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-200/50 shrink-0">
                 <svg
-                  width="24"
-                  height="24"
+                  width="18"
+                  height="18"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="white"
+                  stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
+                  <path d="m15 18-6-6 6-6" />
                 </svg>
+              </button>
+              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center text-xs font-bold text-white shrink-0">
+                {spaceName[0]}
               </div>
-            )}
-            <div className="text-center sm:text-left">
-              <p className="text-sm font-semibold text-slate-800">
-                {uploading
-                  ? "正在解析并向量化文档..."
-                  : "拖拽文件到此处，或点击选择文件"}
-              </p>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mt-2.5">
-                {Object.entries(FORMAT_META).map(([ext, meta]) => (
-                  <span
-                    key={ext}
-                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border ${meta.bg} ${meta.color}`}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-bold text-white truncate">
+                    {spaceName}
+                  </h1>
+                  {spaceRole && (
+                    <span className="shrink-0 px-2 py-0.5 text-[10px] font-medium bg-white/20 text-white rounded-md">
+                      {ROLE_LABELS[spaceRole]?.text ?? spaceRole}
+                    </span>
+                  )}
+                </div>
+                {!loading && docs.length > 0 && (
+                  <p className="text-xs text-indigo-100 mt-0.5">
+                    {docs.length} 篇文档 · {docs.reduce((s, d) => s + d.chunkCount, 0)} 个片段 · {new Set(docs.map((d) => d.format)).size} 种格式
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Member management (admin only, not for public space) */}
+              {isAdmin && spaceId !== DEMO_SPACE_ID && (
+                <Link
+                  href={`/spaces/${spaceId}/members`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
-                    .{ext}
-                  </span>
-                ))}
-                <span className="text-[11px] text-slate-400">最大 20MB</span>
-              </div>
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  成员
+                </Link>
+              )}
+              <SpaceSwitcher
+                spaces={spaces}
+                currentSpaceId={spaceId}
+                onSwitch={onSwitch}
+              />
             </div>
           </div>
         </div>
 
-        {/* Upload message */}
-        {uploadMsg && (
-          <div
-            className={`mt-3 px-4 py-3 rounded-xl text-sm flex items-center gap-2 ${
-              uploadMsg.includes("已导入")
-                ? "bg-green-50 text-green-700 border border-green-200"
-                : "bg-red-50 text-red-600 border border-red-200"
-            }`}
-          >
-            <span className="text-base">
-              {uploadMsg.includes("已导入") ? "✓" : "!"}
+        {/* Read-only tip for public data space */}
+        {spaceId === DEMO_SPACE_ID && (
+          <div className="mt-1 flex items-center gap-2.5 px-4 py-3 rounded-xl bg-amber-50 border border-amber-100 text-sm text-amber-700">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" x2="12" y1="8" y2="12" />
+              <line x1="12" x2="12.01" y1="16" y2="16" />
+            </svg>
+            <span>
+              公共数据为只读，不支持上传。
+              {isLoggedIn
+                ? "请切换到个人空间上传文档。"
+                : "注册账号后可获得个人空间，上传自己的文档。"}
             </span>
-            {uploadMsg}
+            {!isLoggedIn && (
+              <Link
+                href="/register"
+                className="shrink-0 ml-auto px-3 py-1 text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
+              >
+                去注册
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* Upload Card */}
+        {canUpload && (
+          <div className="pt-5">
+            <div
+              className={`relative rounded-2xl border-2 border-dashed bg-white transition-all cursor-pointer ${
+                dragOver
+                  ? "border-indigo-400 bg-indigo-50 shadow-md"
+                  : uploading
+                  ? "border-indigo-300 bg-indigo-50/50"
+                  : "border-slate-200 hover:border-indigo-300 hover:shadow-md"
+              }`}
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.md,.pdf,.docx"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleUpload(f);
+                }}
+                className="hidden"
+              />
+              <div className="flex flex-col sm:flex-row items-center gap-4 py-6 px-6">
+                {uploading ? (
+                  <span className="w-10 h-10 border-[3px] border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
+                ) : (
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-sm shrink-0">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                  </div>
+                )}
+                <div className="text-center sm:text-left">
+                  <p className="text-sm font-medium text-slate-700">
+                    {uploading
+                      ? "正在解析并向量化文档..."
+                      : "拖拽文件到此处，或点击选择文件"}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mt-2">
+                    {Object.entries(FORMAT_META).map(([ext, meta]) => (
+                      <span
+                        key={ext}
+                        className={`px-1.5 py-0.5 text-[10px] font-semibold rounded border ${meta.bg} ${meta.color}`}
+                      >
+                        .{ext}
+                      </span>
+                    ))}
+                    <span className="text-[10px] text-slate-400">
+                      最大 20MB
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Upload message */}
+            {uploadMsg && (
+              <div
+                className={`mt-3 px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${
+                  uploadMsg.includes("已导入")
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-red-50 text-red-600 border border-red-200"
+                }`}
+              >
+                <span className="text-base">
+                  {uploadMsg.includes("已导入") ? "✓" : "!"}
+                </span>
+                {uploadMsg}
+              </div>
+            )}
           </div>
         )}
 
         {/* Search + Filter */}
-        <div className="mt-8 mb-5 flex flex-col sm:flex-row gap-3">
+        <div className="mt-5 mb-4 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <svg
               className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-              width="16"
-              height="16"
+              width="15"
+              height="15"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -348,7 +1002,7 @@ export default function KnowledgePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索文档名称..."
-              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400"
+              className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent placeholder:text-slate-400"
             />
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
@@ -358,10 +1012,10 @@ export default function KnowledgePage() {
                 <button
                   key={f.value}
                   onClick={() => setFilter(f.value)}
-                  className={`shrink-0 px-3.5 py-2 text-xs font-medium rounded-lg transition-all ${
+                  className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
                     filter === f.value
-                      ? "bg-indigo-500 text-white shadow-md shadow-indigo-200"
-                      : "bg-white border border-slate-200 text-slate-500 hover:border-indigo-200 hover:text-indigo-600 shadow-sm"
+                      ? "bg-indigo-500 text-white shadow-sm"
+                      : "bg-white border border-slate-200 text-slate-500 hover:border-indigo-200 hover:text-indigo-600"
                   }`}
                 >
                   {f.label}
@@ -384,16 +1038,16 @@ export default function KnowledgePage() {
 
         {/* Document Grid */}
         {loading ? (
-          <div className="flex items-center justify-center py-24 text-slate-400">
+          <div className="flex items-center justify-center py-20 text-slate-400">
             <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin mr-3" />
             <span className="text-sm">加载中...</span>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-24">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+          <div className="text-center py-20">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
               <svg
-                width="28"
-                height="28"
+                width="24"
+                height="24"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -416,7 +1070,7 @@ export default function KnowledgePage() {
                   } 格式的文档`}
             </p>
             <p className="text-xs text-slate-400 mt-1">
-              {filter === "all" && !search
+              {filter === "all" && !search && canUpload
                 ? "点击上方区域上传你的第一篇文档"
                 : ""}
             </p>
@@ -442,7 +1096,6 @@ export default function KnowledgePage() {
                   onClick={() => openPreview(doc)}
                   className="group relative bg-white rounded-2xl border border-slate-200 hover:border-indigo-200 shadow-sm hover:shadow-lg hover:shadow-indigo-50 transition-all cursor-pointer overflow-hidden"
                 >
-                  {/* Color top bar */}
                   <div className={`h-1 bg-gradient-to-r ${meta.gradient}`} />
                   <div className="p-5">
                     <div className="flex items-start gap-3.5">
@@ -503,7 +1156,6 @@ export default function KnowledgePage() {
                       </div>
                     </div>
                   </div>
-                  {/* Hover hint */}
                   <div className="absolute bottom-3 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-[11px] text-indigo-400 font-medium">
                       点击预览 →
@@ -589,8 +1241,9 @@ export default function KnowledgePage() {
                         <div className="flex items-center gap-2">
                           <span
                             className={`w-5 h-5 rounded-md bg-gradient-to-br ${
-                              (FORMAT_META[preview.format] ?? FORMAT_META.txt)
-                                .gradient
+                              (
+                                FORMAT_META[preview.format] ?? FORMAT_META.txt
+                              ).gradient
                             } flex items-center justify-center text-[9px] font-bold text-white`}
                           >
                             {i + 1}
@@ -645,6 +1298,103 @@ export default function KnowledgePage() {
             </div>
           </div>
         </div>
+      )}
+    </>
+  );
+}
+
+/* ─── Main Page ─── */
+export default function KnowledgePage() {
+  const { user, loading: authLoading, refresh } = useAuth();
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
+
+  // Build space cards from user.spaces
+  const spaceCards: SpaceCard[] = useMemo(() => {
+    const publicCard: SpaceCard = {
+      spaceId: DEMO_SPACE_ID,
+      spaceName: "公共数据",
+      role: null,
+      isPublic: true,
+    };
+
+    // Unregistered user: only show public data
+    if (!user) return [publicCard];
+
+    // Enterprise user: own spaces + public data
+    if (user.tenantRole) {
+      const cards: SpaceCard[] = user.spaces.map((s) => ({
+        spaceId: s.spaceId,
+        spaceName: s.spaceName,
+        role: s.role,
+        isDefault: s.isDefault,
+      }));
+      cards.push(publicCard);
+      return cards;
+    }
+
+    // Personal user: personal space(s) + public data
+    const cards: SpaceCard[] = [];
+    for (const s of user.spaces) {
+      if (s.spaceId !== DEMO_SPACE_ID) {
+        cards.push({
+          spaceId: s.spaceId,
+          spaceName: s.spaceName,
+          role: s.role,
+        });
+      }
+    }
+    cards.push(publicCard);
+    return cards;
+  }, [user]);
+
+  const selectedSpace = useMemo(() => {
+    if (!selectedSpaceId) return null;
+    return spaceCards.find((s) => s.spaceId === selectedSpaceId) ?? null;
+  }, [selectedSpaceId, spaceCards]);
+
+  // Determine if current user is admin (tenant admin)
+  const isAdmin = user?.tenantRole === "admin";
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Nav />
+        <div className="flex items-center justify-center py-32 text-slate-400">
+          <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin mr-3" />
+          <span className="text-sm">加载中...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Nav />
+
+      {selectedSpaceId && selectedSpace ? (
+        /* Level 2: Space Documents */
+        <SpaceDocuments
+          spaceId={selectedSpaceId}
+          spaceName={selectedSpace.spaceName}
+          spaceRole={selectedSpace.role}
+          spaces={spaceCards}
+          onBack={() => setSelectedSpaceId(null)}
+          onSwitch={setSelectedSpaceId}
+          isAdmin={isAdmin}
+          isDefault={!!selectedSpace.isDefault}
+          isLoggedIn={!!user}
+        />
+      ) : (
+        /* Level 1: Space List */
+        <SpaceList
+          spaces={spaceCards}
+          onSelect={setSelectedSpaceId}
+          user={{
+            tenantId: user?.tenantId ?? "",
+            tenantRole: user?.tenantRole ?? null,
+          }}
+          onRefresh={refresh}
+        />
       )}
     </div>
   );

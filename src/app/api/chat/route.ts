@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     (await checkRateLimit(req)) ?? (await checkDailyBudget());
   if (blocked) return blocked;
 
-  const { messages } = await req.json();
+  const { messages, spaceIds: clientSpaceIds } = await req.json();
 
   const lastMsg = messages[messages.length - 1]?.content ?? "";
   const inputBlocked = checkInputLength(lastMsg);
@@ -47,15 +47,23 @@ export async function POST(req: Request) {
   const ctx = getSpaceContext(req);
   const { tenantRole, activeSpaceId } = ctx;
 
-  // Determine searchable spaces: free user sees demo + personal, enterprise sees active space
+  // Determine searchable spaces
+  // If client sends explicit spaceIds array, use it directly
+  // Empty array = no knowledge search, only SQL data queries
   let searchSpaceIds: string[];
-  if (tenantRole) {
+  if (Array.isArray(clientSpaceIds)) {
+    searchSpaceIds = clientSpaceIds.filter(
+      (id: unknown) => typeof id === "string" && id.length > 0
+    );
+  } else if (tenantRole) {
     searchSpaceIds = [activeSpaceId || DEMO_SPACE_ID];
   } else {
     searchSpaceIds = activeSpaceId && activeSpaceId !== DEMO_SPACE_ID
       ? [DEMO_SPACE_ID, activeSpaceId]
       : [DEMO_SPACE_ID];
   }
+
+  const enableKnowledge = searchSpaceIds.length > 0;
 
   // ── AI 流式调用 ──
   const abortController = new AbortController();
@@ -131,24 +139,28 @@ export async function POST(req: Request) {
             }
           },
         },
-        search_knowledge: {
-          description:
-            "Search the knowledge base for company policies, product docs, FAQs, and general information. Use when the question is NOT about querying database numbers or statistics.",
-          parameters: z.object({
-            query: z
-              .string()
-              .describe("The search query in natural language"),
-          }),
-          execute: async ({ query: q }) => {
-            try {
-              const results = await searchDocuments(q, 5, searchSpaceIds);
-              return { query: q, results };
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : String(e);
-              return { query: q, results: [], error: msg };
+        ...(enableKnowledge
+          ? {
+              search_knowledge: {
+                description:
+                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Use when the question is NOT about querying database numbers or statistics.",
+                parameters: z.object({
+                  query: z
+                    .string()
+                    .describe("The search query in natural language"),
+                }),
+                execute: async ({ query: q }) => {
+                  try {
+                    const results = await searchDocuments(q, 5, searchSpaceIds);
+                    return { query: q, results };
+                  } catch (e: unknown) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    return { query: q, results: [], error: msg };
+                  }
+                },
+              },
             }
-          },
-        },
+          : {}),
       },
     });
 

@@ -14,6 +14,7 @@ interface SpaceMembership {
   spaceId: string;
   spaceName: string;
   role: "admin" | "editor" | "viewer";
+  isDefault: boolean;
 }
 
 interface AuthUser {

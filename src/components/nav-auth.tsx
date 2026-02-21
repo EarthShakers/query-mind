@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 export function NavAuth() {
   const { user, loading, logout, activeSpace, switchSpace } = useAuth();
   const [open, setOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,6 +23,34 @@ export function NavAuth() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Fetch pending join request count for admin
+  useEffect(() => {
+    if (!user || user.tenantRole !== "admin") return;
+    let cancelled = false;
+    async function fetchPending() {
+      try {
+        const res = await fetch("/api/join-requests");
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) {
+            setPendingCount(
+              Array.isArray(data) ? data.filter((r: { status: string }) => r.status === "pending").length : 0
+            );
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    fetchPending();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchPending, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user]);
+
   if (loading) {
     return (
       <span className="inline-block w-4 h-4 border-2 border-slate-200 border-t-indigo-400 rounded-full animate-spin" />
@@ -33,30 +62,28 @@ export function NavAuth() {
       <div className="flex items-center gap-2">
         <Link
           href="/login"
-          className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 transition-colors"
-        >
-          登录
-        </Link>
-        <Link
-          href="/register"
           className="px-3 py-1.5 text-sm bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
         >
-          注册
+          登录
         </Link>
       </div>
     );
   }
 
   const initial = (user.displayName || user.email)[0].toUpperCase();
-  const pendingBadge = user.tenantRole === "admin";
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center text-white text-xs font-bold hover:opacity-90 transition-opacity"
+        className="relative w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center text-white text-xs font-bold hover:opacity-90 transition-opacity"
       >
         {initial}
+        {pendingCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+            {pendingCount > 9 ? "9+" : pendingCount}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -76,7 +103,9 @@ export function NavAuth() {
           {/* Space switcher */}
           {user.spaces.length > 1 && (
             <div className="px-3 py-2 border-b border-slate-100">
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">切换空间</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                切换空间
+              </p>
               {user.spaces.map((s) => (
                 <button
                   key={s.spaceId}
@@ -105,11 +134,11 @@ export function NavAuth() {
           </Link>
           {user.tenantRole && (
             <Link
-              href="/spaces"
+              href="/knowledge"
               className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
               onClick={() => setOpen(false)}
             >
-              我的空间
+              知识库
             </Link>
           )}
           {!user.tenantRole && (
@@ -136,6 +165,11 @@ export function NavAuth() {
                 onClick={() => setOpen(false)}
               >
                 <span>审批申请</span>
+                {pendingCount > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] text-center">
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             </>
           )}

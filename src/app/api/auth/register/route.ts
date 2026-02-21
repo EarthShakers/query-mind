@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
     if (error) throw new Error(error.message);
 
-    // Create a personal space for the free user
+    // Create a personal space for the personal user
     const userName = displayName || email.split("@")[0];
     const { data: personalSpace, error: spaceError } = await supabase
       .from("spaces")
@@ -83,7 +83,7 @@ export async function POST(req: Request) {
       tenantId: DEMO_TENANT_ID,
       displayName: user.display_name,
       tenantRole: null,
-      spaces: [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin" }],
+      spaces: [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin", isDefault: false }],
       activeSpaceId: personalSpace.id,
     };
 

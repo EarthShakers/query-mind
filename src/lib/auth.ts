@@ -19,6 +19,7 @@ export interface SpaceMembership {
   spaceId: string;
   spaceName: string;
   role: "admin" | "editor" | "viewer";
+  isDefault: boolean;
 }
 
 export interface SessionUser {
