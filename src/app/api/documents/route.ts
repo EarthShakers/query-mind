@@ -2,6 +2,7 @@ import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
+import { getTenantContext } from "@/lib/auth";
 import { fileTypeFromBuffer } from "file-type";
 
 const ALLOWED_EXTS = ["txt", "md", "pdf", "docx"];
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const title = url.searchParams.get("title");
+    const { tenantId } = getTenantContext(req);
 
     // 查询单篇文档的所有 chunks
     if (title) {
@@ -28,6 +30,7 @@ export async function GET(req: Request) {
         .from("documents")
         .select("id, content, created_at")
         .eq("title", title)
+        .eq("tenant_id", tenantId)
         .order("id", { ascending: true });
 
       if (error) throw new Error(error.message);
@@ -38,6 +41,7 @@ export async function GET(req: Request) {
     const { data, error } = await supabase
       .from("documents")
       .select("title, metadata, created_at")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -77,6 +81,8 @@ export async function POST(req: Request) {
     const rateLimited = await checkUploadRateLimit(req);
     if (rateLimited) return rateLimited;
 
+    const { tenantId } = getTenantContext(req);
+
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const title =
@@ -110,9 +116,12 @@ export async function POST(req: Request) {
     }
 
     const content = await extractText(file);
-    const chunks = await ingestDocument(title, content, {
-      filename: file.name,
-    });
+    const chunks = await ingestDocument(
+      title,
+      content,
+      { filename: file.name },
+      tenantId
+    );
 
     return Response.json({ success: true, title, chunks });
   } catch (e: unknown) {

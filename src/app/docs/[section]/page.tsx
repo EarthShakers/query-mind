@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SECTIONS } from "../sections";
 import { parseChangelog, renderInlineMarkdown } from "../sections.server";
+import { RoadmapSection } from "@/components/roadmap-section";
 
 /* ─── Section content components ─── */
 
@@ -856,6 +857,10 @@ function Changelog() {
   );
 }
 
+function Roadmap() {
+  return <RoadmapSection />;
+}
+
 /* ─── Section map ─── */
 
 const SECTION_CONTENT: Record<string, () => React.JSX.Element> = {
@@ -870,6 +875,7 @@ const SECTION_CONTENT: Record<string, () => React.JSX.Element> = {
   deploy: Deploy,
   pitfalls: Pitfalls,
   changelog: Changelog,
+  roadmap: Roadmap,
 };
 
 /* ─── Prev/Next navigation ─── */

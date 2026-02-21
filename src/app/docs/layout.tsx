@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SECTIONS } from "./sections";
+import { NavAuth } from "@/components/nav-auth";
 
 function Sidebar() {
   const pathname = usePathname();
@@ -67,6 +68,7 @@ export default function DocsLayout({
             >
               在线体验
             </Link>
+            <NavAuth />
           </div>
         </div>
       </nav>

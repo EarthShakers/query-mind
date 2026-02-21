@@ -1,6 +1,7 @@
 import Link from "next/link";
 import DemoSection from "@/components/demo-section";
 import PageAnimations from "@/components/page-animations";
+import { NavAuth } from "@/components/nav-auth";
 
 const FEATURES = [
   {
@@ -143,12 +144,6 @@ export default function LandingPage() {
               定价
             </a>
             <Link
-              href="/docs"
-              className="hidden md:inline text-slate-500 hover:text-slate-800 transition-colors"
-            >
-              文档
-            </Link>
-            <Link
               href="/knowledge"
               className="hidden md:inline text-slate-500 hover:text-slate-800 transition-colors"
             >
@@ -160,6 +155,7 @@ export default function LandingPage() {
             >
               在线体验
             </Link>
+            <NavAuth />
           </div>
         </div>
       </nav>
@@ -207,10 +203,10 @@ export default function LandingPage() {
               免费体验
             </Link>
             <Link
-              href="/docs"
+              href="/knowledge"
               className="px-8 py-3.5 border border-slate-200 text-slate-600 rounded-xl text-base font-medium hover:bg-slate-50 transition-colors"
             >
-              查看文档
+              知识库
             </Link>
           </div>
         </div>
@@ -533,7 +529,6 @@ export default function LandingPage() {
           </span>
           <div className="flex gap-6 text-sm text-slate-400">
             <Link href="/chat">在线体验</Link>
-            <Link href="/docs">技术文档</Link>
             <a href="#pricing">定价</a>
           </div>
           <p className="text-xs text-slate-300">

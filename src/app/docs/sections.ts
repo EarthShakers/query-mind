@@ -10,4 +10,5 @@ export const SECTIONS = [
   { id: "deploy", label: "部署" },
   { id: "pitfalls", label: "踩坑记录" },
   { id: "changelog", label: "版本记录" },
+  { id: "roadmap", label: "Roadmap" },
 ];

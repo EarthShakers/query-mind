@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useChat } from "ai/react";
 import { SqlResult } from "@/components/sql-result";
 import { ChartResult } from "@/components/chart-result";
+import { NavAuth } from "@/components/nav-auth";
 
 const QUICK_QUESTIONS = [
   { icon: "👥", text: "显示所有员工及其部门" },
@@ -597,7 +598,10 @@ export default function Page() {
             </button>
           ))}
         </div>
-        <div className="p-3 border-t border-slate-100">
+        <div className="p-3 border-t border-slate-100 space-y-2">
+          <div className="flex items-center justify-center">
+            <NavAuth />
+          </div>
           <Link
             href="/knowledge"
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors"

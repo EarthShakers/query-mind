@@ -40,13 +40,15 @@ export async function embed(text: string): Promise<number[]> {
  */
 export async function searchDocuments(
   query: string,
-  topK = 5
+  topK = 5,
+  tenantId?: string
 ): Promise<DocResult[]> {
   const queryEmbedding = await embed(query);
 
   const { data, error } = await supabase.rpc("match_documents", {
     query_embedding: queryEmbedding,
     match_count: topK,
+    filter_tenant: tenantId ?? null,
   });
 
   if (error) throw new Error(`Vector search error: ${error.message}`);
@@ -66,7 +68,8 @@ export async function searchDocuments(
 export async function ingestDocument(
   title: string,
   content: string,
-  metadata: Record<string, unknown> = {}
+  metadata: Record<string, unknown> = {},
+  tenantId?: string
 ): Promise<number> {
   const chunks = splitChunks(content, 500);
   const rows = [];
@@ -78,6 +81,7 @@ export async function ingestDocument(
       content: chunk,
       embedding,
       metadata,
+      ...(tenantId ? { tenant_id: tenantId } : {}),
     });
   }
 

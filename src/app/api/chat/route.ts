@@ -4,6 +4,7 @@ import { z } from "zod";
 import { query } from "@/lib/db";
 import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
+import { getTenantContext } from "@/lib/auth";
 import {
   checkRateLimit,
   checkDailyBudget,
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
   const lastMsg = messages[messages.length - 1]?.content ?? "";
   const inputBlocked = checkInputLength(lastMsg);
   if (inputBlocked) return inputBlocked;
+
+  const { tenantId } = getTenantContext(req);
 
   // ── AI 流式调用 ──
   const abortController = new AbortController();
@@ -127,7 +130,7 @@ export async function POST(req: Request) {
           }),
           execute: async ({ query: q }) => {
             try {
-              const results = await searchDocuments(q);
+              const results = await searchDocuments(q, 5, tenantId);
               return { query: q, results };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);

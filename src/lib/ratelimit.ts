@@ -31,6 +31,13 @@ function dailyKey() {
   return `daily_tokens:${new Date().toISOString().slice(0, 10)}`;
 }
 
+/** 从请求中提取限流 key：登录用户用 userId，匿名用 IP */
+export function getRateLimitKey(req: Request): string {
+  const userId = req.headers.get("x-user-id");
+  if (userId) return `user:${userId}`;
+  return getClientIp(req);
+}
+
 /** 从请求中提取客户端 IP */
 export function getClientIp(req: Request): string {
   return (
@@ -42,8 +49,8 @@ export function getClientIp(req: Request): string {
 
 /** IP 限流检查，超限返回错误 Response，否则返回 null */
 export async function checkRateLimit(req: Request): Promise<Response | null> {
-  const ip = getClientIp(req);
-  const { success } = await ratelimit.limit(ip);
+  const key = getRateLimitKey(req);
+  const { success } = await ratelimit.limit(key);
   if (!success) {
     return new Response("请求过于频繁，请稍后再试", { status: 429 });
   }
@@ -54,12 +61,12 @@ export async function checkRateLimit(req: Request): Promise<Response | null> {
 export async function checkUploadRateLimit(
   req: Request
 ): Promise<Response | null> {
-  const ip = getClientIp(req);
-  const { success: minOk } = await uploadRatelimit.limit(ip);
+  const key = getRateLimitKey(req);
+  const { success: minOk } = await uploadRatelimit.limit(key);
   if (!minOk) {
     return new Response("上传过于频繁，请稍后再试", { status: 429 });
   }
-  const { success: dayOk } = await uploadDailyRatelimit.limit(ip);
+  const { success: dayOk } = await uploadDailyRatelimit.limit(key);
   if (!dayOk) {
     return new Response("今日上传次数已达上限（20 次），请明天再试", {
       status: 429,

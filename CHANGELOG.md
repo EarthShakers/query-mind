@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.0 — 登录注册 & 权限控制 & 租户隔离 & Roadmap 编辑 <sub>2026-02-21</sub>
+
+- **邮箱密码认证**：`bcryptjs` 密码哈希 + `jose` JWT，HttpOnly Cookie，7 天有效期
+- **角色权限控制**：admin / user 二级角色，`/docs/*` 仅 admin 可访问，middleware 路由级保护
+- **多租户数据隔离**：知识库上传、搜索、聊天均按 `tenant_id` 过滤
+- **Roadmap 可编辑**：迁移到数据库，admin 可在线增删改
+
 ## v1.0.0 — 安全加固：上传限流 & 文件校验 & 安全头 <sub>2026-02-20</sub>
 
 - **知识库上传限流**：每 IP 每分钟 3 次 + 每天 20 次，Upstash Redis 滑动窗口

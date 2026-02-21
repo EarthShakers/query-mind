@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { NavAuth } from "@/components/nav-auth";
 
 interface DocItem {
   title: string;
@@ -172,17 +173,12 @@ export default function KnowledgePage() {
               首页
             </Link>
             <Link
-              href="/docs"
-              className="hidden md:inline text-slate-500 hover:text-slate-800 transition-colors"
-            >
-              文档
-            </Link>
-            <Link
               href="/chat"
               className="px-4 py-1.5 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
             >
               在线体验
             </Link>
+            <NavAuth />
           </div>
         </div>
       </nav>
