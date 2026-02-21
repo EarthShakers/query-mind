@@ -48,6 +48,7 @@ export async function middleware(req: NextRequest) {
 
   const isLoggedIn = !!userId;
   const isTenantAdmin = tenantRole === "admin";
+  const isSuperAdmin = userRole === "admin";
   const pathname = req.nextUrl.pathname;
 
   // Inject user context headers for downstream API routes
@@ -68,8 +69,8 @@ export async function middleware(req: NextRequest) {
     if (pathname === "/login" || pathname === "/register") {
       return NextResponse.redirect(new URL("/", req.url));
     }
-    // /docs/* requires tenant admin
-    if (pathname.startsWith("/docs") && !isTenantAdmin) {
+    // /docs/* requires super admin (role: "admin")
+    if (pathname.startsWith("/docs") && !isSuperAdmin) {
       return NextResponse.redirect(new URL("/", req.url));
     }
     // /admin/* requires tenant admin

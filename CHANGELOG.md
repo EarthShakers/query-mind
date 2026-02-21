@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.3.0 — 知识库空间一体化 & Chat 空间选择 & 加入企业审批 <sub>2026-02-21</sub>
+
+- **知识库两级视图**：空间列表 ↔ 空间文档管理，`/spaces` 重定向到 `/knowledge`
+- **空间卡片增强**：显示角色 badge、成员人数、默认/公共/只读标签
+- **空间管理**：支持创建空间（admin）、重命名、删除，新增 `PATCH/DELETE /api/spaces/[spaceId]`
+- **Chat 知识库范围选择器**：顶部多选空间下拉，支持全选/取消，不选则仅查数据库
+- **加入企业审批**：管理员头像红点提示待审批数量，轮询刷新；修复 join_requests FK 查询失败问题
+- **Auth 全链路 `isDefault` 字段**：`SpaceMembership` 新增 `isDefault`，贯穿 JWT、login、register、me、switch
+- **公共数据空间**：所有用户（含未注册）可见，只读提示引导注册
+- **文档管理权限**：`/docs` 页面限制为超级管理员（`role: "admin"`）专属
+- **Documents API**：GET/POST 支持 `spaceId` 参数，按空间隔离文档
+- **UI 修复**：首页 sticky nav 失效、下拉菜单溢出横向滚动条、"在线体验"按钮样式统一
+
+## v1.2.0 — Space 数据隔离 & 权限控制 <sub>2026-02-21</sub>
+
+- **多空间数据隔离**：`spaces` + `space_members` 表，文档按 `space_id` 隔离
+- **空间角色权限**：admin / editor / viewer 三级角色，上传需 editor+
+- **空间切换**：`POST /api/spaces/[spaceId]/switch` 切换活跃空间，刷新 JWT
+- **企业管理员**：可创建空间、管理成员、审批加入申请
+- **统一用户术语**：未注册用户 / 个人用户 / 企业用户
+
 ## v1.1.0 — 登录注册 & 权限控制 & 租户隔离 & Roadmap 编辑 <sub>2026-02-21</sub>
 
 - **邮箱密码认证**：`bcryptjs` 密码哈希 + `jose` JWT，HttpOnly Cookie，7 天有效期
