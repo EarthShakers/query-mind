@@ -150,7 +150,7 @@ export function NavAuth() {
               加入企业
             </Link>
           )}
-          {user.role === "admin" && (
+          {user.role === "superAdmin" && (
             <Link
               href="/docs"
               className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"

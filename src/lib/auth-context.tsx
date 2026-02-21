@@ -20,7 +20,7 @@ interface SpaceMembership {
 interface AuthUser {
   userId: string;
   email: string;
-  role: "admin" | "user";
+  role: "superAdmin" | "user";
   tenantId: string;
   displayName: string | null;
   tenantRole: "admin" | "member" | null;

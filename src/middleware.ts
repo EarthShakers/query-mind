@@ -48,7 +48,7 @@ export async function middleware(req: NextRequest) {
 
   const isLoggedIn = !!userId;
   const isTenantAdmin = tenantRole === "admin";
-  const isSuperAdmin = userRole === "admin";
+  const isSuperAdmin = userRole === "superAdmin";
   const pathname = req.nextUrl.pathname;
 
   // Inject user context headers for downstream API routes

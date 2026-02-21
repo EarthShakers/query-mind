@@ -91,6 +91,124 @@ function Architecture() {
   );
 }
 
+function Permissions() {
+  return (
+    <>
+      <h2>权限体系</h2>
+      <p>
+        系统采用三层权限模型：<strong>系统级 → 企业级 → 空间级</strong>，逐层细化控制粒度。
+      </p>
+
+      <h3>角色总览</h3>
+      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">层级</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">角色</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">字段</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">权限</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="px-4 py-2.5" rowSpan={2}>系统级</td>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">superAdmin</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">访问 /docs 技术文档、编辑 Roadmap</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">user</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">普通用户（默认）</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5" rowSpan={2}>企业级</td>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">admin</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole</code></td>
+              <td className="px-4 py-2.5 text-slate-500">创建空间、管理成员、审批加入申请</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">member</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole</code></td>
+              <td className="px-4 py-2.5 text-slate-500">被审批通过后加入企业的普通成员</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5" rowSpan={3}>空间级</td>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">admin</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>space.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">重命名/删除空间、管理空间成员、上传文档</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">editor</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>space.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">上传文档</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">viewer</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>space.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">查看文档（只读）</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>用户类型</h3>
+      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">类型</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">判断条件</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">可访问空间</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="px-4 py-2.5 font-medium">未注册用户</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user = null</code></td>
+              <td className="px-4 py-2.5 text-slate-500">公共数据（只读）</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">个人用户</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole = null</code></td>
+              <td className="px-4 py-2.5 text-slate-500">个人空间 + 公共数据</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">企业用户</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole != null</code></td>
+              <td className="px-4 py-2.5 text-slate-500">企业空间 + 公共数据</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>创建超级管理员</h3>
+      <p>
+        超级管理员不能通过注册页面创建，需在 Supabase SQL Editor 中手动授权：
+      </p>
+      <pre className="not-prose overflow-x-auto">
+        <code>{`-- 先通过 /register 注册账号，再执行：
+UPDATE users SET role = 'superAdmin' WHERE email = 'your-email';
+
+-- 修改后需重新登录，JWT 才会包含新的 role`}</code>
+      </pre>
+
+      <h3>权限检查流程</h3>
+      <pre className="not-prose overflow-x-auto">
+        <code>{`请求 → middleware 解析 JWT → 注入 x-user-role / x-tenant-role 到 Headers
+     → API Route 调用 getSpaceContext(req) 读取权限信息
+     → 根据 role / tenantRole / spaceRole 判断是否放行
+
+/docs/*        → middleware 检查 userRole === "superAdmin"
+/admin/*       → middleware 检查 tenantRole === "admin"
+空间操作       → API 检查 tenantRole === "admin" 或 space.role === "admin"
+文档上传       → API 检查 space.role === "admin" 或 "editor"`}</code>
+      </pre>
+    </>
+  );
+}
+
 function Streaming() {
   return (
     <>
@@ -866,6 +984,7 @@ function Roadmap() {
 const SECTION_CONTENT: Record<string, () => React.JSX.Element> = {
   overview: Overview,
   architecture: Architecture,
+  permissions: Permissions,
   streaming: Streaming,
   "generative-ui": GenerativeUI,
   "structured-output": StructuredOutput,

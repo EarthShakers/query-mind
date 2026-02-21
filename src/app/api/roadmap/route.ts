@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { role } = getTenantContext(req);
-    if (role !== "admin") {
+    if (role !== "superAdmin") {
       return Response.json({ error: "仅管理员可操作" }, { status: 403 });
     }
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { role } = getTenantContext(req);
-    if (role !== "admin") {
+    if (role !== "superAdmin") {
       return Response.json({ error: "仅管理员可操作" }, { status: 403 });
     }
 
@@ -84,7 +84,7 @@ export async function PUT(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const { role } = getTenantContext(req);
-    if (role !== "admin") {
+    if (role !== "superAdmin") {
       return Response.json({ error: "仅管理员可操作" }, { status: 403 });
     }
 

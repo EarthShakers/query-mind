@@ -1,6 +1,7 @@
 export const SECTIONS = [
   { id: "overview", label: "概述" },
   { id: "architecture", label: "架构" },
+  { id: "permissions", label: "权限体系" },
   { id: "streaming", label: "流式传输" },
   { id: "generative-ui", label: "生成式 UI" },
   { id: "structured-output", label: "结构化输出" },

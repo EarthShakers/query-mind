@@ -25,7 +25,7 @@ export interface SpaceMembership {
 export interface SessionUser {
   userId: string;
   email: string;
-  role: "admin" | "user";
+  role: "superAdmin" | "user";
   tenantId: string;
   displayName: string | null;
   tenantRole: "admin" | "member" | null;
@@ -125,14 +125,14 @@ export function getSpaceContext(req: Request): SpaceContext {
 /** @deprecated Use getSpaceContext instead */
 export interface TenantContext {
   userId: string | null;
-  role: "admin" | "user" | "anonymous";
+  role: "superAdmin" | "user" | "anonymous";
   tenantId: string;
 }
 
 /** @deprecated Use getSpaceContext instead */
 export function getTenantContext(req: Request): TenantContext {
   const userId = req.headers.get("x-user-id");
-  const role = req.headers.get("x-user-role") as "admin" | "user" | null;
+  const role = req.headers.get("x-user-role") as "superAdmin" | "user" | null;
   const tenantId = req.headers.get("x-tenant-id");
 
   if (userId && role && tenantId) {

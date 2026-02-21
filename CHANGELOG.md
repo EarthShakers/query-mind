@@ -1,90 +1,66 @@
 # Changelog
 
-## v1.3.0 — 知识库空间一体化 & Chat 空间选择 & 加入企业审批 <sub>2026-02-21</sub>
+## v1.3.0 — 知识库空间一体化 & Chat 空间选择 <sub>2026-02-21</sub>
 
-- **知识库两级视图**：空间列表 ↔ 空间文档管理，`/spaces` 重定向到 `/knowledge`
-- **空间卡片增强**：显示角色 badge、成员人数、默认/公共/只读标签
-- **空间管理**：支持创建空间（admin）、重命名、删除，新增 `PATCH/DELETE /api/spaces/[spaceId]`
-- **Chat 知识库范围选择器**：顶部多选空间下拉，支持全选/取消，不选则仅查数据库
-- **加入企业审批**：管理员头像红点提示待审批数量，轮询刷新；修复 join_requests FK 查询失败问题
-- **Auth 全链路 `isDefault` 字段**：`SpaceMembership` 新增 `isDefault`，贯穿 JWT、login、register、me、switch
-- **公共数据空间**：所有用户（含未注册）可见，只读提示引导注册
-- **文档管理权限**：`/docs` 页面限制为超级管理员（`role: "admin"`）专属
-- **Documents API**：GET/POST 支持 `spaceId` 参数，按空间隔离文档
-- **UI 修复**：首页 sticky nav 失效、下拉菜单溢出横向滚动条、"在线体验"按钮样式统一
+- **知识库两级视图**：空间列表 ↔ 文档管理，支持创建、重命名、删除空间
+- **Chat 知识库范围选择**：多选空间或仅查数据库，不选则禁用知识库搜索
+- **加入企业审批**：管理员头像红点提示，修复审批请求不可见问题
+- **权限体系完善**：超级管理员（`superAdmin`）独立于企业管理员，`/docs` 仅超管可访问
 
 ## v1.2.0 — Space 数据隔离 & 权限控制 <sub>2026-02-21</sub>
 
-- **多空间数据隔离**：`spaces` + `space_members` 表，文档按 `space_id` 隔离
-- **空间角色权限**：admin / editor / viewer 三级角色，上传需 editor+
-- **空间切换**：`POST /api/spaces/[spaceId]/switch` 切换活跃空间，刷新 JWT
-- **企业管理员**：可创建空间、管理成员、审批加入申请
-- **统一用户术语**：未注册用户 / 个人用户 / 企业用户
+- **多空间数据隔离**：文档按 `space_id` 隔离，空间角色 admin / editor / viewer
+- **企业管理**：创建企业、空间切换、成员管理、加入申请
+- **三类用户**：未注册用户（公共只读）、个人用户、企业用户
 
-## v1.1.0 — 登录注册 & 权限控制 & 租户隔离 & Roadmap 编辑 <sub>2026-02-21</sub>
+## v1.1.0 — 登录注册 & 租户隔离 <sub>2026-02-21</sub>
 
-- **邮箱密码认证**：`bcryptjs` 密码哈希 + `jose` JWT，HttpOnly Cookie，7 天有效期
-- **角色权限控制**：admin / user 二级角色，`/docs/*` 仅 admin 可访问，middleware 路由级保护
-- **多租户数据隔离**：知识库上传、搜索、聊天均按 `tenant_id` 过滤
+- **邮箱密码认证**：`bcryptjs` 哈希 + `jose` JWT，HttpOnly Cookie
+- **多租户隔离**：知识库上传、搜索、聊天按 `tenant_id` 过滤
 - **Roadmap 可编辑**：迁移到数据库，admin 可在线增删改
 
-## v1.0.0 — 安全加固：上传限流 & 文件校验 & 安全头 <sub>2026-02-20</sub>
+## v1.0.0 — 安全加固 <sub>2026-02-20</sub>
 
-- **知识库上传限流**：每 IP 每分钟 3 次 + 每天 20 次，Upstash Redis 滑动窗口
-- **文件 MIME 校验**：`file-type` 检测 magic bytes，防止改名伪造文件上传
-- **安全响应头 middleware**：`X-Frame-Options` / `X-Content-Type-Options` / `CSP` / `Referrer-Policy`
-- IP 提取优化：优先 `x-forwarded-for` 首段，fallback `x-real-ip`，避免共享限流桶
+- **上传限流**：每 IP 每分钟 3 次 + 每天 20 次
+- **文件 MIME 校验**：`file-type` 检测 magic bytes
+- **安全响应头**：CSP / X-Frame-Options / X-Content-Type-Options
 
-## v0.9.0 — Chat 交互重构：深度思考 & 图表建议 <sub>2026-02-20</sub>
+## v0.9.0 — Chat 交互重构 <sub>2026-02-20</sub>
 
-- **新增 `suggest_chart` 工具**：AI 默认文字回答，数据适合可视化时提供「用图表展示」按钮，用户点击后在独立气泡中渲染
-- **AI 多步推理过程折叠**：SQL 查询、知识库检索、自我修复等中间过程归入可折叠「思考中」区块，仅展示最终答案
-- **解决 `useChat` 多步 Tool Calling 间 `isLoading` 闪烁问题**：流式文本在 `toolInvocations` 挂载前被误判为最终答案，通过延迟分类修复
-- System prompt 优化：知识库回答精简至 3-8 句，新增图表建议规则（趋势→折线、对比→柱状、占比→饼图）
+- **`suggest_chart` 工具**：AI 文字回答后建议图表，用户点击生成
+- **思考过程折叠**：SQL、知识检索等中间步骤折叠展示
+- **修复 `isLoading` 闪烁**：流式文本在 tool 挂载前的误判问题
 
 ## v0.8.0 — 知识库管理页面 <sub>2026-02-20</sub>
 
-- **新增 `/knowledge` 独立页面**：文档浏览、格式筛选、搜索、拖拽上传
-- **新增 `GET /api/documents` 接口**：Supabase 按 title 分组查询文档列表
-- 文档预览弹窗：点击卡片查看所有切片内容及统计
+- **`/knowledge` 页面**：文档浏览、格式筛选、搜索、拖拽上传
 
-## v0.7.0 — RAG 增强：多格式文档 & 切片优化 <sub>2026-02-20</sub>
+## v0.7.0 — RAG 多格式文档 <sub>2026-02-20</sub>
 
-- **新增 PDF / Word 文档解析**：`pdf-parse` + `mammoth` 文本提取
-- **切片 Overlap 策略**：相邻 chunk 保留 ~100 字重叠区，防止语义断裂
-- 统一文件解析模块 `src/lib/parsers.ts`，分发 .txt / .md / .pdf / .docx
+- **PDF / Word 解析**：`pdf-parse` + `mammoth`
+- **切片 Overlap**：相邻 chunk ~100 字重叠，防止语义断裂
 
-## v0.6.0 — RAG 知识库 & SQL 混合驱动 <sub>2026-02-16</sub>
+## v0.6.0 — RAG 知识库 <sub>2026-02-16</sub>
 
-- **新增 `search_knowledge` Tool**：AI 自动判断数据问题查 SQL、知识问题查文档
-- **Supabase pgvector 向量存储** + 百炼 `text-embedding-v3` 嵌入模型
-- 文档自动切片 + 向量化 + 入库，预置 4 篇示例文档
+- **`search_knowledge` Tool**：AI 自动判断查 SQL 还是查文档
+- **Supabase pgvector** + 百炼 `text-embedding-v3`
 
-## v0.5.0 — 防刷限流 & 代码重构 <sub>2026-02-16</sub>
+## v0.5.0 — 限流 & 重构 <sub>2026-02-16</sub>
 
-- **Upstash Redis 滑动窗口限流**：IP 级别 QPS 控制
-- **每日 Token 用量熔断**：超限自动停止服务，防止 API Key 被刷爆
-- 代码重构：`route.ts` 拆分为 `ratelimit.ts` / `prompt.ts` / `route.ts`
+- **Upstash Redis 限流** + 每日 Token 熔断
 
-## v0.4.0 — 安全加固 & 自我修复 <sub>2026-02-15</sub>
+## v0.4.0 — 安全 & 自我修复 <sub>2026-02-15</sub>
 
-- **SQL 注入防御**：SELECT 前缀校验 + 分号拦截，defense-in-depth
-- **`maxSteps: 3` 自我修复**：SQL 执行报错时 AI 自动修正重试，用户无感知
-- Tool execute try/catch，错误信息回传 AI 触发 self-healing
+- **SQL 注入防御** + `maxSteps: 3` AI 自动修正重试
 
-## v0.3.0 — 容器化部署 <sub>2026-02-15</sub>
+## v0.3.0 — 容器化 <sub>2026-02-15</sub>
 
-- **Dockerfile 多阶段构建** + Next.js `standalone` 输出
-- 全站响应式适配（手机 / 平板 / 桌面）
+- **Dockerfile 多阶段构建** + 全站响应式适配
 
 ## v0.2.0 — 产品化 <sub>2026-02-15</sub>
 
-- **图表 `groupKey` 多系列支持**：`pivot()` 函数实现分组柱状图 / 折线图
-- **数据库扩充至 5 张表**：departments / employees / products / sales / expenses
-- 产品官网首页、技术文档页、12 个快捷提问按钮
+- **图表 `groupKey` 多系列** + 5 张数据表 + 官网首页
 
 ## v0.1.0 — MVP <sub>2026-02-15</sub>
 
-- **Vercel AI SDK `streamText` + `useChat` 流式架构**
-- **Zod Schema Tool Calling**：`execute_query`（表格）+ `show_chart`（图表）
-- **内存 SQLite**（`better-sqlite3`）+ 阿里云百炼 DashScope DeepSeek v3.2
+- **Vercel AI SDK `streamText` + `useChat`** + Zod Tool Calling + SQLite

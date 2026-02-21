@@ -45,7 +45,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 
 export function RoadmapSection() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "superAdmin";
   const [items, setItems] = useState<RoadmapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);

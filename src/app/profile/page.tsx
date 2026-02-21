@@ -80,7 +80,7 @@ export default function ProfilePage() {
               <span className="text-sm text-slate-500">角色</span>
               <span
                 className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                  user.role === "admin"
+                  user.role === "superAdmin"
                     ? "bg-indigo-50 text-indigo-600"
                     : "bg-slate-100 text-slate-600"
                 }`}
