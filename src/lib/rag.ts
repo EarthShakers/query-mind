@@ -36,19 +36,19 @@ export async function embed(text: string): Promise<number[]> {
 }
 
 /**
- * 向量相似度搜索，返回最相关的文档片段
+ * 向量相似度搜索，返回最相关的文档片段（按 spaceIds 过滤）
  */
 export async function searchDocuments(
   query: string,
   topK = 5,
-  tenantId?: string
+  spaceIds?: string[]
 ): Promise<DocResult[]> {
   const queryEmbedding = await embed(query);
 
   const { data, error } = await supabase.rpc("match_documents", {
     query_embedding: queryEmbedding,
     match_count: topK,
-    filter_tenant: tenantId ?? null,
+    filter_spaces: spaceIds?.length ? spaceIds : null,
   });
 
   if (error) throw new Error(`Vector search error: ${error.message}`);
@@ -69,6 +69,7 @@ export async function ingestDocument(
   title: string,
   content: string,
   metadata: Record<string, unknown> = {},
+  spaceId?: string,
   tenantId?: string
 ): Promise<number> {
   const chunks = splitChunks(content, 500);
@@ -82,6 +83,7 @@ export async function ingestDocument(
       embedding,
       metadata,
       ...(tenantId ? { tenant_id: tenantId } : {}),
+      ...(spaceId ? { space_id: spaceId } : {}),
     });
   }
 

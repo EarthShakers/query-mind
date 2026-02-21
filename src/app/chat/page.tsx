@@ -6,6 +6,7 @@ import { useChat } from "ai/react";
 import { SqlResult } from "@/components/sql-result";
 import { ChartResult } from "@/components/chart-result";
 import { NavAuth } from "@/components/nav-auth";
+import { useAuth } from "@/lib/auth-context";
 
 const QUICK_QUESTIONS = [
   { icon: "👥", text: "显示所有员工及其部门" },
@@ -496,6 +497,7 @@ function AssistantTurn({
 /* ─── Main page ─── */
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { activeSpace } = useAuth();
   const lastInput = useRef("");
   const {
     messages,
@@ -646,6 +648,11 @@ export default function Page() {
           </button>
           <p className="text-xs text-slate-400">
             用自然语言查询数据、搜索知识库，AI 自动选择最佳方式回答
+            {activeSpace && (
+              <span className="ml-2 px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-full text-[10px] font-medium">
+                {activeSpace.spaceName}
+              </span>
+            )}
           </p>
         </header>
 

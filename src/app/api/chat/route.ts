@@ -4,7 +4,7 @@ import { z } from "zod";
 import { query } from "@/lib/db";
 import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
-import { getTenantContext } from "@/lib/auth";
+import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
 import {
   checkRateLimit,
   checkDailyBudget,
@@ -44,7 +44,18 @@ export async function POST(req: Request) {
   const inputBlocked = checkInputLength(lastMsg);
   if (inputBlocked) return inputBlocked;
 
-  const { tenantId } = getTenantContext(req);
+  const ctx = getSpaceContext(req);
+  const { tenantRole, activeSpaceId } = ctx;
+
+  // Determine searchable spaces: free user sees demo + personal, enterprise sees active space
+  let searchSpaceIds: string[];
+  if (tenantRole) {
+    searchSpaceIds = [activeSpaceId || DEMO_SPACE_ID];
+  } else {
+    searchSpaceIds = activeSpaceId && activeSpaceId !== DEMO_SPACE_ID
+      ? [DEMO_SPACE_ID, activeSpaceId]
+      : [DEMO_SPACE_ID];
+  }
 
   // ── AI 流式调用 ──
   const abortController = new AbortController();
@@ -130,7 +141,7 @@ export async function POST(req: Request) {
           }),
           execute: async ({ query: q }) => {
             try {
-              const results = await searchDocuments(q, 5, tenantId);
+              const results = await searchDocuments(q, 5, searchSpaceIds);
               return { query: q, results };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);

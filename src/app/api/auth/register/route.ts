@@ -3,10 +3,10 @@ import {
   hashPassword,
   createToken,
   buildSessionCookie,
+  DEMO_TENANT_ID,
+  DEMO_SPACE_ID,
   type SessionUser,
 } from "@/lib/auth";
-
-const DEMO_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 export async function POST(req: Request) {
   try {
@@ -51,12 +51,40 @@ export async function POST(req: Request) {
 
     if (error) throw new Error(error.message);
 
+    // Create a personal space for the free user
+    const userName = displayName || email.split("@")[0];
+    const { data: personalSpace, error: spaceError } = await supabase
+      .from("spaces")
+      .insert({
+        tenant_id: DEMO_TENANT_ID,
+        name: `${userName} 的文档`,
+        is_default: false,
+      })
+      .select("id, name")
+      .single();
+
+    if (spaceError) throw new Error(spaceError.message);
+
+    // Add user as admin of their personal space
+    await supabase
+      .from("space_members")
+      .insert({ space_id: personalSpace.id, user_id: user.id, role: "admin" });
+
+    // Set active_space_id to personal space
+    await supabase
+      .from("users")
+      .update({ active_space_id: personalSpace.id })
+      .eq("id", user.id);
+
     const sessionUser: SessionUser = {
       userId: user.id,
       email: user.email,
       role: user.role,
-      tenantId: user.tenant_id,
+      tenantId: DEMO_TENANT_ID,
       displayName: user.display_name,
+      tenantRole: null,
+      spaces: [{ spaceId: personalSpace.id, spaceName: personalSpace.name, role: "admin" }],
+      activeSpaceId: personalSpace.id,
     };
 
     const token = await createToken(sessionUser);

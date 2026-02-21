@@ -2,7 +2,7 @@ import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
-import { getTenantContext } from "@/lib/auth";
+import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
 import { fileTypeFromBuffer } from "file-type";
 
 const ALLOWED_EXTS = ["txt", "md", "pdf", "docx"];
@@ -18,19 +18,42 @@ const MIME_MAP: Record<string, string[]> = {
   // txt/md 是纯文本，file-type 无法识别，跳过 MIME 校验
 };
 
+/**
+ * Determine which space IDs to query based on user context:
+ * - Free user (no tenantRole): personal space + DEMO public space
+ * - Enterprise member: only active space
+ */
+function getReadableSpaceIds(ctx: ReturnType<typeof getSpaceContext>): string[] {
+  const { tenantRole, activeSpaceId } = ctx;
+
+  if (tenantRole) {
+    // Enterprise member: only their active space
+    return [activeSpaceId || DEMO_SPACE_ID];
+  }
+
+  // Free user: personal space + demo public data
+  if (activeSpaceId && activeSpaceId !== DEMO_SPACE_ID) {
+    return [DEMO_SPACE_ID, activeSpaceId];
+  }
+  return [DEMO_SPACE_ID];
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const title = url.searchParams.get("title");
-    const { tenantId } = getTenantContext(req);
+    const ctx = getSpaceContext(req);
+    const spaceIds = getReadableSpaceIds(ctx);
 
     // 查询单篇文档的所有 chunks
     if (title) {
+      const orFilter = spaceIds.map((id) => `space_id.eq.${id}`).join(",");
+
       const { data, error } = await supabase
         .from("documents")
         .select("id, content, created_at")
         .eq("title", title)
-        .eq("tenant_id", tenantId)
+        .or(orFilter)
         .order("id", { ascending: true });
 
       if (error) throw new Error(error.message);
@@ -38,10 +61,12 @@ export async function GET(req: Request) {
     }
 
     // 查询文档列表
+    const orFilter = spaceIds.map((id) => `space_id.eq.${id}`).join(",");
+
     const { data, error } = await supabase
       .from("documents")
       .select("title, metadata, created_at")
-      .eq("tenant_id", tenantId)
+      .or(orFilter)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -81,7 +106,20 @@ export async function POST(req: Request) {
     const rateLimited = await checkUploadRateLimit(req);
     if (rateLimited) return rateLimited;
 
-    const { tenantId } = getTenantContext(req);
+    const ctx = getSpaceContext(req);
+    const { activeSpaceId, tenantId, spaceRole, tenantRole } = ctx;
+
+    // Free users upload to their personal space (activeSpaceId)
+    // Enterprise members upload to their active space
+    const uploadSpaceId = activeSpaceId || DEMO_SPACE_ID;
+
+    // Permission check for enterprise spaces
+    if (tenantRole && uploadSpaceId !== DEMO_SPACE_ID) {
+      const canEdit = spaceRole === "admin" || spaceRole === "editor" || tenantRole === "admin";
+      if (!canEdit) {
+        return new Response("没有上传权限，需要 editor 及以上角色", { status: 403 });
+      }
+    }
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -120,6 +158,7 @@ export async function POST(req: Request) {
       title,
       content,
       { filename: file.name },
+      uploadSpaceId,
       tenantId
     );
 

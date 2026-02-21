@@ -6,10 +6,19 @@ const COOKIE_NAME = "qm_session";
 const JWT_EXPIRES = "7d";
 const SALT_ROUNDS = 10;
 
+export const DEMO_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+export const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
+
 function getSecret() {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET is not set");
   return new TextEncoder().encode(secret);
+}
+
+export interface SpaceMembership {
+  spaceId: string;
+  spaceName: string;
+  role: "admin" | "editor" | "viewer";
 }
 
 export interface SessionUser {
@@ -18,6 +27,9 @@ export interface SessionUser {
   role: "admin" | "user";
   tenantId: string;
   displayName: string | null;
+  tenantRole: "admin" | "member" | null;
+  spaces: SpaceMembership[];
+  activeSpaceId: string | null;
 }
 
 /* ─── Password ─── */
@@ -73,16 +85,50 @@ export function buildClearCookie(): string {
   return `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`;
 }
 
-/* ─── Tenant context from request headers (set by middleware) ─── */
+/* ─── Space context from request headers (set by middleware) ─── */
 
-const DEMO_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+export interface SpaceContext {
+  userId: string | null;
+  tenantId: string;
+  tenantRole: "admin" | "member" | null;
+  activeSpaceId: string | null;
+  spaceRole: "admin" | "editor" | "viewer" | null;
+}
 
+export function getSpaceContext(req: Request): SpaceContext {
+  const userId = req.headers.get("x-user-id");
+  const tenantId = req.headers.get("x-tenant-id");
+  const tenantRole = req.headers.get("x-tenant-role") as "admin" | "member" | null;
+  const activeSpaceId = req.headers.get("x-active-space-id");
+  const spaceRole = req.headers.get("x-space-role") as "admin" | "editor" | "viewer" | null;
+
+  if (userId && tenantId) {
+    return {
+      userId,
+      tenantId,
+      tenantRole: tenantRole || null,
+      activeSpaceId: activeSpaceId || DEMO_SPACE_ID,
+      spaceRole: spaceRole || null,
+    };
+  }
+
+  return {
+    userId: null,
+    tenantId: DEMO_TENANT_ID,
+    tenantRole: null,
+    activeSpaceId: DEMO_SPACE_ID,
+    spaceRole: null,
+  };
+}
+
+/** @deprecated Use getSpaceContext instead */
 export interface TenantContext {
   userId: string | null;
   role: "admin" | "user" | "anonymous";
   tenantId: string;
 }
 
+/** @deprecated Use getSpaceContext instead */
 export function getTenantContext(req: Request): TenantContext {
   const userId = req.headers.get("x-user-id");
   const role = req.headers.get("x-user-role") as "admin" | "user" | null;

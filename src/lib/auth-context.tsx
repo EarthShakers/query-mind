@@ -6,8 +6,15 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
+
+interface SpaceMembership {
+  spaceId: string;
+  spaceName: string;
+  role: "admin" | "editor" | "viewer";
+}
 
 interface AuthUser {
   userId: string;
@@ -15,6 +22,9 @@ interface AuthUser {
   role: "admin" | "user";
   tenantId: string;
   displayName: string | null;
+  tenantRole: "admin" | "member" | null;
+  spaces: SpaceMembership[];
+  activeSpaceId: string | null;
 }
 
 interface AuthContextValue {
@@ -22,6 +32,8 @@ interface AuthContextValue {
   loading: boolean;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  switchSpace: (spaceId: string) => Promise<void>;
+  activeSpace: SpaceMembership | null;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -29,6 +41,8 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   logout: async () => {},
   refresh: async () => {},
+  switchSpace: async () => {},
+  activeSpace: null,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -61,8 +75,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = "/";
   }, []);
 
+  const switchSpace = useCallback(async (spaceId: string) => {
+    try {
+      const res = await fetch(`/api/spaces/${spaceId}/switch`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data.user);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const activeSpace = useMemo(() => {
+    if (!user?.activeSpaceId || !user.spaces.length) return null;
+    return user.spaces.find((s) => s.spaceId === user.activeSpaceId) ?? null;
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, logout, refresh }}>
+    <AuthContext.Provider
+      value={{ user, loading, logout, refresh, switchSpace, activeSpace }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { NavAuth } from "@/components/nav-auth";
+import { useAuth } from "@/lib/auth-context";
 
 interface DocItem {
   title: string;
@@ -60,6 +61,7 @@ const FORMAT_META: Record<
 };
 
 export default function KnowledgePage() {
+  const { activeSpace } = useAuth();
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -202,6 +204,11 @@ export default function KnowledgePage() {
               </svg>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold">知识库</h1>
+            {activeSpace && (
+              <span className="ml-2 px-2.5 py-0.5 text-xs font-medium bg-white/20 rounded-full">
+                {activeSpace.spaceName}
+              </span>
+            )}
           </div>
           <p className="text-indigo-100 text-sm md:text-base max-w-lg">
             上传企业文档，AI 自动解析、切片、向量化。在对话中提问时，AI

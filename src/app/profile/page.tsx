@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
 export default function ProfilePage() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, activeSpace } = useAuth();
 
   if (loading) {
     return (
@@ -25,6 +25,11 @@ export default function ProfilePage() {
   const ROLE_LABELS: Record<string, string> = {
     admin: "管理员",
     user: "普通用户",
+  };
+
+  const TENANT_ROLE_LABELS: Record<string, string> = {
+    admin: "企业管理员",
+    member: "企业成员",
   };
 
   return (
@@ -84,6 +89,22 @@ export default function ProfilePage() {
               </span>
             </div>
             <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">企业角色</span>
+              {user.tenantRole ? (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-600">
+                  {TENANT_ROLE_LABELS[user.tenantRole] || user.tenantRole}
+                </span>
+              ) : (
+                <span className="text-sm text-slate-400">未加入企业</span>
+              )}
+            </div>
+            {activeSpace && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-500">当前空间</span>
+                <span className="text-sm text-slate-600">{activeSpace.spaceName}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">租户 ID</span>
               <span className="text-sm text-slate-600 font-mono">
                 {user.tenantId.slice(0, 8)}...
@@ -91,7 +112,47 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-4">
+          {/* Spaces list */}
+          {user.spaces.length > 0 && (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-sm text-slate-500 mb-2">我的空间</p>
+              <div className="space-y-1.5">
+                {user.spaces.map((s) => (
+                  <div
+                    key={s.spaceId}
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                      s.spaceId === user.activeSpaceId
+                        ? "bg-indigo-50 text-indigo-600"
+                        : "bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    <span>{s.spaceName}</span>
+                    <span className="text-xs text-slate-400">
+                      {s.role === "admin" ? "管理员" : s.role === "editor" ? "编辑者" : "查看者"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="border-t border-slate-100 pt-4 space-y-2">
+            {user.tenantRole ? (
+              <Link
+                href="/spaces"
+                className="block w-full py-2.5 text-center border border-indigo-200 text-indigo-600 text-sm font-medium rounded-xl hover:bg-indigo-50 transition-colors"
+              >
+                管理空间
+              </Link>
+            ) : (
+              <Link
+                href="/join"
+                className="block w-full py-2.5 text-center border border-indigo-200 text-indigo-600 text-sm font-medium rounded-xl hover:bg-indigo-50 transition-colors"
+              >
+                加入企业
+              </Link>
+            )}
             <button
               onClick={logout}
               className="w-full py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-xl hover:bg-red-50 transition-colors"
