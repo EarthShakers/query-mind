@@ -1,5 +1,11 @@
 import { supabase } from "@/lib/supabase";
-import { getSpaceContext, DEMO_TENANT_ID } from "@/lib/auth";
+import {
+  getSpaceContext,
+  createToken,
+  buildSessionCookie,
+  DEMO_TENANT_ID,
+  type SessionUser,
+} from "@/lib/auth";
 
 export async function GET(req: Request) {
   try {
@@ -40,7 +46,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "你已加入一个企业，不能重复创建" }, { status: 400 });
     }
 
-    // Generate slug from name (pinyin/ascii fallback to random)
+    // Generate slug from name
     const slug = name.trim()
       .toLowerCase()
       .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
@@ -90,7 +96,34 @@ export async function POST(req: Request) {
       .update({ tenant_id: tenant.id, active_space_id: space.id })
       .eq("id", userId);
 
-    return Response.json({ tenant, defaultSpace: space });
+    // Re-sign JWT with new tenant info
+    const { data: dbUser } = await supabase
+      .from("users")
+      .select("id, email, role, display_name")
+      .eq("id", userId)
+      .single();
+
+    if (!dbUser) {
+      return Response.json({ tenant, defaultSpace: space });
+    }
+
+    const sessionUser: SessionUser = {
+      userId: dbUser.id,
+      email: dbUser.email,
+      role: dbUser.role,
+      tenantId: tenant.id,
+      displayName: dbUser.display_name,
+      tenantRole: "admin",
+      spaces: [{ spaceId: space.id, spaceName: space.name, role: "admin" }],
+      activeSpaceId: space.id,
+    };
+
+    const token = await createToken(sessionUser);
+
+    return Response.json(
+      { tenant, defaultSpace: space, user: sessionUser },
+      { headers: { "Set-Cookie": buildSessionCookie(token) } }
+    );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return Response.json({ error: msg }, { status: 500 });
