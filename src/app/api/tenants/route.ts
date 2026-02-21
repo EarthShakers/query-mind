@@ -40,10 +40,18 @@ export async function POST(req: Request) {
       return Response.json({ error: "你已加入一个企业，不能重复创建" }, { status: 400 });
     }
 
+    // Generate slug from name (pinyin/ascii fallback to random)
+    const slug = name.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+      .replace(/^-|-$/g, "")
+      || `org-${Date.now()}`;
+    const uniqueSlug = `${slug}-${Math.random().toString(36).slice(2, 8)}`;
+
     // Create tenant
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
-      .insert({ name: name.trim() })
+      .insert({ name: name.trim(), slug: uniqueSlug })
       .select("id, name")
       .single();
 
