@@ -36,7 +36,11 @@ function sanitizeMessages(
 
 /** Demo tables that live in SQLite */
 const DEMO_TABLES = new Set([
-  "departments", "employees", "products", "sales", "expenses",
+  "departments",
+  "employees",
+  "products",
+  "sales",
+  "expenses",
 ]);
 
 /**
@@ -48,7 +52,10 @@ async function executeQuery(sql: string): Promise<Record<string, unknown>[]> {
   // Extract table names from SQL to determine routing
   const tableMentions = sql.match(/(?:from|join)\s+["`]?(\w+)["`]?/gi) || [];
   const tables = tableMentions.map((m) =>
-    m.replace(/(?:from|join)\s+["`]?/i, "").replace(/["`]/g, "").toLowerCase()
+    m
+      .replace(/(?:from|join)\s+["`]?/i, "")
+      .replace(/["`]/g, "")
+      .toLowerCase()
   );
 
   const hasUserTables = tables.some((t) => t.startsWith("ud_"));
@@ -70,8 +77,7 @@ async function executeQuery(sql: string): Promise<Record<string, unknown>[]> {
 
 export async function POST(req: Request) {
   // ── 前置校验 ──
-  const blocked =
-    (await checkRateLimit(req)) ?? (await checkDailyBudget());
+  const blocked = (await checkRateLimit(req)) ?? (await checkDailyBudget());
   if (blocked) return blocked;
 
   const { messages, spaceIds: clientSpaceIds } = await req.json();
@@ -94,16 +100,19 @@ export async function POST(req: Request) {
   } else if (tenantRole) {
     searchSpaceIds = [activeSpaceId || DEMO_SPACE_ID];
   } else {
-    searchSpaceIds = activeSpaceId && activeSpaceId !== DEMO_SPACE_ID
-      ? [DEMO_SPACE_ID, activeSpaceId]
-      : [DEMO_SPACE_ID];
+    searchSpaceIds =
+      activeSpaceId && activeSpaceId !== DEMO_SPACE_ID
+        ? [DEMO_SPACE_ID, activeSpaceId]
+        : [DEMO_SPACE_ID];
   }
 
   const enableKnowledge = searchSpaceIds.length > 0;
 
   // Fetch user-uploaded table schemas for selected spaces
   const allSpaceIds = Array.isArray(clientSpaceIds)
-    ? clientSpaceIds.filter((id: unknown) => typeof id === "string" && id.length > 0)
+    ? clientSpaceIds.filter(
+        (id: unknown) => typeof id === "string" && id.length > 0
+      )
     : searchSpaceIds;
   let userSchemaStr: string | undefined;
   try {
@@ -121,7 +130,7 @@ export async function POST(req: Request) {
 
   try {
     const result = await streamText({
-      model: dashscope("deepseek-v3.2"),
+      model: dashscope("deepseek-v3.2-exp"),
       abortSignal: abortController.signal,
       maxSteps: 5,
       system: buildSystemPrompt(userSchemaStr),
@@ -158,10 +167,25 @@ export async function POST(req: Request) {
           }),
           execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
             try {
-              return { sql, data: await executeQuery(sql), chartType, xKey, yKey, groupKey };
+              return {
+                sql,
+                data: await executeQuery(sql),
+                chartType,
+                xKey,
+                yKey,
+                groupKey,
+              };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
-              return { sql, data: [], chartType, xKey, yKey, groupKey, error: msg };
+              return {
+                sql,
+                data: [],
+                chartType,
+                xKey,
+                yKey,
+                groupKey,
+                error: msg,
+              };
             }
           },
         },
@@ -176,16 +200,29 @@ export async function POST(req: Request) {
             groupKey: z
               .string()
               .optional()
-              .describe(
-                "Column to group/split data by."
-              ),
+              .describe("Column to group/split data by."),
           }),
           execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
             try {
-              return { sql, data: await executeQuery(sql), chartType, xKey, yKey, groupKey };
+              return {
+                sql,
+                data: await executeQuery(sql),
+                chartType,
+                xKey,
+                yKey,
+                groupKey,
+              };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
-              return { sql, data: [], chartType, xKey, yKey, groupKey, error: msg };
+              return {
+                sql,
+                data: [],
+                chartType,
+                xKey,
+                yKey,
+                groupKey,
+                error: msg,
+              };
             }
           },
         },
