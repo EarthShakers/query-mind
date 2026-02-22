@@ -20,6 +20,17 @@ interface ChunkItem {
   created_at: string;
 }
 
+interface DataTableItem {
+  id: string;
+  table_name: string;
+  display_name: string;
+  description: string | null;
+  row_count: number;
+  file_name: string;
+  created_at: string;
+  columnCount: number;
+}
+
 interface SpaceCard {
   spaceId: string;
   spaceName: string;
@@ -654,6 +665,472 @@ function SpaceList({
     </div>
   );
 }
+/* ─── Data Tables Section ─── */
+function DataTablesSection({
+  spaceId,
+  canUpload,
+}: {
+  spaceId: string;
+  canUpload: boolean;
+}) {
+  const [tables, setTables] = useState<DataTableItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewTable, setPreviewTable] = useState<{
+    id: string;
+    displayName: string;
+    tableName: string;
+    rowCount: number;
+  } | null>(null);
+  const [previewData, setPreviewData] = useState<{
+    columns: { column_name: string; display_name: string; data_type: string }[];
+    rows: Record<string, unknown>[];
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const fetchTables = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/data-tables?spaceId=${encodeURIComponent(spaceId)}`);
+      if (res.ok) setTables(await res.json());
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [spaceId]);
+
+  useEffect(() => {
+    fetchTables();
+  }, [fetchTables]);
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadMsg("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("spaceId", spaceId);
+      const res = await fetch("/api/data-tables", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadMsg(data.error || "上传失败");
+      } else {
+        setUploadMsg(`"${data.displayName}" 已导入（${data.rowCount} 行 × ${data.columns.length} 列）`);
+        fetchTables();
+      }
+    } catch {
+      setUploadMsg("上传失败，请重试");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleUpload(file);
+  }
+
+  async function handleDelete(id: string) {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/data-tables/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "删除失败");
+      } else {
+        setConfirmDelete(null);
+        fetchTables();
+      }
+    } catch {
+      alert("删除失败");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function openPreview(table: DataTableItem) {
+    setPreviewTable({
+      id: table.id,
+      displayName: table.display_name,
+      tableName: table.table_name,
+      rowCount: table.row_count,
+    });
+    setPreviewData(null);
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/data-tables/${table.id}?preview=true`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewData({ columns: data.columns || [], rows: data.rows || [] });
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      {/* Upload Card */}
+      {canUpload && (
+        <div className="mb-5">
+          <div
+            className={`relative rounded-2xl border-2 border-dashed bg-white transition-all cursor-pointer ${
+              dragOver
+                ? "border-emerald-400 bg-emerald-50 shadow-md"
+                : uploading
+                ? "border-emerald-300 bg-emerald-50/50"
+                : "border-slate-200 hover:border-emerald-300 hover:shadow-md"
+            }`}
+            onClick={() => !uploading && fileInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUpload(f);
+              }}
+              className="hidden"
+            />
+            <div className="flex flex-col sm:flex-row items-center gap-4 py-6 px-6">
+              {uploading ? (
+                <span className="w-10 h-10 border-[3px] border-emerald-200 border-t-emerald-500 rounded-full animate-spin" />
+              ) : (
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-sm shrink-0">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                </div>
+              )}
+              <div className="text-center sm:text-left">
+                <p className="text-sm font-medium text-slate-700">
+                  {uploading
+                    ? "正在解析并导入数据..."
+                    : "拖拽 Excel/CSV 文件到此处，或点击选择"}
+                </p>
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mt-2">
+                  {["xlsx", "xls", "csv"].map((ext) => (
+                    <span
+                      key={ext}
+                      className="px-1.5 py-0.5 text-[10px] font-semibold rounded border bg-emerald-50 border-emerald-100 text-emerald-600"
+                    >
+                      .{ext}
+                    </span>
+                  ))}
+                  <span className="text-[10px] text-slate-400">
+                    AI 自动识别表结构，支持在对话中查询分析
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {uploadMsg && (
+            <div
+              className={`mt-3 px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 ${
+                uploadMsg.includes("已导入")
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-red-600 border border-red-200"
+              }`}
+            >
+              <span className="text-base">
+                {uploadMsg.includes("已导入") ? "✓" : "!"}
+              </span>
+              {uploadMsg}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Data Tables Grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-slate-400">
+          <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-emerald-500 rounded-full animate-spin mr-3" />
+          <span className="text-sm">加载中...</span>
+        </div>
+      ) : tables.length === 0 ? (
+        <div className="text-center py-20">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-slate-300"
+            >
+              <path d="M3 3h18v18H3z" />
+              <path d="M3 9h18" />
+              <path d="M3 15h18" />
+              <path d="M9 3v18" />
+            </svg>
+          </div>
+          <p className="text-sm text-slate-500 font-medium">
+            还没有上传数据报表
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {canUpload
+              ? "上传 Excel 或 CSV 文件，AI 自动建表，可在对话中直接查询分析"
+              : "暂无数据报表"}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-12">
+          {tables.map((table) => (
+            <div
+              key={table.id}
+              className="group relative bg-white rounded-2xl border border-slate-200 hover:border-emerald-200 shadow-sm hover:shadow-lg hover:shadow-emerald-50 transition-all overflow-hidden cursor-pointer"
+              onClick={() => openPreview(table)}
+            >
+              <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
+              <div className="p-5">
+                <div className="flex items-start gap-3.5">
+                  <div className="shrink-0 w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-[11px] font-bold text-white shadow-sm">
+                    XLS
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 leading-snug line-clamp-2">
+                      {table.display_name}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2.5">
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 3h18v18H3z" />
+                          <path d="M3 9h18" />
+                          <path d="M9 3v18" />
+                        </svg>
+                        {table.row_count} 行
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 3v18" />
+                          <path d="M3 12h18" />
+                        </svg>
+                        {table.columnCount} 列
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                        {new Date(table.created_at).toLocaleDateString("zh-CN")}
+                      </span>
+                    </div>
+                    {table.description && (
+                      <p className="text-xs text-slate-400 mt-2 line-clamp-2">
+                        {table.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Delete button */}
+              {canUpload && (
+                <div className="px-5 pb-4 flex justify-between items-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDelete(table.id); }}
+                    className="text-[11px] text-red-400 hover:text-red-600 font-medium transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    删除
+                  </button>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {table.table_name}
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => !deleting && setConfirmDelete(null)}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-900 mb-2">
+              确认删除数据表
+            </h3>
+            <p className="text-sm text-slate-500 mb-5">
+              删除后，该数据表及所有数据将被永久清除，AI 将无法再查询此报表。此操作不可撤销。
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {deleting ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Data Table Preview Modal */}
+      {previewTable && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => setPreviewTable(null)}
+        >
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-4xl max-h-[85vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-500 px-6 py-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-white/20 backdrop-blur flex items-center justify-center text-xs font-bold text-white">
+                    XLS
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-base font-semibold text-white truncate">
+                      {previewTable.displayName}
+                    </h2>
+                    <p className="text-xs text-white/70 mt-0.5">
+                      {previewTable.rowCount} 行 · 表名: {previewTable.tableName}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPreviewTable(null)}
+                  className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-white/70 hover:bg-white/20 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            {/* Modal Body — Table */}
+            <div className="flex-1 overflow-auto">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-16 text-slate-400">
+                  <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-emerald-500 rounded-full animate-spin mr-3" />
+                  <span className="text-sm">加载数据中...</span>
+                </div>
+              ) : !previewData || previewData.rows.length === 0 ? (
+                <p className="text-center py-16 text-sm text-slate-400">
+                  暂无数据
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">
+                        #
+                      </th>
+                      {previewData.columns.map((col) => (
+                        <th
+                          key={col.column_name}
+                          className="px-4 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap"
+                        >
+                          <div>{col.display_name}</div>
+                          {col.display_name !== col.column_name && (
+                            <div className="text-[10px] font-normal text-slate-400 mt-0.5">
+                              {col.column_name}
+                            </div>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {previewData.rows.map((row, ri) => (
+                      <tr
+                        key={ri}
+                        className="hover:bg-slate-50/80 transition-colors"
+                      >
+                        <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">
+                          {ri + 1}
+                        </td>
+                        {previewData.columns.map((col) => (
+                          <td
+                            key={col.column_name}
+                            className="px-4 py-2.5 text-slate-700 whitespace-nowrap max-w-[240px] truncate"
+                          >
+                            {row[col.column_name] != null
+                              ? String(row[col.column_name])
+                              : <span className="text-slate-300">—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-4 text-xs text-slate-400">
+                {previewData && (
+                  <>
+                    <span>{previewData.columns.length} 列</span>
+                    <span>
+                      显示前 {previewData.rows.length} 行
+                      {previewTable.rowCount > 50 && `（共 ${previewTable.rowCount} 行）`}
+                    </span>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => setPreviewTable(null)}
+                className="px-4 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm transition-colors"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpaceDocuments({
   spaceId,
   spaceName,
@@ -689,6 +1166,7 @@ function SpaceDocuments({
   const [chunks, setChunks] = useState<ChunkItem[]>([]);
   const [chunksLoading, setChunksLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<"docs" | "data">("docs");
 
   const canUpload =
     spaceId !== DEMO_SPACE_ID &&
@@ -888,6 +1366,37 @@ function SpaceDocuments({
             )}
           </div>
         )}
+
+        {/* Tabs: 知识文档 / 数据报表 */}
+        <div className="mt-5 flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+          <button
+            onClick={() => setActiveTab("docs")}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              activeTab === "docs"
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            知识文档
+          </button>
+          <button
+            onClick={() => setActiveTab("data")}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              activeTab === "data"
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            数据报表
+          </button>
+        </div>
+
+        {activeTab === "data" ? (
+          <div className="mt-5">
+            <DataTablesSection spaceId={spaceId} canUpload={canUpload} />
+          </div>
+        ) : (
+        <>
 
         {/* Upload Card */}
         {canUpload && (
@@ -1165,6 +1674,8 @@ function SpaceDocuments({
               );
             })}
           </div>
+        )}
+        </>
         )}
       </div>
 

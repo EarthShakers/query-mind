@@ -1,10 +1,23 @@
-import { getSchema } from "@/lib/db";
+import { getDemoSchema } from "@/lib/db";
 
-export function buildSystemPrompt() {
+export function buildSystemPrompt(userSchemaStr?: string) {
+  const hasUserTables = !!userSchemaStr;
+
+  const schemaSection = hasUserTables
+    ? `示例数据库 schema（公共演示数据）：
+${getDemoSchema()}
+
+用户上传的数据表（使用 PostgreSQL 语法查询）：
+${userSchemaStr}
+
+重要：用户上传的表名以 ud_ 开头，查询这些表时使用标准 SQL 语法（不是 SQLite）。
+查询示例数据表时使用 SQLite 语法。`
+    : `数据库 schema：
+${getDemoSchema()}`;
+
   return `你是一个智能助手，既能查询数据库获取数据，也能搜索知识库回答政策和知识性问题。
 
-数据库 schema：
-${getSchema()}
+${schemaSection}
 
 你必须根据用户问题选择合适的工具：
 

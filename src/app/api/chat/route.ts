@@ -1,7 +1,9 @@
 import { streamText, type CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
-import { query } from "@/lib/db";
+import { query as sqliteQuery } from "@/lib/db";
+import { queryUserData } from "@/lib/pg";
+import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
 import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
@@ -30,6 +32,40 @@ function sanitizeMessages(
     }
   }
   return cleaned;
+}
+
+/** Demo tables that live in SQLite */
+const DEMO_TABLES = new Set([
+  "departments", "employees", "products", "sales", "expenses",
+]);
+
+/**
+ * Route a SQL query to the correct database:
+ * - Demo tables → SQLite
+ * - ud_* tables → PostgreSQL
+ */
+async function executeQuery(sql: string): Promise<Record<string, unknown>[]> {
+  // Extract table names from SQL to determine routing
+  const tableMentions = sql.match(/(?:from|join)\s+["`]?(\w+)["`]?/gi) || [];
+  const tables = tableMentions.map((m) =>
+    m.replace(/(?:from|join)\s+["`]?/i, "").replace(/["`]/g, "").toLowerCase()
+  );
+
+  const hasUserTables = tables.some((t) => t.startsWith("ud_"));
+  const hasDemoTables = tables.some((t) => DEMO_TABLES.has(t));
+
+  // If mixing demo and user tables, reject (they're in different DBs)
+  if (hasUserTables && hasDemoTables) {
+    throw new Error(
+      "不能在同一查询中混合使用演示数据表和用户上传表。请分开查询。"
+    );
+  }
+
+  if (hasUserTables) {
+    return queryUserData(sql);
+  }
+
+  return sqliteQuery(sql);
 }
 
 export async function POST(req: Request) {
@@ -65,6 +101,20 @@ export async function POST(req: Request) {
 
   const enableKnowledge = searchSpaceIds.length > 0;
 
+  // Fetch user-uploaded table schemas for selected spaces
+  const allSpaceIds = Array.isArray(clientSpaceIds)
+    ? clientSpaceIds.filter((id: unknown) => typeof id === "string" && id.length > 0)
+    : searchSpaceIds;
+  let userSchemaStr: string | undefined;
+  try {
+    const userSchemas = await getUserTableSchemas(allSpaceIds);
+    if (userSchemas.length > 0) {
+      userSchemaStr = formatUserSchemas(userSchemas);
+    }
+  } catch {
+    // If DATABASE_URL is not configured, skip user tables
+  }
+
   // ── AI 流式调用 ──
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), 30000);
@@ -74,17 +124,17 @@ export async function POST(req: Request) {
       model: dashscope("deepseek-v3.2"),
       abortSignal: abortController.signal,
       maxSteps: 3,
-      system: buildSystemPrompt(),
+      system: buildSystemPrompt(userSchemaStr),
       messages: sanitizeMessages(messages),
       tools: {
         execute_query: {
           description: "Execute a SQL query and display results as a table",
           parameters: z.object({
-            sql: z.string().describe("The SQLite query to execute"),
+            sql: z.string().describe("The SQL query to execute"),
           }),
           execute: async ({ sql }) => {
             try {
-              return { sql, data: query(sql) };
+              return { sql, data: await executeQuery(sql) };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
               return { sql, data: [], error: msg };
@@ -95,7 +145,7 @@ export async function POST(req: Request) {
           description:
             "Generate and display a chart. Only use when user EXPLICITLY requests a chart (e.g. '用图表展示', '生成图表').",
           parameters: z.object({
-            sql: z.string().describe("The SQLite query to execute"),
+            sql: z.string().describe("The SQL query to execute"),
             chartType: z.enum(["bar", "line", "pie"]).describe("Chart type"),
             xKey: z.string().describe("Column name for X axis"),
             yKey: z.string().describe("Column name for Y axis / values"),
@@ -108,7 +158,7 @@ export async function POST(req: Request) {
           }),
           execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
             try {
-              return { sql, data: query(sql), chartType, xKey, yKey, groupKey };
+              return { sql, data: await executeQuery(sql), chartType, xKey, yKey, groupKey };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
               return { sql, data: [], chartType, xKey, yKey, groupKey, error: msg };
@@ -119,7 +169,7 @@ export async function POST(req: Request) {
           description:
             "Suggest a chart visualization to the user. Use after answering with text, when the data would benefit from a chart. The user can then choose to view it.",
           parameters: z.object({
-            sql: z.string().describe("The SQLite query for the chart"),
+            sql: z.string().describe("The SQL query for the chart"),
             chartType: z.enum(["bar", "line", "pie"]).describe("Chart type"),
             xKey: z.string().describe("Column name for X axis"),
             yKey: z.string().describe("Column name for Y axis / values"),
@@ -132,7 +182,7 @@ export async function POST(req: Request) {
           }),
           execute: async ({ sql, chartType, xKey, yKey, groupKey }) => {
             try {
-              return { sql, data: query(sql), chartType, xKey, yKey, groupKey };
+              return { sql, data: await executeQuery(sql), chartType, xKey, yKey, groupKey };
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
               return { sql, data: [], chartType, xKey, yKey, groupKey, error: msg };

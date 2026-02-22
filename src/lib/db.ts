@@ -173,7 +173,7 @@ export function query(sql: string): Record<string, unknown>[] {
   return db.prepare(sql).all() as Record<string, unknown>[];
 }
 
-export function getSchema(): string {
+export function getDemoSchema(): string {
   return `Table: departments (id INTEGER PK, name TEXT, manager_id INTEGER FK->employees, budget INTEGER, location TEXT)
 Table: employees (id INTEGER PK, name TEXT, department_id INTEGER FK->departments, title TEXT, salary INTEGER, hire_date TEXT, gender TEXT)
 Table: products (id INTEGER PK, name TEXT, category TEXT, unit_price INTEGER)

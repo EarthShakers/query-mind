@@ -20,9 +20,11 @@
     "mammoth": "^1.11.0",
     "next": "^15.1.0",
     "pdf-parse": "1.1.1",
+    "pg": "^8.18.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.23.0"
   },
   "pnpm": {
@@ -36,6 +38,7 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.16.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.0",
