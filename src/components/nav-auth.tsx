@@ -34,7 +34,10 @@ export function NavAuth() {
           const data = await res.json();
           if (!cancelled) {
             setPendingCount(
-              Array.isArray(data) ? data.filter((r: { status: string }) => r.status === "pending").length : 0
+              Array.isArray(data)
+                ? data.filter((r: { status: string }) => r.status === "pending")
+                    .length
+                : 0
             );
           }
         }
@@ -43,8 +46,8 @@ export function NavAuth() {
       }
     }
     fetchPending();
-    // Poll every 30 seconds
-    const interval = setInterval(fetchPending, 30000);
+    // Poll every 300 seconds
+    const interval = setInterval(fetchPending, 300000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -130,18 +133,18 @@ export function NavAuth() {
             </Link>
           )}
           {user.tenantRole === "admin" && (
-              <Link
-                href="/admin/requests"
-                className="flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-                onClick={() => setOpen(false)}
-              >
-                <span>审批申请</span>
-                {pendingCount > 0 && (
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] text-center">
-                    {pendingCount}
-                  </span>
-                )}
-              </Link>
+            <Link
+              href="/admin/requests"
+              className="flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+              onClick={() => setOpen(false)}
+            >
+              <span>审批申请</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] text-center">
+                  {pendingCount}
+                </span>
+              )}
+            </Link>
           )}
           <button
             onClick={() => {
