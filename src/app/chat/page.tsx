@@ -25,6 +25,8 @@ const QUICK_QUESTIONS = [
   { icon: "💵", text: "各成本类型支出占比" },
 ];
 
+const DEMO_HINT = "以下为内置示例数据的快捷提问，你也可以去知识库上传自己的 Excel 报表进行分析";
+
 /* ─── types ─── */
 interface Turn {
   id: string;
@@ -763,9 +765,9 @@ export default function Page() {
         </div>
         <div className="px-4 pt-3 pb-1">
           <span className="text-sm font-semibold text-slate-700">快捷提问</span>
-          <span className="text-xs ml-2 text-slate-400 mt-1">
-            (点击直接查询)
-          </span>
+          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+            {DEMO_HINT}
+          </p>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {QUICK_QUESTIONS.map(({ icon, text }) => (
