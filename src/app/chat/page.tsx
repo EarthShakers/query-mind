@@ -357,6 +357,18 @@ function AssistantTurn({
   const hasAnswer = finalText || directCharts.length > 0;
   const hasThinkingContent = allTools.length > 0 || thinkingTexts.length > 0;
 
+  // Detect if all tool calls failed (no answer and tools all errored)
+  const toolErrors = useMemo(() => {
+    return allTools.filter((t) => t.state === "result" && t.result?.error);
+  }, [allTools]);
+  const allToolsFailed =
+    !isStreaming && !hasAnswer && toolErrors.length > 0 && allTools.every(
+      (t) => t.state === "result" && (t.result?.error || t.toolName === "suggest_chart")
+    );
+  const lastErrorMsg = allToolsFailed
+    ? toolErrors[toolErrors.length - 1]?.result?.error
+    : "";
+
   // Simple logic:
   // - isStreaming (= isLoading from useChat) is true for the ENTIRE request lifecycle
   // - Show thinking section if streaming or if there was thinking content
@@ -425,7 +437,7 @@ function AssistantTurn({
                 </div>
               )}
               {hasThinkingContent && (
-                <details className="group">
+                <details className="group" open>
                   <summary className="flex items-center gap-1 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-400 transition-colors list-none [&::-webkit-details-marker]:hidden ml-6">
                     <svg
                       width="10"
@@ -438,7 +450,8 @@ function AssistantTurn({
                     >
                       <path d="m9 18 6-6-6-6" />
                     </svg>
-                    <span>查看过程</span>
+                    <span className="group-open:hidden">查看过程</span>
+                    <span className="hidden group-open:inline">收起过程</span>
                   </summary>
                   <ThinkingDetails
                     allTools={allTools}
@@ -470,6 +483,13 @@ function AssistantTurn({
               }`}
             >
               {finalText}
+            </p>
+          )}
+
+          {/* Error fallback: all tool calls failed, no answer */}
+          {allToolsFailed && (
+            <p className="text-sm text-red-500 mt-2">
+              查询失败：{lastErrorMsg || "未知错误，请重试"}
             </p>
           )}
 

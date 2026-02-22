@@ -31,8 +31,10 @@ export async function queryUserData(
     throw new Error("Only SELECT queries are allowed.");
   }
 
+  // Strip trailing semicolons (common AI mistake) but block multi-statement
+  sql = sql.replace(/;\s*$/, "");
   if (sql.includes(";")) {
-    throw new Error("Multiple statements are not allowed.");
+    throw new Error("Multiple statements are not allowed. Remove all semicolons and send one SELECT query only.");
   }
 
   const pool = getPool();

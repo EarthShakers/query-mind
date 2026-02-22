@@ -123,7 +123,7 @@ export async function POST(req: Request) {
     const result = await streamText({
       model: dashscope("deepseek-v3.2"),
       abortSignal: abortController.signal,
-      maxSteps: 3,
+      maxSteps: 5,
       system: buildSystemPrompt(userSchemaStr),
       messages: sanitizeMessages(messages),
       tools: {
