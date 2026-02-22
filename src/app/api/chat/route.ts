@@ -6,7 +6,7 @@ import { queryUserData } from "@/lib/pg";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
 import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
-import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth";
 import {
   checkRateLimit,
   checkDailyBudget,
@@ -98,12 +98,9 @@ export async function POST(req: Request) {
       (id: unknown) => typeof id === "string" && id.length > 0
     );
   } else if (tenantRole) {
-    searchSpaceIds = [activeSpaceId || DEMO_SPACE_ID];
+    searchSpaceIds = activeSpaceId ? [activeSpaceId] : [];
   } else {
-    searchSpaceIds =
-      activeSpaceId && activeSpaceId !== DEMO_SPACE_ID
-        ? [DEMO_SPACE_ID, activeSpaceId]
-        : [DEMO_SPACE_ID];
+    searchSpaceIds = activeSpaceId ? [activeSpaceId] : [];
   }
 
   const enableKnowledge = searchSpaceIds.length > 0;

@@ -1,4 +1,5 @@
-import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth";
+import { checkFileLimit } from "@/lib/file-limits";
 import { supabase } from "@/lib/supabase";
 import {
   parseFile,
@@ -73,8 +74,8 @@ export async function POST(req: Request) {
       return Response.json({ error: "请上传文件" }, { status: 400 });
     }
 
-    if (!spaceId || spaceId === DEMO_SPACE_ID) {
-      return Response.json({ error: "不能上传到公共空间" }, { status: 403 });
+    if (!spaceId) {
+      return Response.json({ error: "不能上传到空空间" }, { status: 403 });
     }
 
     // Permission: enterprise users need editor+ role
@@ -84,6 +85,10 @@ export async function POST(req: Request) {
         return Response.json({ error: "没有上传权限" }, { status: 403 });
       }
     }
+
+    // File upload limit check
+    const limitBlocked = await checkFileLimit(req, spaceId);
+    if (limitBlocked) return limitBlocked;
 
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!ALLOWED_EXTS.includes(ext ?? "")) {

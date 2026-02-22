@@ -8,8 +8,6 @@ import { ChartResult } from "@/components/chart-result";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
 
-const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
-
 const QUICK_QUESTIONS = [
   { icon: "👥", text: "显示所有员工及其部门" },
   { icon: "💰", text: "各部门平均薪资对比" },
@@ -636,7 +634,6 @@ function SpacePicker({
             <div className="border-t border-slate-100 my-0.5" />
             {spaces.map((s) => {
               const checked = selected.has(s.spaceId);
-              const isPublic = s.spaceId === DEMO_SPACE_ID;
               return (
                 <button
                   key={s.spaceId}
@@ -657,11 +654,6 @@ function SpacePicker({
                     )}
                   </span>
                   <span className="truncate">{s.spaceName}</span>
-                  {isPublic && (
-                    <span className="ml-auto text-[10px] text-cyan-500 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-100 shrink-0">
-                      公共
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -683,9 +675,9 @@ function ChatUploadModal({
   onUploaded: () => void;
 }) {
   const [tab, setTab] = useState<"docs" | "data">("docs");
+  const { user: authUser } = useAuth();
   const [selectedSpaceId, setSelectedSpaceId] = useState(() => {
-    const nonDemo = spaces.find((s) => s.spaceId !== DEMO_SPACE_ID);
-    return nonDemo ? nonDemo.spaceId : spaces[0]?.spaceId ?? "";
+    return spaces[0]?.spaceId ?? "";
   });
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -880,7 +872,15 @@ function ChatUploadModal({
                 : "bg-red-50 text-red-600 border border-red-200"
             }`}>
               <span className="text-base">{uploadMsg.ok ? "\u2713" : "!"}</span>
-              {uploadMsg.text}
+              <span className="flex-1">{uploadMsg.text}</span>
+              {!authUser && !uploadMsg.ok && uploadMsg.text.includes("上限") && (
+                <Link
+                  href="/register"
+                  className="shrink-0 px-3 py-1 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors"
+                >
+                  免费注册
+                </Link>
+              )}
             </div>
           )}
         </div>
@@ -895,20 +895,34 @@ export default function Page() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const { user } = useAuth();
   const lastInput = useRef("");
+  const [tempSpaceId, setTempSpaceId] = useState<string | null>(null);
+
+  // Fetch temp space for anonymous users
+  useEffect(() => {
+    if (!user) {
+      fetch("/api/temp-space")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.spaceId) setTempSpaceId(data.spaceId);
+        })
+        .catch(() => {});
+    }
+  }, [user]);
 
   // Build available spaces list
   const availableSpaces = useMemo(() => {
-    const spaces: { spaceId: string; spaceName: string }[] = [];
     if (user) {
-      for (const s of user.spaces) {
-        if (s.spaceId !== DEMO_SPACE_ID) {
-          spaces.push({ spaceId: s.spaceId, spaceName: s.spaceName });
-        }
-      }
+      return user.spaces.map((s) => ({
+        spaceId: s.spaceId,
+        spaceName: s.spaceName,
+      }));
     }
-    spaces.push({ spaceId: DEMO_SPACE_ID, spaceName: "公共数据" });
-    return spaces;
-  }, [user]);
+    // Anonymous: show temp space
+    if (tempSpaceId) {
+      return [{ spaceId: tempSpaceId, spaceName: "体验空间" }];
+    }
+    return [];
+  }, [user, tempSpaceId]);
 
   // Default: all spaces selected
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<Set<string>>(

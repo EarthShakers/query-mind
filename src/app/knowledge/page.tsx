@@ -5,8 +5,6 @@ import Link from "next/link";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
 
-const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
-
 interface DocItem {
   title: string;
   chunkCount: number;
@@ -235,7 +233,6 @@ function SpaceList({
 
   useEffect(() => {
     const ids = spaces
-      .filter((s) => !s.isPublic)
       .map((s) => s.spaceId);
     if (ids.length === 0) return;
     fetch(`/api/spaces/member-counts?ids=${ids.join(",")}`)
@@ -460,7 +457,7 @@ function SpaceList({
           {spaces.map((space) => {
             const roleInfo = space.role ? ROLE_LABELS[space.role] : null;
             const count = memberCounts[space.spaceId];
-            const canManage = !space.isPublic && (user.tenantRole === "admin" || space.role === "admin");
+            const canManage = user.tenantRole === "admin" || space.role === "admin";
             return (
               <div
                 key={space.spaceId}
@@ -470,7 +467,7 @@ function SpaceList({
                 <div className="h-1 bg-slate-100 group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:to-cyan-400 transition-all" />
                 <div className="p-5 flex-1">
                   {/* Member count — top right */}
-                  {!space.isPublic && count !== undefined && (
+                  {count !== undefined && (
                     <div className="float-right ml-2 flex items-center gap-1 text-xs text-slate-400">
                       <svg
                         width="12"
@@ -492,24 +489,7 @@ function SpaceList({
                   )}
                   <div className="flex items-start gap-3.5">
                     <div className="w-11 h-11 rounded-xl bg-slate-100 group-hover:bg-gradient-to-br group-hover:from-indigo-500 group-hover:to-cyan-500 flex items-center justify-center text-sm font-bold text-slate-500 group-hover:text-white transition-all shrink-0">
-                      {space.isPublic ? (
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <circle cx="12" cy="12" r="10" />
-                          <path d="M2 12h20" />
-                          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                        </svg>
-                      ) : (
-                        space.spaceName[0]
-                      )}
+                      {space.spaceName[0]}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-800 leading-snug group-hover:text-indigo-600 transition-colors">
@@ -520,16 +500,6 @@ function SpaceList({
                           <span className="px-2 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-600 rounded-md border border-amber-100">
                             默认
                           </span>
-                        )}
-                        {space.isPublic && (
-                          <>
-                            <span className="px-2 py-0.5 text-[10px] font-medium bg-cyan-50 text-cyan-600 rounded-md border border-cyan-100">
-                              公共
-                            </span>
-                            <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-500 rounded-md border border-slate-200">
-                              只读
-                            </span>
-                          </>
                         )}
                         {roleInfo && (
                           <span
@@ -1169,8 +1139,7 @@ function SpaceDocuments({
   const [activeTab, setActiveTab] = useState<"docs" | "data">("docs");
 
   const canUpload =
-    spaceId !== DEMO_SPACE_ID &&
-    (spaceRole === "admin" || spaceRole === "editor" || isAdmin);
+    spaceRole === "admin" || spaceRole === "editor" || isAdmin;
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -1198,7 +1167,8 @@ function SpaceDocuments({
       form.append("spaceId", spaceId);
       const res = await fetch("/api/documents", { method: "POST", body: form });
       if (!res.ok) {
-        setUploadMsg(await res.text());
+        const body = await res.json().catch(() => null);
+        setUploadMsg(body?.error || `上传失败 (${res.status})`);
       } else {
         const json = await res.json();
         setUploadMsg(`"${json.title}" 已导入（${json.chunks} 个片段）`);
@@ -1257,51 +1227,75 @@ function SpaceDocuments({
     <>
       <div className="max-w-5xl mx-auto px-4 md:px-6">
         {/* Compact gradient header card */}
-        <div className="mt-5 mb-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={onBack}
-                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+        <div className="mt-5 mb-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-4 sm:px-6 py-4 sm:py-5">
+          {/* Row 1: back + name + switcher */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={onBack}
+              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </button>
-              <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center text-xs font-bold text-white shrink-0">
-                {spaceName[0]}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-lg font-bold text-white truncate">
-                    {spaceName}
-                  </h1>
-                  {spaceRole && (
-                    <span className="shrink-0 px-2 py-0.5 text-[10px] font-medium bg-white/20 text-white rounded-md">
-                      {ROLE_LABELS[spaceRole]?.text ?? spaceRole}
-                    </span>
-                  )}
-                </div>
-                {!loading && docs.length > 0 && (
-                  <p className="text-xs text-indigo-100 mt-0.5">
-                    {docs.length} 篇文档 · {docs.reduce((s, d) => s + d.chunkCount, 0)} 个片段 · {new Set(docs.map((d) => d.format)).size} 种格式
-                  </p>
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center text-xs font-bold text-white shrink-0">
+              {spaceName[0]}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-base sm:text-lg font-bold text-white truncate">
+                  {spaceName}
+                </h1>
+                {spaceRole && (
+                  <span className="shrink-0 px-2 py-0.5 text-[10px] font-medium bg-white/20 text-white rounded-md">
+                    {ROLE_LABELS[spaceRole]?.text ?? spaceRole}
+                  </span>
                 )}
               </div>
+              {!loading && docs.length > 0 && (
+                <p className="text-[11px] sm:text-xs text-indigo-100 mt-0.5 truncate">
+                  {docs.length} 篇文档 · {docs.reduce((s, d) => s + d.chunkCount, 0)} 个片段
+                </p>
+              )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Go to chat */}
+            <SpaceSwitcher
+              spaces={spaces}
+              currentSpaceId={spaceId}
+              onSwitch={onSwitch}
+            />
+          </div>
+          {/* Row 2: action buttons */}
+          <div className="flex items-center gap-2 mt-3 ml-10 sm:ml-[68px]">
+            <Link
+              href="/chat"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              去提问
+            </Link>
+            {isAdmin && (
               <Link
-                href="/chat"
+                href={`/spaces/${spaceId}/members`}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
               >
                 <svg
@@ -1314,77 +1308,16 @@ function SpaceDocuments({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
-                去提问
-              </Link>
-              {/* Member management (admin only, not for public space) */}
-              {isAdmin && spaceId !== DEMO_SPACE_ID && (
-                <Link
-                  href={`/spaces/${spaceId}/members`}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                  成员
-                </Link>
-              )}
-              <SpaceSwitcher
-                spaces={spaces}
-                currentSpaceId={spaceId}
-                onSwitch={onSwitch}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Read-only tip for public data space */}
-        {spaceId === DEMO_SPACE_ID && (
-          <div className="mt-1 flex items-center gap-2.5 px-4 py-3 rounded-xl bg-amber-50 border border-amber-100 text-sm text-amber-700">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" x2="12" y1="8" y2="12" />
-              <line x1="12" x2="12.01" y1="16" y2="16" />
-            </svg>
-            <span>
-              公共数据为只读，不支持上传。
-              {isLoggedIn
-                ? "请切换到个人空间上传文档。"
-                : "注册账号后可获得个人空间，上传自己的文档。"}
-            </span>
-            {!isLoggedIn && (
-              <Link
-                href="/register"
-                className="shrink-0 ml-auto px-3 py-1 text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
-              >
-                去注册
+                成员
               </Link>
             )}
           </div>
-        )}
+        </div>
 
         {/* Tabs: 知识文档 / 数据报表 */}
         <div className="mt-5 flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
@@ -1502,7 +1435,15 @@ function SpaceDocuments({
                 <span className="text-base">
                   {uploadMsg.includes("已导入") ? "✓" : "!"}
                 </span>
-                {uploadMsg}
+                <span className="flex-1">{uploadMsg}</span>
+                {!isLoggedIn && uploadMsg.includes("上限") && (
+                  <Link
+                    href="/register"
+                    className="shrink-0 px-3 py-1 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors"
+                  >
+                    免费注册
+                  </Link>
+                )}
               </div>
             )}
           </div>
@@ -1837,45 +1778,56 @@ function SpaceDocuments({
 export default function KnowledgePage() {
   const { user, loading: authLoading, refresh } = useAuth();
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
+  const [tempSpaceId, setTempSpaceId] = useState<string | null>(null);
+  const [tempLoading, setTempLoading] = useState(false);
+
+  // Fetch temp space for anonymous users
+  useEffect(() => {
+    if (!user && !authLoading) {
+      setTempLoading(true);
+      fetch("/api/temp-space")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.spaceId) setTempSpaceId(data.spaceId);
+        })
+        .catch(() => {})
+        .finally(() => setTempLoading(false));
+    }
+  }, [user, authLoading]);
 
   // Build space cards from user.spaces
   const spaceCards: SpaceCard[] = useMemo(() => {
-    const publicCard: SpaceCard = {
-      spaceId: DEMO_SPACE_ID,
-      spaceName: "公共数据",
-      role: null,
-      isPublic: true,
-    };
+    // Unregistered user: show temp space
+    if (!user) {
+      if (tempSpaceId) {
+        return [
+          {
+            spaceId: tempSpaceId,
+            spaceName: "体验空间",
+            role: "admin" as const,
+          },
+        ];
+      }
+      return [];
+    }
 
-    // Unregistered user: only show public data
-    if (!user) return [publicCard];
-
-    // Enterprise user: own spaces + public data
+    // Enterprise user: own spaces
     if (user.tenantRole) {
-      const cards: SpaceCard[] = user.spaces.map((s) => ({
+      return user.spaces.map((s) => ({
         spaceId: s.spaceId,
         spaceName: s.spaceName,
         role: s.role,
         isDefault: s.isDefault,
       }));
-      cards.push(publicCard);
-      return cards;
     }
 
-    // Personal user: personal space(s) + public data
-    const cards: SpaceCard[] = [];
-    for (const s of user.spaces) {
-      if (s.spaceId !== DEMO_SPACE_ID) {
-        cards.push({
-          spaceId: s.spaceId,
-          spaceName: s.spaceName,
-          role: s.role,
-        });
-      }
-    }
-    cards.push(publicCard);
-    return cards;
-  }, [user]);
+    // Personal user: personal space(s)
+    return user.spaces.map((s) => ({
+      spaceId: s.spaceId,
+      spaceName: s.spaceName,
+      role: s.role,
+    }));
+  }, [user, tempSpaceId]);
 
   const selectedSpace = useMemo(() => {
     if (!selectedSpaceId) return null;
@@ -1885,7 +1837,7 @@ export default function KnowledgePage() {
   // Determine if current user is admin (tenant admin)
   const isAdmin = user?.tenantRole === "admin";
 
-  if (authLoading) {
+  if (authLoading || tempLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
         <Nav />

@@ -1,31 +1,35 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { TIER_CONFIGS } from "@/lib/tier-config";
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+// Rate limiter 实例使用全局最大值；如需按用户等级区分，
+// 可在 check 函数中读取 getTierConfig() 做二次判断。
 const ratelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(10, "1 m"),
+  limiter: Ratelimit.slidingWindow(TIER_CONFIGS.enterprise.chatRatePerMinute, "1 m"),
   prefix: "rl:chat",
 });
 
 const uploadRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(3, "1 m"),
+  limiter: Ratelimit.slidingWindow(TIER_CONFIGS.enterprise.uploadRatePerMinute, "1 m"),
   prefix: "rl:upload",
 });
 
 const uploadDailyRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(20, "1 d"),
+  limiter: Ratelimit.slidingWindow(TIER_CONFIGS.enterprise.uploadRatePerDay, "1 d"),
   prefix: "rl:upload_daily",
 });
 
-const DAILY_TOKEN_LIMIT = 200000;
-const MAX_INPUT_LENGTH = 500;
+// 以下值从 tier-config 中取默认等级的配置
+const DAILY_TOKEN_LIMIT = TIER_CONFIGS.anonymous.dailyTokenBudget;
+const MAX_INPUT_LENGTH = TIER_CONFIGS.anonymous.maxInputLength;
 
 function dailyKey() {
   return `daily_tokens:${new Date().toISOString().slice(0, 10)}`;

@@ -167,17 +167,85 @@ function Permissions() {
             <tr>
               <td className="px-4 py-2.5 font-medium">未注册用户</td>
               <td className="px-4 py-2.5 text-slate-500"><code>user = null</code></td>
-              <td className="px-4 py-2.5 text-slate-500">公共数据（只读）</td>
+              <td className="px-4 py-2.5 text-slate-500">临时体验空间（cookie 绑定，次日自动清理）</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">个人用户</td>
               <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole = null</code></td>
-              <td className="px-4 py-2.5 text-slate-500">个人空间 + 公共数据</td>
+              <td className="px-4 py-2.5 text-slate-500">个人空间</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">企业用户</td>
               <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole != null</code></td>
-              <td className="px-4 py-2.5 text-slate-500">企业空间 + 公共数据</td>
+              <td className="px-4 py-2.5 text-slate-500">企业空间</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>用户权益配置</h3>
+      <p>
+        所有限额集中在 <code>src/lib/tier-config.ts</code> 中定义，
+        新增用户等级只需在该文件添加一项配置。
+      </p>
+      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">权益项</th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-600">未注册用户</th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-600">个人用户</th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-600">企业用户</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">文件上传上限</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">2</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">50</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">聊天频率（次/分钟）</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">20</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">30</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">上传频率（次/分钟）</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">3</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">3</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">每日上传次数</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">4</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">20</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">单次输入字符数</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">200</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">500</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">每日 Token 预算</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100K</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">200K</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">1000K</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">预置文档</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">4 篇</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">4 篇</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">4 篇</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 text-slate-600">空间生命周期</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">次日清理</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">永久</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">永久</td>
             </tr>
           </tbody>
         </table>

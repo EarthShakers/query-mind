@@ -2,7 +2,8 @@ import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
-import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth";
+import { checkFileLimit } from "@/lib/file-limits";
 import { fileTypeFromBuffer } from "file-type";
 
 const ALLOWED_EXTS = ["txt", "md", "pdf", "docx"];
@@ -20,22 +21,20 @@ const MIME_MAP: Record<string, string[]> = {
 
 /**
  * Determine which space IDs to query based on user context:
- * - Personal user (no tenantRole): personal space + DEMO public space
  * - Enterprise member: only active space
+ * - Personal user: personal space(s)
+ * - Anonymous: temp space (if any)
  */
 function getReadableSpaceIds(ctx: ReturnType<typeof getSpaceContext>): string[] {
   const { tenantRole, activeSpaceId } = ctx;
 
   if (tenantRole) {
     // Enterprise member: only their active space
-    return [activeSpaceId || DEMO_SPACE_ID];
+    return activeSpaceId ? [activeSpaceId] : [];
   }
 
-  // Personal user: personal space + demo public data
-  if (activeSpaceId && activeSpaceId !== DEMO_SPACE_ID) {
-    return [DEMO_SPACE_ID, activeSpaceId];
-  }
-  return [DEMO_SPACE_ID];
+  // Personal user or anonymous: use active space
+  return activeSpaceId ? [activeSpaceId] : [];
 }
 
 export async function GET(req: Request) {
@@ -55,8 +54,13 @@ export async function GET(req: Request) {
       if (ctx.userId) {
         spaceIds = [explicitSpaceId];
       } else {
-        // Anonymous: only allow DEMO_SPACE_ID
-        spaceIds = [DEMO_SPACE_ID];
+        // Anonymous: allow only their temp space
+        const tempSpaceId = ctx.activeSpaceId;
+        if (tempSpaceId && explicitSpaceId === tempSpaceId) {
+          spaceIds = [explicitSpaceId];
+        } else {
+          spaceIds = [];
+        }
       }
     } else {
       spaceIds = getReadableSpaceIds(ctx);
@@ -113,7 +117,7 @@ export async function GET(req: Request) {
     return Response.json([...map.values()]);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    return new Response(msg, { status: 500 });
+    return Response.json({ error: msg }, { status: 500 });
   }
 }
 
@@ -133,29 +137,35 @@ export async function POST(req: Request) {
 
     // Allow explicit spaceId from form data; fall back to active space
     const explicitSpaceId = formData.get("spaceId") as string | null;
-    const uploadSpaceId = explicitSpaceId || activeSpaceId || DEMO_SPACE_ID;
+    const uploadSpaceId = explicitSpaceId || activeSpaceId;
+
+    if (!uploadSpaceId) {
+      return Response.json({ error: "缺少目标空间" }, { status: 400 });
+    }
 
     // Permission check for enterprise spaces
-    if (tenantRole && uploadSpaceId !== DEMO_SPACE_ID) {
+    if (tenantRole) {
       const canEdit = spaceRole === "admin" || spaceRole === "editor" || tenantRole === "admin";
       if (!canEdit) {
-        return new Response("没有上传权限，需要 editor 及以上角色", { status: 403 });
+        return Response.json({ error: "没有上传权限，需要 editor 及以上角色" }, { status: 403 });
       }
     }
 
+    // File upload limit check
+    const limitBlocked = await checkFileLimit(req, uploadSpaceId);
+    if (limitBlocked) return limitBlocked;
+
     if (!file) {
-      return new Response("请上传文件", { status: 400 });
+      return Response.json({ error: "请上传文件" }, { status: 400 });
     }
 
     const ext = file.name.split(".").pop()?.toLowerCase();
     if (!ALLOWED_EXTS.includes(ext ?? "")) {
-      return new Response("仅支持 .txt、.md、.pdf 和 .docx 文件", {
-        status: 400,
-      });
+      return Response.json({ error: "仅支持 .txt、.md、.pdf 和 .docx 文件" }, { status: 400 });
     }
 
     if (file.size > MAX_SIZE) {
-      return new Response("文件大小不能超过 20MB", { status: 400 });
+      return Response.json({ error: "文件大小不能超过 20MB" }, { status: 400 });
     }
 
     // MIME 类型校验（pdf / docx）
@@ -164,9 +174,7 @@ export async function POST(req: Request) {
       const buffer = Buffer.from(await file.arrayBuffer());
       const detected = await fileTypeFromBuffer(buffer);
       if (!detected || !allowedMimes.includes(detected.mime)) {
-        return new Response("文件内容与扩展名不匹配，请上传真实的文件", {
-          status: 400,
-        });
+        return Response.json({ error: "文件内容与扩展名不匹配，请上传真实的文件" }, { status: 400 });
       }
     }
 
@@ -182,6 +190,6 @@ export async function POST(req: Request) {
     return Response.json({ success: true, title, chunks });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    return new Response(msg, { status: 500 });
+    return Response.json({ error: msg }, { status: 500 });
   }
 }

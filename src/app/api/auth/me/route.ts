@@ -2,7 +2,6 @@ import { supabase } from "@/lib/supabase";
 import {
   getSessionUser,
   DEMO_TENANT_ID,
-  DEMO_SPACE_ID,
   type SpaceMembership,
 } from "@/lib/auth";
 

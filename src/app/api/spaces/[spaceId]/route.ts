@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth";
 import { NextRequest } from "next/server";
 
 export async function PATCH(
@@ -12,10 +12,6 @@ export async function PATCH(
 
     if (!userId) {
       return Response.json({ error: "请先登录" }, { status: 401 });
-    }
-
-    if (spaceId === DEMO_SPACE_ID) {
-      return Response.json({ error: "不能修改公共数据空间" }, { status: 403 });
     }
 
     const { name } = await req.json();
@@ -79,11 +75,6 @@ export async function DELETE(
 
     if (!userId) {
       return Response.json({ error: "请先登录" }, { status: 401 });
-    }
-
-    // Cannot delete the public demo space
-    if (spaceId === DEMO_SPACE_ID) {
-      return Response.json({ error: "不能删除公共数据空间" }, { status: 403 });
     }
 
     // Verify the space exists and belongs to the user's tenant

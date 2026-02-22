@@ -248,7 +248,7 @@ export default function DemoSection() {
             </div>
             {/* iPhone 17 Pro Max mockup */}
             <div className="flex justify-center" data-anim="frame">
-              <div className="relative w-[300px]">
+              <div className="relative w-[300px] overflow-hidden">
                 {/* Titanium frame */}
                 <div className="rounded-[3.2rem] border-[5px] border-[#2a2a2c] bg-[#2a2a2c] shadow-2xl shadow-slate-400/30 overflow-hidden relative">
                   {/* Screen */}

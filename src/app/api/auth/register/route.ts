@@ -4,9 +4,10 @@ import {
   createToken,
   buildSessionCookie,
   DEMO_TENANT_ID,
-  DEMO_SPACE_ID,
   type SessionUser,
 } from "@/lib/auth";
+import { seedSpaceWithDocs } from "@/lib/seed-space";
+import { buildClearTempSpaceCookie } from "@/lib/temp-space";
 
 export async function POST(req: Request) {
   try {
@@ -76,6 +77,9 @@ export async function POST(req: Request) {
       .update({ active_space_id: personalSpace.id })
       .eq("id", user.id);
 
+    // Seed preset documents into personal space (fire-and-forget)
+    seedSpaceWithDocs(personalSpace.id, DEMO_TENANT_ID).catch(() => {});
+
     const sessionUser: SessionUser = {
       userId: user.id,
       email: user.email,
@@ -89,9 +93,19 @@ export async function POST(req: Request) {
 
     const token = await createToken(sessionUser);
 
+    // Clear temp space cookie on registration + set session cookie
+    const setCookies = [
+      buildSessionCookie(token),
+      buildClearTempSpaceCookie(),
+    ];
+
     return Response.json(
       { user: sessionUser },
-      { headers: { "Set-Cookie": buildSessionCookie(token) } }
+      {
+        headers: {
+          "Set-Cookie": setCookies.join(", "),
+        },
+      }
     );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

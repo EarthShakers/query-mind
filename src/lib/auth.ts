@@ -108,7 +108,7 @@ export function getSpaceContext(req: Request): SpaceContext {
       userId,
       tenantId,
       tenantRole: tenantRole || null,
-      activeSpaceId: activeSpaceId || DEMO_SPACE_ID,
+      activeSpaceId: activeSpaceId || null,
       spaceRole: spaceRole || null,
     };
   }
@@ -117,7 +117,7 @@ export function getSpaceContext(req: Request): SpaceContext {
     userId: null,
     tenantId: DEMO_TENANT_ID,
     tenantRole: null,
-    activeSpaceId: DEMO_SPACE_ID,
+    activeSpaceId: activeSpaceId || null, // may come from temp space cookie via middleware
     spaceRole: null,
   };
 }
