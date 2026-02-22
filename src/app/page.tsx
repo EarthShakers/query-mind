@@ -7,7 +7,12 @@ const FEATURES = [
   {
     icon: "💬",
     title: "像聊天一样查数据",
-    desc: "直接用中文提问，AI 自动理解意图、查询数据库并返回结果，业务人员无需学习任何技术。",
+    desc: "直接用中文提问，AI 自动理解意图、分析数据并返回结果，业务人员无需学习任何技术。",
+  },
+  {
+    icon: "📊",
+    title: "上传报表即可分析",
+    desc: "拖拽 Excel / CSV 文件上传，AI 自动识别表结构、理解字段含义，立即支持自然语言查询和图表生成。",
   },
   {
     icon: "📚",
@@ -20,29 +25,24 @@ const FEATURES = [
     desc: "问到趋势自动画折线图，问到对比自动出柱状图，问到占比自动生成饼图——你只管提问。",
   },
   {
-    icon: "⚡",
-    title: "秒级响应",
-    desc: "提出问题后 1-2 秒即可看到回答，像和真人对话一样流畅，无需等待加载。",
-  },
-  {
     icon: "🔒",
-    title: "数据只读不可篡改",
-    desc: "系统仅允许查询操作，任何情况下都无法修改或删除数据，企业数据安全有保障。",
+    title: "空间隔离，数据安全",
+    desc: "每个团队拥有独立空间，文档和报表严格隔离，角色权限精细管控，企业数据安全有保障。",
   },
   {
     icon: "🚀",
-    title: "开箱即用",
-    desc: "一键部署，对接企业现有数据库即可使用，无需复杂配置和漫长实施周期。",
-  },
-  {
-    icon: "🔄",
-    title: "不绑定 AI 厂商",
-    desc: "底层支持 GPT-4、Claude、DeepSeek 等多家模型自由切换，灵活选择性价比最优方案。",
+    title: "零配置，开箱即用",
+    desc: "注册即用，无需对接数据库、无需技术实施。上传文件就能开始分析，几分钟完成部署。",
   },
   {
     icon: "📱",
     title: "手机也能用",
     desc: "手机、平板、电脑均可流畅使用，出差路上也能随时查数据、看报表。",
+  },
+  {
+    icon: "👥",
+    title: "团队协作",
+    desc: "多空间管理、成员角色分配、知识共享，让整个团队都能用 AI 获取数据洞察。",
   },
 ];
 
@@ -51,37 +51,37 @@ const COMPARISONS = [
     name: "QueryMind",
     nl: true,
     autoViz: true,
-    stream: true,
-    responsive: true,
-    deploy: "极低",
+    excel: true,
+    rag: true,
+    deploy: "零配置",
     price: "¥299起",
-  },
-  {
-    name: "Tableau Ask Data",
-    nl: true,
-    autoViz: false,
-    stream: false,
-    responsive: false,
-    deploy: "高",
-    price: "$70/人/月",
   },
   {
     name: "ChatBI（百度）",
     nl: true,
     autoViz: true,
-    stream: false,
-    responsive: false,
+    excel: false,
+    rag: false,
     deploy: "SaaS",
     price: "按量",
   },
   {
-    name: "Metabase",
+    name: "Tableau",
     nl: false,
     autoViz: false,
-    stream: false,
-    responsive: true,
-    deploy: "中等",
-    price: "开源",
+    excel: true,
+    rag: false,
+    deploy: "高",
+    price: "$70/人/月",
+  },
+  {
+    name: "ChatGPT",
+    nl: true,
+    autoViz: false,
+    excel: false,
+    rag: false,
+    deploy: "SaaS",
+    price: "$20/月",
   },
 ];
 
@@ -90,7 +90,7 @@ const PRICING = [
     name: "免费版",
     price: "¥0",
     period: "永久",
-    features: ["每天 20 次查询", "单数据库连接", "基础图表", "社区支持"],
+    features: ["每天 20 次提问", "1 个空间", "知识文档上传", "基础图表"],
     cta: "免费开始",
     primary: false,
   },
@@ -98,7 +98,7 @@ const PRICING = [
     name: "专业版",
     price: "¥299",
     period: "/月",
-    features: ["无限查询", "多数据库", "图表导出", "历史记录", "邮件支持"],
+    features: ["无限提问", "5 个空间", "Excel 报表分析", "图表导出", "历史记录"],
     cta: "立即订阅",
     primary: true,
   },
@@ -106,7 +106,7 @@ const PRICING = [
     name: "团队版",
     price: "¥999",
     period: "/月",
-    features: ["10 人协作", "权限管理", "共享看板", "API 接口", "优先支持"],
+    features: ["10 人协作", "无限空间", "角色权限管理", "API 接口", "优先支持"],
     cta: "联系销售",
     primary: false,
   },
@@ -170,7 +170,7 @@ export default function LandingPage() {
             data-hero="badge"
             className="inline-block px-4 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-sm font-medium mb-6"
           >
-            不用写 SQL，不用等排期
+            不用写 SQL，不用装软件
           </div>
           <h1
             data-hero="title"
@@ -189,8 +189,8 @@ export default function LandingPage() {
             className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
             QueryMind
-            让业务人员也能自主获取数据洞察。问销售额，AI自动查库出图表；问公司政策，AI
-            自动检索文档给答案——无需技术背景，无需等人帮忙。
+            让业务人员也能自主获取数据洞察。上传 Excel 报表，AI 自动分析出图表；上传公司文档，AI
+            自动检索给答案——无需技术背景，无需等人帮忙。
           </p>
           <div
             data-hero="cta"
@@ -217,34 +217,34 @@ export default function LandingPage() {
             {/* Header */}
             <div className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-cyan-500">
               <h2 className="text-lg md:text-xl font-bold text-white">
-                📚 企业知识库，问了就有
+                上传文件，AI 即刻分析
               </h2>
               <p className="text-sm text-white/80 mt-1">
-                上传企业文档，AI 自动解析建库，对话中精准检索回答
+                知识文档 + 数据报表，两种能力一个平台搞定
               </p>
             </div>
             {/* Content */}
             <div className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 {
+                  icon: "📊",
+                  title: "Excel 报表分析",
+                  desc: "上传 Excel/CSV，AI 自动建表识别字段，对话即可查询统计",
+                },
+                {
                   icon: "📄",
-                  title: "多格式支持",
-                  desc: "PDF / Word / Markdown / TXT，拖拽即可上传",
+                  title: "知识文档检索",
+                  desc: "PDF / Word / Markdown，AI 自动解析向量化，精准回答知识问题",
                 },
                 {
-                  icon: "🧠",
-                  title: "AI 自动解析",
-                  desc: "智能切片、向量化，无需手动整理",
-                },
-                {
-                  icon: "🔍",
-                  title: "对话即检索",
-                  desc: "提问自动匹配最相关内容，标注来源出处",
+                  icon: "🎨",
+                  title: "智能图表生成",
+                  desc: "数据查询结果自动匹配最佳图表类型，趋势、对比、占比一目了然",
                 },
                 {
                   icon: "👥",
-                  title: "团队共享",
-                  desc: "新员工入职、制度咨询，不再到处找人问",
+                  title: "团队空间隔离",
+                  desc: "不同团队独立空间，数据和文档严格隔离，权限精细管控",
                 },
               ].map((item) => (
                 <div
@@ -300,7 +300,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10 md:mb-16" data-anim="heading">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">核心能力</h2>
-            <p className="text-slate-500">让数据查询变得像聊天一样简单</p>
+            <p className="text-slate-500">上传文件，提问即得答案</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map((f) => (
@@ -327,19 +327,19 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10 md:mb-16" data-anim="heading">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">怎么用？</h2>
-            <p className="text-slate-500">三步拿到你想要的数据</p>
+            <p className="text-slate-500">三步开始用 AI 分析数据</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
                 step: "01",
-                title: "直接提问",
-                desc: "用中文描述你想知道的内容，比如「上个月各部门销售额多少」",
+                title: "上传文件",
+                desc: "将 Excel 报表或企业文档拖拽上传，AI 自动识别内容结构",
               },
               {
                 step: "02",
-                title: "AI 自动处理",
-                desc: "AI 理解你的意图，自动查数据库或检索企业文档，无需你操心过程",
+                title: "用中文提问",
+                desc: "像和同事聊天一样描述你想知道的，比如「上月哪个产品销量最高」",
               },
               {
                 step: "03",
@@ -390,10 +390,10 @@ export default function LandingPage() {
                     自动图表
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
-                    秒级响应
+                    Excel 分析
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
-                    多端适配
+                    知识库
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
                     部署成本
@@ -423,10 +423,10 @@ export default function LandingPage() {
                       {c.autoViz ? "✅" : "❌"}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      {c.stream ? "✅" : "❌"}
+                      {c.excel ? "✅" : "❌"}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      {c.responsive ? "✅" : "❌"}
+                      {c.rag ? "✅" : "❌"}
                     </td>
                     <td className="px-4 py-4 text-center text-slate-500">
                       {c.deploy}
@@ -507,10 +507,10 @@ export default function LandingPage() {
       >
         <div className="max-w-3xl mx-auto text-center text-white">
           <h2 className="text-2xl md:text-3xl font-bold mb-4">
-            准备好告别 SQL 了吗？
+            上传文件，开始提问
           </h2>
           <p className="text-indigo-100 mb-8">
-            免费体验 QueryMind，让数据说人话。
+            免费体验 QueryMind，让数据和知识为你所用。
           </p>
           <Link
             href="/chat"
@@ -532,7 +532,7 @@ export default function LandingPage() {
             <a href="#pricing">定价</a>
           </div>
           <p className="text-xs text-slate-300">
-            © 2024 QueryMind. All rights reserved.
+            © 2025 QueryMind. All rights reserved.
           </p>
         </div>
       </footer>

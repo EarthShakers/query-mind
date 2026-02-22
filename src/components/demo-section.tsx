@@ -172,7 +172,7 @@ export default function DemoSection() {
                 在办公室，用对话代替写报表
               </h3>
               <p className="text-sm text-slate-400 mt-1">
-                问一句话，数据自动查、图表自动画
+                上传 Excel，问一句话，数据自动查、图表自动画
               </p>
             </div>
             <div
