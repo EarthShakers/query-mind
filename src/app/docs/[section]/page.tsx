@@ -201,7 +201,7 @@ function Permissions() {
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="px-4 py-2.5 text-slate-600">文件上传上限</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">2</td>
+              <td className="px-4 py-2.5 text-center text-slate-400">不可上传</td>
               <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
               <td className="px-4 py-2.5 text-center font-mono text-indigo-600">50</td>
             </tr>
@@ -213,13 +213,13 @@ function Permissions() {
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">上传频率（次/分钟）</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">3</td>
+              <td className="px-4 py-2.5 text-center text-slate-400">-</td>
               <td className="px-4 py-2.5 text-center font-mono text-indigo-600">3</td>
               <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">每日上传次数</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">4</td>
+              <td className="px-4 py-2.5 text-center text-slate-400">-</td>
               <td className="px-4 py-2.5 text-center font-mono text-indigo-600">20</td>
               <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100</td>
             </tr>

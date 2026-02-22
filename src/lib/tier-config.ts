@@ -35,13 +35,13 @@ export interface TierConfig {
 export const TIER_CONFIGS: Record<UserTier, TierConfig> = {
   anonymous: {
     label: "未注册用户",
-    maxFiles: 2,
+    maxFiles: 0,
     chatRatePerMinute: 10,
-    uploadRatePerMinute: 3,
-    uploadRatePerDay: 4,
+    uploadRatePerMinute: 0,
+    uploadRatePerDay: 0,
     maxInputLength: 100,
     dailyTokenBudget: 100_000,
-    upgradeHint: "注册账号可上传更多文件",
+    upgradeHint: "注册账号后可上传文件",
   },
   personal: {
     label: "个人用户",
