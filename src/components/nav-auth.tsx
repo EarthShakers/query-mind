@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 
 export function NavAuth() {
-  const { user, loading, logout, activeSpace, switchSpace } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -93,37 +93,7 @@ export function NavAuth() {
               {user.displayName || user.email.split("@")[0]}
             </p>
             <p className="text-xs text-slate-400 truncate">{user.email}</p>
-            {activeSpace && (
-              <p className="text-[10px] text-indigo-500 mt-1 truncate">
-                {activeSpace.spaceName}
-              </p>
-            )}
           </div>
-
-          {/* Space switcher */}
-          {user.spaces.length > 1 && (
-            <div className="px-3 py-2 border-b border-slate-100">
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">
-                切换空间
-              </p>
-              {user.spaces.map((s) => (
-                <button
-                  key={s.spaceId}
-                  onClick={() => {
-                    switchSpace(s.spaceId);
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-2 py-1 text-xs rounded transition-colors ${
-                    s.spaceId === user.activeSpaceId
-                      ? "bg-indigo-50 text-indigo-600 font-medium"
-                      : "text-slate-500 hover:bg-slate-50"
-                  }`}
-                >
-                  {s.spaceName}
-                </button>
-              ))}
-            </div>
-          )}
 
           <Link
             href="/profile"

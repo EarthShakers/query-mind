@@ -86,7 +86,7 @@ export async function POST(req: Request) {
           .from("spaces")
           .insert({
             tenant_id: DEMO_TENANT_ID,
-            name: `${userName} 的文档`,
+            name: `${userName} 的个人空间`,
             is_default: false,
           })
           .select("id, name")
