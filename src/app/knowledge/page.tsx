@@ -33,7 +33,6 @@ interface SpaceCard {
   spaceId: string;
   spaceName: string;
   role: "admin" | "editor" | "viewer" | null;
-  isPublic?: boolean;
   isDefault?: boolean;
   memberCount?: number;
 }
@@ -1319,6 +1318,34 @@ function SpaceDocuments({
           </div>
         </div>
 
+        {/* Register prompt for anonymous users */}
+        {!isLoggedIn && (
+          <div className="mt-1 flex items-center gap-2.5 px-4 py-3 rounded-xl bg-indigo-50 border border-indigo-100 text-sm text-indigo-700">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="shrink-0"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" x2="12" y1="8" y2="12" />
+              <line x1="12" x2="12.01" y1="16" y2="16" />
+            </svg>
+            <span>当前为预置文档（只读），注册后可上传自己的文档和报表。</span>
+            <Link
+              href="/register"
+              className="shrink-0 ml-auto px-3 py-1 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors"
+            >
+              免费注册
+            </Link>
+          </div>
+        )}
+
         {/* Tabs: 知识文档 / 数据报表 */}
         <div className="mt-5 flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
           <button
@@ -1774,41 +1801,24 @@ function SpaceDocuments({
   );
 }
 
+const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
+
 /* ─── Main Page ─── */
 export default function KnowledgePage() {
   const { user, loading: authLoading, refresh } = useAuth();
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
-  const [tempSpaceId, setTempSpaceId] = useState<string | null>(null);
-  const [tempLoading, setTempLoading] = useState(false);
-
-  // Fetch temp space for anonymous users
-  useEffect(() => {
-    if (!user && !authLoading) {
-      setTempLoading(true);
-      fetch("/api/temp-space")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data?.spaceId) setTempSpaceId(data.spaceId);
-        })
-        .catch(() => {})
-        .finally(() => setTempLoading(false));
-    }
-  }, [user, authLoading]);
 
   // Build space cards from user.spaces
   const spaceCards: SpaceCard[] = useMemo(() => {
-    // Unregistered user: show temp space
+    // Unregistered user: preset docs space, read-only
     if (!user) {
-      if (tempSpaceId) {
-        return [
-          {
-            spaceId: tempSpaceId,
-            spaceName: "体验空间",
-            role: "admin" as const,
-          },
-        ];
-      }
-      return [];
+      return [
+        {
+          spaceId: DEMO_SPACE_ID,
+          spaceName: "预置文档",
+          role: "viewer" as const,
+        },
+      ];
     }
 
     // Enterprise user: own spaces
@@ -1827,7 +1837,7 @@ export default function KnowledgePage() {
       spaceName: s.spaceName,
       role: s.role,
     }));
-  }, [user, tempSpaceId]);
+  }, [user]);
 
   const selectedSpace = useMemo(() => {
     if (!selectedSpaceId) return null;
@@ -1837,7 +1847,7 @@ export default function KnowledgePage() {
   // Determine if current user is admin (tenant admin)
   const isAdmin = user?.tenantRole === "admin";
 
-  if (authLoading || tempLoading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
         <Nav />

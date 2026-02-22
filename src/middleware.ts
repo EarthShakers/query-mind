@@ -98,18 +98,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Anonymous: inject temp space from cookie for API routes
-  const tempSpaceId = req.cookies.get("qm_temp_space")?.value;
-  if (tempSpaceId && pathname.startsWith("/api/")) {
-    const requestHeaders = new Headers(req.headers);
-    requestHeaders.set("x-active-space-id", tempSpaceId);
-    const rewriteRes = NextResponse.next({
-      request: { headers: requestHeaders },
-    });
-    applySecurityHeaders(rewriteRes);
-    return rewriteRes;
-  }
-
   return res;
 }
 

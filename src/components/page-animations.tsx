@@ -102,18 +102,14 @@ export default function PageAnimations() {
         },
       });
 
-      // Feature cards — stagger from different directions
+      // Feature cards — stagger from below
       const cards = gsap.utils.toArray(
         "[data-section='features'] [data-anim='card']"
       ) as HTMLElement[];
       cards.forEach((card, i) => {
-        const fromX = i % 3 === 0 ? -60 : i % 3 === 2 ? 60 : 0;
-        const fromY = i % 3 === 1 ? 60 : 40;
         gsap.from(card, {
-          x: fromX,
-          y: fromY,
+          y: 50,
           opacity: 0,
-          rotation: fromX ? (fromX > 0 ? 3 : -3) : 0,
           duration: 0.7,
           ease: "power3.out",
           scrollTrigger: {
@@ -229,7 +225,7 @@ export default function PageAnimations() {
       ) as HTMLElement[];
       rows.forEach((row, i) => {
         gsap.from(row, {
-          x: -40,
+          y: 20,
           opacity: 0,
           duration: 0.5,
           delay: i * 0.1,

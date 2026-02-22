@@ -167,7 +167,7 @@ function Permissions() {
             <tr>
               <td className="px-4 py-2.5 font-medium">未注册用户</td>
               <td className="px-4 py-2.5 text-slate-500"><code>user = null</code></td>
-              <td className="px-4 py-2.5 text-slate-500">临时体验空间（cookie 绑定，次日自动清理）</td>
+              <td className="px-4 py-2.5 text-slate-500">预置文档（只读，注册后可上传）</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">个人用户</td>
@@ -243,7 +243,7 @@ function Permissions() {
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">空间生命周期</td>
-              <td className="px-4 py-2.5 text-center text-slate-500">次日清理</td>
+              <td className="px-4 py-2.5 text-center text-slate-500">只读</td>
               <td className="px-4 py-2.5 text-center text-slate-500">永久</td>
               <td className="px-4 py-2.5 text-center text-slate-500">永久</td>
             </tr>

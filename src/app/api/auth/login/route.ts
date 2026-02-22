@@ -7,7 +7,6 @@ import {
   type SessionUser,
   type SpaceMembership,
 } from "@/lib/auth";
-import { buildClearTempSpaceCookie } from "@/lib/temp-space";
 
 export async function POST(req: Request) {
   try {
@@ -121,19 +120,9 @@ export async function POST(req: Request) {
 
     const token = await createToken(sessionUser);
 
-    // Clear temp space cookie on login + set session cookie
-    const setCookies = [
-      buildSessionCookie(token),
-      buildClearTempSpaceCookie(),
-    ];
-
     return Response.json(
       { user: sessionUser },
-      {
-        headers: {
-          "Set-Cookie": setCookies.join(", "),
-        },
-      }
+      { headers: { "Set-Cookie": buildSessionCookie(token) } }
     );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

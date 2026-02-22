@@ -117,7 +117,7 @@ export function getSpaceContext(req: Request): SpaceContext {
     userId: null,
     tenantId: DEMO_TENANT_ID,
     tenantRole: null,
-    activeSpaceId: activeSpaceId || null, // may come from temp space cookie via middleware
+    activeSpaceId: DEMO_SPACE_ID, // shared preset-only space for anonymous
     spaceRole: null,
   };
 }

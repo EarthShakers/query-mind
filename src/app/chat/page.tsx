@@ -889,25 +889,14 @@ function ChatUploadModal({
   );
 }
 
+const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
+
 /* ─── Main page ─── */
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const { user } = useAuth();
   const lastInput = useRef("");
-  const [tempSpaceId, setTempSpaceId] = useState<string | null>(null);
-
-  // Fetch temp space for anonymous users
-  useEffect(() => {
-    if (!user) {
-      fetch("/api/temp-space")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data?.spaceId) setTempSpaceId(data.spaceId);
-        })
-        .catch(() => {});
-    }
-  }, [user]);
 
   // Build available spaces list
   const availableSpaces = useMemo(() => {
@@ -917,12 +906,9 @@ export default function Page() {
         spaceName: s.spaceName,
       }));
     }
-    // Anonymous: show temp space
-    if (tempSpaceId) {
-      return [{ spaceId: tempSpaceId, spaceName: "体验空间" }];
-    }
-    return [];
-  }, [user, tempSpaceId]);
+    // Anonymous: show preset docs space (read-only)
+    return [{ spaceId: DEMO_SPACE_ID, spaceName: "预置文档" }];
+  }, [user]);
 
   // Default: all spaces selected
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<Set<string>>(

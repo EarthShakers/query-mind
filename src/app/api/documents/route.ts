@@ -2,7 +2,7 @@ import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
-import { getSpaceContext } from "@/lib/auth";
+import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
 import { checkFileLimit } from "@/lib/file-limits";
 import { fileTypeFromBuffer } from "file-type";
 
@@ -22,18 +22,11 @@ const MIME_MAP: Record<string, string[]> = {
 /**
  * Determine which space IDs to query based on user context:
  * - Enterprise member: only active space
- * - Personal user: personal space(s)
- * - Anonymous: temp space (if any)
+ * - Personal user: personal space
+ * - Anonymous: DEMO_SPACE_ID (preset docs, read-only)
  */
 function getReadableSpaceIds(ctx: ReturnType<typeof getSpaceContext>): string[] {
-  const { tenantRole, activeSpaceId } = ctx;
-
-  if (tenantRole) {
-    // Enterprise member: only their active space
-    return activeSpaceId ? [activeSpaceId] : [];
-  }
-
-  // Personal user or anonymous: use active space
+  const { activeSpaceId } = ctx;
   return activeSpaceId ? [activeSpaceId] : [];
 }
 
@@ -44,23 +37,13 @@ export async function GET(req: Request) {
     const explicitSpaceId = url.searchParams.get("spaceId");
     const ctx = getSpaceContext(req);
 
-    // If an explicit spaceId is provided, verify the user has access to it
     let spaceIds: string[];
     if (explicitSpaceId) {
-      const readableIds = getReadableSpaceIds(ctx);
-      // Enterprise users: allow if they belong to the space (check via user spaces header)
-      // or if it matches their readable spaces
-      // For simplicity, trust the spaceId if user is authenticated
       if (ctx.userId) {
         spaceIds = [explicitSpaceId];
       } else {
-        // Anonymous: allow only their temp space
-        const tempSpaceId = ctx.activeSpaceId;
-        if (tempSpaceId && explicitSpaceId === tempSpaceId) {
-          spaceIds = [explicitSpaceId];
-        } else {
-          spaceIds = [];
-        }
+        // Anonymous: only allow DEMO_SPACE_ID
+        spaceIds = explicitSpaceId === DEMO_SPACE_ID ? [DEMO_SPACE_ID] : [];
       }
     } else {
       spaceIds = getReadableSpaceIds(ctx);
@@ -128,7 +111,11 @@ export async function POST(req: Request) {
     if (rateLimited) return rateLimited;
 
     const ctx = getSpaceContext(req);
-    const { activeSpaceId, tenantId, spaceRole, tenantRole } = ctx;
+    const { userId, activeSpaceId, tenantId, spaceRole, tenantRole } = ctx;
+
+    if (!userId) {
+      return Response.json({ error: "请先注册或登录后再上传文件" }, { status: 401 });
+    }
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
