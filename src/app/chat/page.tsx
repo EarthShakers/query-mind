@@ -9,21 +9,17 @@ import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
 
 const QUICK_QUESTIONS = [
-  { icon: "👥", text: "显示所有员工及其部门" },
-  { icon: "💰", text: "各部门平均薪资对比" },
-  { icon: "📊", text: "各产品月度销售额趋势" },
-  { icon: "🌍", text: "各区域销售额占比" },
-  { icon: "📉", text: "各部门每月支出对比" },
-  { icon: "🏆", text: "销售额最高的员工排名" },
-  { icon: "👫", text: "男女员工薪资分布对比" },
-  { icon: "📢", text: "市场部广告投放费用变化" },
-  { icon: "🏢", text: "各部门预算与实际支出对比" },
-  { icon: "📦", text: "各产品销量排行榜" },
-  { icon: "🗓️", text: "每月新入职员工数量趋势" },
-  { icon: "💵", text: "各成本类型支出占比" },
+  { icon: "📋", text: "公司的报销流程是什么" },
+  { icon: "🏖️", text: "年假有多少天，怎么申请" },
+  { icon: "📖", text: "新员工入职需要准备什么" },
+  { icon: "❓", text: "常见问题有哪些" },
+  { icon: "📊", text: "帮我分析上传的数据表" },
+  { icon: "📈", text: "用图表展示数据趋势" },
+  { icon: "🔍", text: "对比各类别的数据占比" },
+  { icon: "📑", text: "产品使用指南" },
 ];
 
-const DEMO_HINT = "以下为内置示例数据的快捷提问，你也可以去知识库上传自己的 Excel 报表进行分析";
+const SIDEBAR_HINT = "以下为快捷提问示例，你也可以上传自己的文档和 Excel 报表进行分析";
 
 /* ─── types ─── */
 interface Turn {
@@ -47,7 +43,7 @@ function groupTurns(messages: any[]): Turn[] {
 }
 
 const TOOL_LABELS: Record<string, string> = {
-  execute_query: "查询数据库",
+  execute_query: "查询数据",
   show_chart: "生成图表",
   suggest_chart: "分析图表选项",
   search_knowledge: "搜索知识库",
@@ -121,13 +117,8 @@ function ThinkingDetails({
               <span className="text-slate-500">
                 {TOOL_LABELS[tool.toolName]}
               </span>
-              {tool.result.sql && (
-                <pre className="p-2 bg-slate-50 rounded text-[11px] text-slate-500 overflow-x-auto">
-                  {tool.result.sql}
-                </pre>
-              )}
               {tool.result.data?.length > 0 && (
-                <SqlResult sql={tool.result.sql} data={tool.result.data} />
+                <SqlResult data={tool.result.data} />
               )}
             </div>
           );
@@ -141,11 +132,6 @@ function ThinkingDetails({
               <span className="text-slate-500">
                 {TOOL_LABELS[tool.toolName]}
               </span>
-              {tool.result.sql && (
-                <pre className="mt-1 p-2 bg-slate-50 rounded text-[11px] text-slate-500 overflow-x-auto">
-                  {tool.result.sql}
-                </pre>
-              )}
             </div>
           );
         }
@@ -273,7 +259,6 @@ function ChartBubble({ tool, onReady }: { tool: any; onReady: () => void }) {
           </div>
         ) : (
           <ChartResult
-            sql={tool.result.sql}
             data={tool.result.data}
             chartType={tool.result.chartType}
             xKey={tool.result.xKey}
@@ -464,7 +449,6 @@ function AssistantTurn({
           {directCharts.map((tool) => (
             <ChartResult
               key={tool.toolCallId}
-              sql={tool.result.sql}
               data={tool.result.data}
               chartType={tool.result.chartType}
               xKey={tool.result.xKey}
@@ -1004,7 +988,7 @@ export default function Page() {
         <div className="px-4 pt-3 pb-1">
           <span className="text-sm font-semibold text-slate-700">快捷提问</span>
           <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-            {DEMO_HINT}
+            {SIDEBAR_HINT}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -1073,7 +1057,7 @@ export default function Page() {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-slate-700">AI 智能问答</p>
             <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
-              自然语言查询数据 · 搜索知识库 · 自动生成图表
+              搜索知识库 · 分析数据报表 · 自动生成图表
             </p>
           </div>
           <SpacePicker
@@ -1162,7 +1146,7 @@ export default function Page() {
             <input
               value={input}
               onChange={handleInputChange}
-              placeholder="输入你想查询的数据..."
+              placeholder="输入你想问的问题..."
               className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 md:px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm placeholder:text-slate-300"
             />
             <button

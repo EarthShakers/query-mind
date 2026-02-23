@@ -22,9 +22,8 @@ function pivot(
 }
 
 export function ChartResult({
-  sql, data, chartType, xKey, yKey, groupKey,
+  data, chartType, xKey, yKey, groupKey,
 }: {
-  sql: string;
   data: Record<string, unknown>[];
   chartType: 'bar' | 'line' | 'pie';
   xKey: string;
@@ -40,12 +39,6 @@ export function ChartResult({
 
   return (
     <div className="space-y-3 mt-3">
-      <details className="group">
-        <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 transition-colors">
-          查看 SQL ▸
-        </summary>
-        <pre className="mt-2 bg-slate-900 text-emerald-400 p-3 rounded-lg text-xs overflow-x-auto font-mono leading-relaxed">{sql}</pre>
-      </details>
       <div className="h-56 md:h-72 bg-slate-50/50 rounded-lg border border-slate-200 p-2 md:p-3">
         <ResponsiveContainer width="100%" height="100%">
           {chartType === 'bar' ? (

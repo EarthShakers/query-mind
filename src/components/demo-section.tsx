@@ -225,7 +225,7 @@ export default function DemoSection() {
                       </div>
                     </div>
                     <p className="text-xs text-slate-300" data-anim="extra">
-                      查看 SQL ▸
+                      查看详情 ▸
                     </p>
                   </div>
                 </div>
