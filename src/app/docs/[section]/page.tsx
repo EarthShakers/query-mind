@@ -65,9 +65,9 @@ function Architecture() {
       <pre className="not-prose overflow-x-auto">
         <code>{`用户输入 → useChat (流式) → POST /api/chat → streamText + Zod Tools → AI 模型
                                                       ↓
-                                           execute_query / show_chart
+                                           execute_query / show_chart / search_knowledge
                                                       ↓
-                                           SQLite 执行 → 结果回传
+                                           PostgreSQL 查询 / RAG 搜索 → 结果回传
                                                       ↓
                                 客户端根据 toolName 渲染 <SqlResult> / <ChartResult>`}</code>
       </pre>
@@ -77,12 +77,19 @@ function Architecture() {
 ├── app/
 │   ├── page.tsx              # 产品首页
 │   ├── chat/page.tsx         # AI 查询界面
+│   ├── knowledge/page.tsx    # 知识库管理
 │   ├── docs/page.tsx         # 技术文档
 │   ├── api/chat/route.ts     # AI API Route（核心）
+│   ├── api/documents/        # 文档上传 API
+│   ├── api/data-tables/      # 数据报表 API
 │   ├── layout.tsx
 │   └── globals.css
 ├── lib/
-│   └── db.ts                 # SQLite 内存数据库 + Schema
+│   ├── prompt.ts             # AI 系统提示词
+│   ├── pg.ts                 # PostgreSQL 查询
+│   ├── rag.ts                # RAG 向量搜索
+│   ├── excel-parser.ts       # Excel/CSV 解析
+│   └── tier-config.ts        # 用户权益配置
 └── components/
     ├── sql-result.tsx         # 表格组件
     └── chart-result.tsx       # 图表组件（Recharts）`}</code>
@@ -335,11 +342,12 @@ function GenerativeUI() {
       <pre className="not-prose overflow-x-auto">
         <code>{`AI 判断意图
 ├── 需要数据列表 → 调用 execute_query → 前端渲染 <SqlResult>
-└── 需要可视化   → 调用 show_chart    → 前端渲染 <ChartResult>`}</code>
+├── 需要可视化   → 调用 show_chart    → 前端渲染 <ChartResult>
+└── 知识性问题   → 调用 search_knowledge → 文字回答`}</code>
       </pre>
       <p>
         <strong>关键点：UI 由 AI 决定，而非前端硬编码。</strong>
-        同一句话"各部门薪资"，AI 可能选表格也可能选柱状图，这就是 Generative UI
+        同一句话，AI 可能选表格也可能选柱状图，这就是 Generative UI
         的核心。
       </p>
       <h3>客户端渲染逻辑</h3>
@@ -347,7 +355,7 @@ function GenerativeUI() {
         <code>{`// 根据 tool 调用结果渲染不同组件
 {message.toolInvocations?.map((tool) => {
   if (tool.toolName === "execute_query")
-    return <SqlResult sql={tool.result.sql} data={tool.result.data} />;
+    return <SqlResult data={tool.result.data} />;
   if (tool.toolName === "show_chart")
     return <ChartResult {...tool.result} />;
 })}`}</code>
@@ -372,7 +380,7 @@ function StructuredOutput() {
 
 // show_chart tool 的参数约束
 parameters: z.object({
-  sql: z.string().describe("The SQLite query"),
+  sql: z.string().describe("The SQL query"),
   chartType: z.enum(["bar", "line", "pie"]),  // 只能是这三个值
   xKey: z.string(),
   yKey: z.string(),
@@ -658,75 +666,18 @@ async function searchDocuments(query: string, topK = 5) {
 function Database() {
   return (
     <>
-      <h2>数据库</h2>
+      <h2>数据存储</h2>
+      <h3>知识文档</h3>
       <p>
-        使用内存 SQLite（<code>better-sqlite3</code>），包含 5 张预置数据表：
+        上传的文档（PDF、Word、Markdown、TXT）经过分块处理后，
+        使用 <code>text-embedding-v3</code> 生成向量，存储在 Supabase 的 <code>documents</code> 表中，
+        通过 pgvector 进行语义搜索。
       </p>
-      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                表名
-              </th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                字段
-              </th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">
-                数据量
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            <tr>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">
-                departments
-              </td>
-              <td className="px-4 py-2.5 text-slate-500">
-                id, name, manager_id, budget, location
-              </td>
-              <td className="px-4 py-2.5">6</td>
-            </tr>
-            <tr>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">
-                employees
-              </td>
-              <td className="px-4 py-2.5 text-slate-500">
-                id, name, department_id, title, salary, hire_date, gender
-              </td>
-              <td className="px-4 py-2.5">20</td>
-            </tr>
-            <tr>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">
-                products
-              </td>
-              <td className="px-4 py-2.5 text-slate-500">
-                id, name, category, unit_price
-              </td>
-              <td className="px-4 py-2.5">5</td>
-            </tr>
-            <tr>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">sales</td>
-              <td className="px-4 py-2.5 text-slate-500">
-                id, product_id, employee_id, quantity, amount, sale_date, region
-              </td>
-              <td className="px-4 py-2.5">33</td>
-            </tr>
-            <tr>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">
-                expenses
-              </td>
-              <td className="px-4 py-2.5 text-slate-500">
-                id, department_id, category, amount, month, description
-              </td>
-              <td className="px-4 py-2.5">30</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <h3>数据报表</h3>
       <p>
-        生产环境可替换为 MySQL / PostgreSQL，只需修改 <code>db.ts</code>{" "}
-        中的连接配置。
+        上传的 Excel/CSV 文件会自动解析并在 PostgreSQL 中创建对应的数据表（表名以 <code>ud_</code> 开头），
+        表结构和列信息存储在 <code>data_tables</code> 和 <code>data_columns</code> 元数据表中。
+        AI 会根据表结构自动生成查询语句来分析数据。
       </p>
     </>
   );
@@ -781,7 +732,7 @@ Content-Type: application/json
                 execute_query
               </td>
               <td className="px-4 py-2.5 text-slate-500">sql: string</td>
-              <td className="px-4 py-2.5">执行 SQL，返回表格数据</td>
+              <td className="px-4 py-2.5">查询用户上传的数据表，返回表格数据</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">
@@ -790,7 +741,14 @@ Content-Type: application/json
               <td className="px-4 py-2.5 text-slate-500">
                 sql, chartType, xKey, yKey, groupKey?
               </td>
-              <td className="px-4 py-2.5">执行 SQL，返回图表数据</td>
+              <td className="px-4 py-2.5">查询数据并返回图表</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">
+                search_knowledge
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">query: string</td>
+              <td className="px-4 py-2.5">搜索知识库文档</td>
             </tr>
           </tbody>
         </table>
