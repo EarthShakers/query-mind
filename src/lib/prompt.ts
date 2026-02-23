@@ -1,4 +1,7 @@
-export function buildSystemPrompt(userSchemaStr?: string) {
+export function buildSystemPrompt(
+  userSchemaStr?: string,
+  existingSections?: { section_id: string; sort_order: number; title?: string; content_type: string }[]
+) {
   const hasUserTables = !!userSchemaStr;
 
   const schemaSection = hasUserTables
@@ -8,7 +11,7 @@ ${userSchemaStr}
 重要：表名以 ud_ 开头，查询时使用标准 PostgreSQL 语法。`
     : "";
 
-  return `你是一个智能助手，能搜索知识库回答问题，也能查询用户上传的数据表进行分析。
+  const base = `你是一个智能助手，能搜索知识库回答问题，也能查询用户上传的数据表进行分析。
 
 ${schemaSection}
 
@@ -62,4 +65,36 @@ ${hasUserTables ? "" : "- 注意：当前没有可查询的数据表，如果用
 - **最多重试 2 次**。如果两次修正后仍然报错，停止重试，直接用文字向用户说明查询失败的原因
 
 请根据问题性质选择最合适的工具。数据问题用查询工具，知识问题用 search_knowledge。`;
+
+  // Append report mode instructions when existingSections is provided
+  if (existingSections !== undefined) {
+    const sectionContext = existingSections.length
+      ? `\n当前报告已有以下章节：\n${existingSections
+          .map((s) => `- section_id="${s.section_id}" sort_order=${s.sort_order} title="${s.title || "无标题"}" type=${s.content_type}`)
+          .join("\n")}\n要修改某个章节，使用相同的 section_id 调用 write_report_section。`
+      : "";
+
+    return `${base}
+
+你现在处于**报告生成模式**。用户会要求你生成或修改一份数据分析报告。
+
+**报告撰写规则：**
+- 使用 write_report_section 工具来写报告的每个章节
+- 每个章节都需要一个唯一的 section_id（如 "intro", "s1", "chart-1"）
+- 使用 sort_order 控制章节顺序（1, 2, 3...）
+- 文字内容用 content_type: "markdown"，图表用 "chart"，数据表用 "table"
+- 先用 search_knowledge 或 execute_query 获取数据，然后用 write_report_section 写入报告
+- 每次调用 write_report_section 时，报告画布会实时更新
+- 修改已有章节时，复用原来的 section_id，画布会自动替换该章节内容
+- 不要在报告中使用 suggest_chart 和 show_chart，统一用 write_report_section
+${sectionContext}
+
+**工作流程：**
+1. 理解用户的报告需求
+2. 查询数据 / 搜索知识库获取素材
+3. 逐章节调用 write_report_section 生成报告
+4. 在对话中简要说明你写了什么`;
+  }
+
+  return base;
 }

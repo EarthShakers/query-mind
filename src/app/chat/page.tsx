@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, type RefObject } from "react";
 import Link from "next/link";
 import { useChat } from "ai/react";
 import { SqlResult } from "@/components/sql-result";
 import { ChartResult } from "@/components/chart-result";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
+import { useReport } from "@/hooks/use-report";
+import { ReportCanvas } from "@/components/report-canvas";
+import type { ReportSection } from "@/lib/report-types";
 
 const QUICK_QUESTIONS = [
   { icon: "📋", text: "公司的报销流程是什么" },
@@ -47,6 +50,7 @@ const TOOL_LABELS: Record<string, string> = {
   show_chart: "生成图表",
   suggest_chart: "分析图表选项",
   search_knowledge: "搜索知识库",
+  write_report_section: "写入报告",
 };
 
 const CHART_TYPE_LABELS: Record<string, string> = {
@@ -167,6 +171,18 @@ function ThinkingDetails({
                   ))}
                 </div>
               )}
+            </div>
+          );
+        }
+        if (tool.toolName === "write_report_section") {
+          return (
+            <div key={tool.toolCallId} className="py-0.5">
+              <span className="text-slate-500">
+                写入报告：{tool.result.title || tool.result.section_id}
+              </span>
+              <span className="text-slate-300 ml-1">
+                — {tool.result.content_type === "chart" ? "图表" : tool.result.content_type === "table" ? "数据表" : "文字"}
+              </span>
             </div>
           );
         }
@@ -294,6 +310,7 @@ function AssistantTurn({
   // premature "已深度思考" flicker.
   const { thinkingTexts, finalText } = useMemo(() => {
     const thinking: string[] = [];
+    const seen = new Set<string>();
     let answer = "";
     for (let i = 0; i < assistantMessages.length; i++) {
       const m = assistantMessages[i];
@@ -301,8 +318,11 @@ function AssistantTurn({
       if (!text) continue;
       const isLastMsg = i === assistantMessages.length - 1;
       if (m.toolInvocations?.length > 0) {
-        // Message has tool calls → always thinking
-        thinking.push(text);
+        // Message has tool calls → always thinking (deduplicate)
+        if (!seen.has(text)) {
+          seen.add(text);
+          thinking.push(text);
+        }
       } else if (isLastMsg && isStreaming) {
         // Last message while still streaming — tool calls may still arrive,
         // so don't classify as answer yet
@@ -875,6 +895,100 @@ function ChatUploadModal({
 
 const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
 
+/* ─── Export Dropdown ─── */
+function ExportDropdown({
+  canvasRef,
+  title,
+  sections,
+}: {
+  canvasRef: RefObject<HTMLDivElement | null>;
+  title: string;
+  sections: import("@/lib/report-types").ReportSection[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  async function handleExportPdf() {
+    if (!canvasRef.current) return;
+    setExporting(true);
+    setOpen(false);
+    try {
+      const { exportToPdf } = await import("@/lib/export-pdf");
+      await exportToPdf(canvasRef.current, title);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleExportWord() {
+    setExporting(true);
+    setOpen(false);
+    try {
+      const { exportToWord } = await import("@/lib/export-word");
+      await exportToWord(title, sections);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={exporting}
+        className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" x2="12" y1="15" y2="3" />
+        </svg>
+        {exporting ? "导出中..." : "导出"}
+        {!exporting && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${open ? "rotate-180" : ""}`}>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        )}
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 mt-1.5 w-36 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50">
+          <button
+            onClick={handleExportPdf}
+            className="w-full flex items-center gap-2 px-4 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            导出 PDF
+          </button>
+          <button
+            onClick={handleExportWord}
+            className="w-full flex items-center gap-2 px-4 py-2 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+              <polyline points="14 2 14 8 20 8" />
+              <path d="M16 13H8" />
+              <path d="M16 17H8" />
+            </svg>
+            导出 Word
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main page ─── */
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -882,16 +996,25 @@ export default function Page() {
   const { user } = useAuth();
   const lastInput = useRef("");
 
-  // Build available spaces list
+  // ── Report / Canvas state ──
+  const [reportId, setReportId] = useState<string | null>(null);
+  const report = useReport(reportId);
+  const creatingReport = useRef(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Build available spaces list (always include demo space for preset docs)
   const availableSpaces = useMemo(() => {
+    const demo = { spaceId: DEMO_SPACE_ID, spaceName: "预置文档" };
     if (user) {
-      return user.spaces.map((s) => ({
+      const userSpaces = user.spaces.map((s) => ({
         spaceId: s.spaceId,
         spaceName: s.spaceName,
       }));
+      // Avoid duplicate if user already belongs to demo space
+      const hasDemoSpace = userSpaces.some((s) => s.spaceId === DEMO_SPACE_ID);
+      return hasDemoSpace ? userSpaces : [demo, ...userSpaces];
     }
-    // Anonymous: show preset docs space (read-only)
-    return [{ spaceId: DEMO_SPACE_ID, spaceName: "预置文档" }];
+    return [demo];
   }, [user]);
 
   // Default: all spaces selected
@@ -916,6 +1039,7 @@ export default function Page() {
   } = useChat({
     body: {
       spaceIds: [...selectedSpaceIds],
+      reportId,
     },
     onError: () => {
       setInput(lastInput.current);
@@ -924,6 +1048,46 @@ export default function Page() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
   const turns = useMemo(() => groupTurns(messages), [messages]);
+
+  // ── Sync write_report_section tool results into Canvas ──
+  useEffect(() => {
+    const sectionResults: ReportSection[] = [];
+    for (const m of messages) {
+      if (m.role !== "assistant") continue;
+      for (const tool of ((m as any).toolInvocations ?? []) as any[]) {
+        if (
+          tool.toolName === "write_report_section" &&
+          tool.state === "result" &&
+          !tool.result?.error
+        ) {
+          sectionResults.push(tool.result as ReportSection);
+        }
+      }
+    }
+    for (const s of sectionResults) {
+      report.upsertSection(s);
+    }
+
+    // Auto-create report on first write_report_section result
+    if (sectionResults.length > 0 && !reportId && !creatingReport.current) {
+      creatingReport.current = true;
+      fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "AI 生成报告", spaceId: [...selectedSpaceIds][0] }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.id) setReportId(data.id);
+        })
+        .catch(() => {})
+        .finally(() => {
+          creatingReport.current = false;
+        });
+    }
+  }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasCanvas = report.sections.length > 0;
 
   const scrollToBottom = useCallback(() => {
     if (userScrolledUp.current) return;
@@ -1030,6 +1194,33 @@ export default function Page() {
             </svg>
             知识库管理
           </Link>
+          <button
+            onClick={() => {
+              userScrolledUp.current = false;
+              append({ role: "user", content: "帮我生成一份数据分析报告" });
+              setSidebarOpen(false);
+            }}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+              <polyline points="14 2 14 8 20 8" />
+              <path d="M16 13H8" />
+              <path d="M16 17H8" />
+              <path d="M10 9H8" />
+            </svg>
+            生成报告
+          </button>
         </div>
       </aside>
 
@@ -1055,11 +1246,36 @@ export default function Page() {
             </svg>
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-700">AI 智能问答</p>
+            <p className="text-sm font-medium text-slate-700">
+              {hasCanvas ? report.title : "AI 智能问答"}
+            </p>
             <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
-              搜索知识库 · 分析数据报表 · 自动生成图表
+              {hasCanvas
+                ? "报告生成中 · 在左侧对话中继续修改"
+                : "搜索知识库 · 分析数据报表 · 自动生成图表"}
             </p>
           </div>
+          {hasCanvas && (
+            <>
+            <button
+              onClick={() => report.save()}
+              disabled={report.saving || !reportId}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              {report.saving ? "保存中..." : "保存报告"}
+            </button>
+            <ExportDropdown
+              canvasRef={canvasRef}
+              title={report.title}
+              sections={report.sections}
+            />
+          </>
+          )}
           <SpacePicker
             spaces={availableSpaces}
             selected={selectedSpaceIds}
@@ -1067,102 +1283,119 @@ export default function Page() {
           />
         </header>
 
-        <div
-          ref={scrollRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4"
-        >
-          {messages.length === 0 && !isLoading && (
-            <div className="flex items-center justify-center h-full text-slate-300">
-              <div className="text-center">
-                <p className="text-4xl mb-3">🔍</p>
-                <p className="text-sm">
-                  在下方输入问题，或点击左侧快捷提问开始
-                </p>
+        <div className={`flex-1 flex min-h-0 ${hasCanvas ? "flex-row" : "flex-col"}`}>
+          {/* ── Chat area ── */}
+          <div className={`flex flex-col min-h-0 ${hasCanvas ? "w-[40%] border-r border-slate-200" : "flex-1"}`}>
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4"
+            >
+              {messages.length === 0 && !isLoading && (
+                <div className="flex items-center justify-center h-full text-slate-300">
+                  <div className="text-center">
+                    <p className="text-4xl mb-3">🔍</p>
+                    <p className="text-sm">
+                      在下方输入问题，或点击左侧快捷提问开始
+                    </p>
+                    <button
+                      onClick={() => setUploadOpen(true)}
+                      className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 shadow-sm hover:shadow-md transition-all"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" x2="12" y1="3" y2="15" />
+                      </svg>
+                      上传文件到知识库
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {turns.map((turn, turnIdx) => {
+                const isLastTurn = turnIdx === turns.length - 1;
+                return (
+                  <div key={turn.id} className="space-y-4">
+                    <div className="flex justify-end">
+                      <div className="max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl rounded-tr-sm bg-indigo-500 text-white text-sm shadow-sm">
+                        {turn.userContent}
+                      </div>
+                    </div>
+                    <AssistantTurn
+                      assistantMessages={turn.assistantMessages}
+                      isStreaming={isLastTurn && isLoading}
+                      onScrollNeeded={scrollToBottom}
+                    />
+                  </div>
+                );
+              })}
+
+              {error && (
+                <div className="flex justify-start">
+                  <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 text-sm">
+                    {error.message || "请求失败，请重试"}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-t border-slate-200 bg-white/60 backdrop-blur">
+              <form
+                onSubmit={(e) => {
+                  lastInput.current = input;
+                  userScrolledUp.current = false;
+                  handleSubmit(e);
+                }}
+                className="flex gap-2 md:gap-3 max-w-3xl mx-auto items-center"
+              >
                 <button
+                  type="button"
                   onClick={() => setUploadOpen(true)}
-                  className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 shadow-sm hover:shadow-md transition-all"
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
+                  title="上传文件到知识库"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <polyline points="17 8 12 3 7 8" />
                     <line x1="12" x2="12" y1="3" y2="15" />
                   </svg>
-                  上传文件到知识库
+                  <span className="hidden sm:inline">上传文件到知识库</span>
                 </button>
-              </div>
-            </div>
-          )}
-
-          {turns.map((turn, turnIdx) => {
-            const isLastTurn = turnIdx === turns.length - 1;
-            return (
-              <div key={turn.id} className="space-y-4">
-                <div className="flex justify-end">
-                  <div className="max-w-[85%] md:max-w-[70%] px-4 py-3 rounded-2xl rounded-tr-sm bg-indigo-500 text-white text-sm shadow-sm">
-                    {turn.userContent}
-                  </div>
-                </div>
-                <AssistantTurn
-                  assistantMessages={turn.assistantMessages}
-                  isStreaming={isLastTurn && isLoading}
-                  onScrollNeeded={scrollToBottom}
+                <input
+                  value={input}
+                  onChange={handleInputChange}
+                  placeholder="输入你想问的问题..."
+                  className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 md:px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm placeholder:text-slate-300"
                 />
-              </div>
-            );
-          })}
+                <button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  className="shrink-0 px-4 md:px-5 py-3 bg-indigo-500 text-white text-sm font-medium rounded-xl hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                >
+                  发送
+                </button>
+              </form>
+            </div>
+          </div>
 
-          {error && (
-            <div className="flex justify-start">
-              <div className="px-4 py-3 rounded-2xl bg-red-50 border border-red-200 text-red-500 text-sm">
-                {error.message || "请求失败，请重试"}
-              </div>
+          {/* ── Canvas area (right panel) ── */}
+          {hasCanvas && (
+            <div className="w-[60%] flex flex-col min-h-0">
+              <ReportCanvas
+                ref={canvasRef}
+                sections={report.sections}
+                title={report.title}
+                isStreaming={isLoading}
+              />
             </div>
           )}
-        </div>
-
-        <div className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-t border-slate-200 bg-white/60 backdrop-blur">
-          <form
-            onSubmit={(e) => {
-              lastInput.current = input;
-              userScrolledUp.current = false;
-              handleSubmit(e);
-            }}
-            className="flex gap-2 md:gap-3 max-w-3xl mx-auto items-center"
-          >
-            <button
-              type="button"
-              onClick={() => setUploadOpen(true)}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
-              title="上传文件到知识库"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" x2="12" y1="3" y2="15" />
-              </svg>
-              <span className="hidden sm:inline">上传文件到知识库</span>
-            </button>
-            <input
-              value={input}
-              onChange={handleInputChange}
-              placeholder="输入你想问的问题..."
-              className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 md:px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm placeholder:text-slate-300"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className="shrink-0 px-4 md:px-5 py-3 bg-indigo-500 text-white text-sm font-medium rounded-xl hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              发送
-            </button>
-          </form>
         </div>
       </main>
 
       {uploadOpen && (
         <ChatUploadModal
-          spaces={availableSpaces}
+          spaces={availableSpaces.filter((s) => s.spaceId !== DEMO_SPACE_ID)}
           onClose={() => setUploadOpen(false)}
           onUploaded={() => {}}
         />

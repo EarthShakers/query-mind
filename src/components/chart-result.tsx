@@ -21,6 +21,21 @@ function pivot(
   return { pivoted: [...map.values()], groups };
 }
 
+/** Convert numeric-looking string values to actual numbers so Recharts can render them */
+function coerceNumbers(data: Record<string, unknown>[]): Record<string, unknown>[] {
+  return data.map((row) => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (typeof v === "string" && v !== "" && !isNaN(Number(v))) {
+        out[k] = Number(v);
+      } else {
+        out[k] = v;
+      }
+    }
+    return out;
+  });
+}
+
 export function ChartResult({
   data, chartType, xKey, yKey, groupKey,
 }: {
@@ -30,10 +45,12 @@ export function ChartResult({
   yKey: string;
   groupKey?: string;
 }) {
+  const coerced = useMemo(() => coerceNumbers(data), [data]);
+
   const { pivoted, groups } = useMemo(() => {
-    if (groupKey) return pivot(data, xKey, yKey, groupKey);
-    return { pivoted: data, groups: [] as string[] };
-  }, [data, xKey, yKey, groupKey]);
+    if (groupKey) return pivot(coerced, xKey, yKey, groupKey);
+    return { pivoted: coerced, groups: [] as string[] };
+  }, [coerced, xKey, yKey, groupKey]);
 
   const hasGroups = groups.length > 0;
 

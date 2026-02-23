@@ -1810,33 +1810,27 @@ export default function KnowledgePage() {
 
   // Build space cards from user.spaces
   const spaceCards: SpaceCard[] = useMemo(() => {
+    const demoSpace: SpaceCard = {
+      spaceId: DEMO_SPACE_ID,
+      spaceName: "预置文档",
+      role: "viewer" as const,
+    };
+
     // Unregistered user: preset docs space, read-only
     if (!user) {
-      return [
-        {
-          spaceId: DEMO_SPACE_ID,
-          spaceName: "预置文档",
-          role: "viewer" as const,
-        },
-      ];
+      return [demoSpace];
     }
 
-    // Enterprise user: own spaces
-    if (user.tenantRole) {
-      return user.spaces.map((s) => ({
-        spaceId: s.spaceId,
-        spaceName: s.spaceName,
-        role: s.role,
-        isDefault: s.isDefault,
-      }));
-    }
-
-    // Personal user: personal space(s)
-    return user.spaces.map((s) => ({
+    const userSpaces = user.spaces.map((s) => ({
       spaceId: s.spaceId,
       spaceName: s.spaceName,
       role: s.role,
+      isDefault: s.isDefault,
     }));
+
+    // Always include demo space if user doesn't already belong to it
+    const hasDemoSpace = userSpaces.some((s) => s.spaceId === DEMO_SPACE_ID);
+    return hasDemoSpace ? userSpaces : [demoSpace, ...userSpaces];
   }, [user]);
 
   const selectedSpace = useMemo(() => {

@@ -6,6 +6,7 @@ import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
 import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import {
   checkRateLimit,
   checkDailyBudget,
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
   const blocked = (await checkRateLimit(req)) ?? (await checkDailyBudget());
   if (blocked) return blocked;
 
-  const { messages, spaceIds: clientSpaceIds } = await req.json();
+  const { messages, spaceIds: clientSpaceIds, reportId } = await req.json();
 
   const lastMsg = messages[messages.length - 1]?.content ?? "";
   const inputBlocked = checkInputLength(lastMsg);
@@ -84,16 +85,32 @@ export async function POST(req: Request) {
     // If DATABASE_URL is not configured, skip user tables
   }
 
+  // Load existing report sections for context (when in report mode)
+  let existingSections: { section_id: string; sort_order: number; title?: string; content_type: string }[] | undefined;
+  if (reportId) {
+    const { data } = await supabase
+      .from("report_sections")
+      .select("section_id, sort_order, title, content_type")
+      .eq("report_id", reportId)
+      .order("sort_order");
+    if (data && data.length > 0) {
+      existingSections = data;
+    } else {
+      // reportId exists but no sections yet — still activate report mode
+      existingSections = [];
+    }
+  }
+
   // ── AI 流式调用 ──
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), 30000);
+  const timeout = setTimeout(() => abortController.abort(), reportId ? 120000 : 60000);
 
   try {
     const result = await streamText({
       model: dashscope("deepseek-v3.2-exp"),
       abortSignal: abortController.signal,
-      maxSteps: 5,
-      system: buildSystemPrompt(userSchemaStr),
+      maxSteps: reportId ? 10 : 5,
+      system: buildSystemPrompt(userSchemaStr, existingSections),
       messages: sanitizeMessages(messages),
       tools: {
         execute_query: {
@@ -184,6 +201,99 @@ export async function POST(req: Request) {
                 error: msg,
               };
             }
+          },
+        },
+        write_report_section: {
+          description:
+            "写入或更新报告的一个章节。每个章节调用一次。修改已有章节时复用相同 section_id。",
+          parameters: z.object({
+            section_id: z
+              .string()
+              .describe('章节唯一标识，如 "intro", "s1", "chart-revenue"'),
+            sort_order: z
+              .number()
+              .describe("章节排序位置，1, 2, 3..."),
+            title: z
+              .string()
+              .optional()
+              .describe("章节标题，可省略"),
+            content_type: z
+              .enum(["markdown", "chart", "table"])
+              .describe("内容类型：markdown 文字、chart 图表、table 数据表"),
+            content_markdown: z
+              .string()
+              .optional()
+              .describe("Markdown 文字内容，content_type 为 markdown 时必填"),
+            chart_sql: z
+              .string()
+              .optional()
+              .describe("图表数据的 SQL 查询，content_type 为 chart 时必填"),
+            chart_type: z
+              .enum(["bar", "line", "pie"])
+              .optional()
+              .describe("图表类型，content_type 为 chart 时必填"),
+            chart_x_key: z
+              .string()
+              .optional()
+              .describe("X 轴字段名，content_type 为 chart 时必填"),
+            chart_y_key: z
+              .string()
+              .optional()
+              .describe("Y 轴字段名，content_type 为 chart 时必填"),
+            chart_group_key: z
+              .string()
+              .optional()
+              .describe("分组字段名，用于多系列图表"),
+            table_sql: z
+              .string()
+              .optional()
+              .describe("数据表的 SQL 查询，content_type 为 table 时必填"),
+          }),
+          execute: async (args) => {
+            if (args.content_type === "chart" && args.chart_sql) {
+              try {
+                const data = await executeQuery(args.chart_sql);
+                return {
+                  section_id: args.section_id,
+                  sort_order: args.sort_order,
+                  title: args.title,
+                  content_type: args.content_type,
+                  chart_config: {
+                    data,
+                    chartType: args.chart_type!,
+                    xKey: args.chart_x_key!,
+                    yKey: args.chart_y_key!,
+                    groupKey: args.chart_group_key,
+                  },
+                };
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                return { ...args, error: msg };
+              }
+            }
+            if (args.content_type === "table" && args.table_sql) {
+              try {
+                const data = await executeQuery(args.table_sql);
+                return {
+                  section_id: args.section_id,
+                  sort_order: args.sort_order,
+                  title: args.title,
+                  content_type: args.content_type,
+                  table_data: { data },
+                };
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : String(e);
+                return { ...args, error: msg };
+              }
+            }
+            // markdown passthrough
+            return {
+              section_id: args.section_id,
+              sort_order: args.sort_order,
+              title: args.title,
+              content_type: args.content_type,
+              content_markdown: args.content_markdown,
+            };
           },
         },
         ...(enableKnowledge
