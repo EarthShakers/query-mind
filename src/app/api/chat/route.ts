@@ -1,7 +1,6 @@
 import { streamText, type CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
-import { query as sqliteQuery } from "@/lib/db";
 import { queryUserData } from "@/lib/pg";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
 import { searchDocuments } from "@/lib/rag";
@@ -34,45 +33,9 @@ function sanitizeMessages(
   return cleaned;
 }
 
-/** Demo tables that live in SQLite */
-const DEMO_TABLES = new Set([
-  "departments",
-  "employees",
-  "products",
-  "sales",
-  "expenses",
-]);
-
-/**
- * Route a SQL query to the correct database:
- * - Demo tables → SQLite
- * - ud_* tables → PostgreSQL
- */
+/** Route a SQL query to PostgreSQL (user-uploaded tables) */
 async function executeQuery(sql: string): Promise<Record<string, unknown>[]> {
-  // Extract table names from SQL to determine routing
-  const tableMentions = sql.match(/(?:from|join)\s+["`]?(\w+)["`]?/gi) || [];
-  const tables = tableMentions.map((m) =>
-    m
-      .replace(/(?:from|join)\s+["`]?/i, "")
-      .replace(/["`]/g, "")
-      .toLowerCase()
-  );
-
-  const hasUserTables = tables.some((t) => t.startsWith("ud_"));
-  const hasDemoTables = tables.some((t) => DEMO_TABLES.has(t));
-
-  // If mixing demo and user tables, reject (they're in different DBs)
-  if (hasUserTables && hasDemoTables) {
-    throw new Error(
-      "不能在同一查询中混合使用演示数据表和用户上传表。请分开查询。"
-    );
-  }
-
-  if (hasUserTables) {
-    return queryUserData(sql);
-  }
-
-  return sqliteQuery(sql);
+  return queryUserData(sql);
 }
 
 export async function POST(req: Request) {
