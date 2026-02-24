@@ -21,11 +21,20 @@ export function ReportSectionRenderer({
         <div className="prose prose-slate prose-sm max-w-none">
           {section.content_markdown.split("\n").map((line, i) => {
             if (!line.trim()) return <br key={i} />;
-            // Skip markdown headings that duplicate the section title
+            // Skip markdown headings that duplicate or closely match the section title
             if (section.title) {
               const headingMatch = line.match(/^#{1,3}\s+(.+)$/);
-              if (headingMatch && headingMatch[1].trim() === section.title.trim()) {
-                return null;
+              if (headingMatch) {
+                const headingText = headingMatch[1].trim();
+                const titleText = section.title.trim();
+                // Skip if heading contains the title or title contains the heading
+                if (
+                  headingText === titleText ||
+                  headingText.includes(titleText) ||
+                  titleText.includes(headingText)
+                ) {
+                  return null;
+                }
               }
             }
             if (line.startsWith("### "))

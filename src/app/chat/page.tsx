@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useReport } from "@/hooks/use-report";
 import { useSectionEdit } from "@/hooks/use-section-edit";
 import { useVersionHistory } from "@/hooks/use-version-history";
+import { useChatHistory } from "@/hooks/use-chat-history";
 import { ReportCanvas } from "@/components/report-canvas";
 import { VersionHistoryPanel } from "@/components/version-history-panel";
 import type { ReportSection } from "@/lib/report-types";
@@ -24,8 +25,6 @@ const QUICK_QUESTIONS = [
   { icon: "🔍", text: "对比各类别的数据占比" },
   { icon: "📑", text: "产品使用指南" },
 ];
-
-const SIDEBAR_HINT = "以下为快捷提问示例，你也可以上传自己的文档和 Excel 报表进行分析";
 
 /* ─── types ─── */
 interface Turn {
@@ -999,6 +998,10 @@ export default function Page() {
   const { user } = useAuth();
   const lastInput = useRef("");
 
+  // ── Chat history ──
+  const chatHistory = useChatHistory();
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+
   // ── Report / Canvas state ──
   const [reportId, setReportId] = useState<string | null>(null);
   const report = useReport(reportId);
@@ -1010,6 +1013,7 @@ export default function Page() {
   const sectionEdit = useSectionEdit(reportId, getSections, report.upsertSection);
   const versionHistory = useVersionHistory(reportId, report.replaceAllSections);
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+  const [canvasOpen, setCanvasOpen] = useState(true);
 
   // Build available spaces list (always include demo space for preset docs)
   const availableSpaces = useMemo(() => {
@@ -1045,6 +1049,7 @@ export default function Page() {
     error,
     setInput,
     append,
+    setMessages,
   } = useChat({
     body: {
       spaceIds: [...selectedSpaceIds],
@@ -1080,23 +1085,83 @@ export default function Page() {
     // Auto-create report on first write_report_section result
     if (sectionResults.length > 0 && !reportId && !creatingReport.current) {
       creatingReport.current = true;
-      fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "AI 生成报告", spaceId: [...selectedSpaceIds][0] }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
+      const firstUserMsg = messages.find((m) => m.role === "user");
+
+      (async () => {
+        try {
+          // Generate a proper noun-phrase title via LLM
+          let autoTitle = "未命名报告";
+          if (firstUserMsg?.content) {
+            try {
+              const titleRes = await fetch("/api/reports/generate-title", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: firstUserMsg.content }),
+              });
+              if (titleRes.ok) {
+                const { title: generated } = await titleRes.json();
+                if (generated) autoTitle = generated;
+              }
+            } catch {}
+          }
+          report.setTitle(autoTitle);
+
+          const res = await fetch("/api/reports", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: autoTitle, spaceId: [...selectedSpaceIds][0] }),
+          });
+          const data = await res.json();
           if (data.id) setReportId(data.id);
-        })
-        .catch(() => {})
-        .finally(() => {
-          creatingReport.current = false;
-        });
+        } catch {}
+        creatingReport.current = false;
+      })();
     }
   }, [messages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasCanvas = report.sections.length > 0;
+
+  // ── Auto-save chat to history ──
+  useEffect(() => {
+    if (messages.length > 0 && !isLoading) {
+      chatHistory.saveSession(sessionId, messages);
+      chatHistory.setActiveSessionId(sessionId);
+    }
+  }, [messages, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setReportId(null);
+    report.setTitle("未命名报告");
+    report.replaceAllSections([]);
+    setCanvasOpen(true);
+    setVersionPanelOpen(false);
+    creatingReport.current = false;
+    userScrolledUp.current = false;
+    const newId = crypto.randomUUID();
+    setSessionId(newId);
+    chatHistory.setActiveSessionId(null);
+  }, [setMessages, report, chatHistory]);
+
+  const loadSession = useCallback((id: string) => {
+    const session = chatHistory.sessions.find((s) => s.id === id);
+    if (!session) return;
+    // Reset report state
+    setReportId(null);
+    report.setTitle("未命名报告");
+    report.replaceAllSections([]);
+    setCanvasOpen(true);
+    setVersionPanelOpen(false);
+    creatingReport.current = false;
+    userScrolledUp.current = false;
+    // Load session
+    setSessionId(session.id);
+    setMessages(session.messages);
+    chatHistory.setActiveSessionId(session.id);
+    setSidebarOpen(false);
+  }, [chatHistory, setMessages, report]);
+
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     if (userScrolledUp.current) return;
@@ -1158,28 +1223,67 @@ export default function Page() {
             </svg>
           </button>
         </div>
-        <div className="px-4 pt-3 pb-1">
-          <span className="text-sm font-semibold text-slate-700">快捷提问</span>
-          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-            {SIDEBAR_HINT}
-          </p>
+        {/* New chat button */}
+        <div className="px-3 pt-3 pb-1">
+          <button
+            onClick={() => {
+              startNewChat();
+              setSidebarOpen(false);
+            }}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 disabled:opacity-40 transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+            新对话
+          </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {QUICK_QUESTIONS.map(({ icon, text }) => (
-            <button
-              key={text}
-              onClick={() => {
-                userScrolledUp.current = false;
-                append({ role: "user", content: text });
-                setSidebarOpen(false);
-              }}
-              disabled={isLoading}
-              className="flex items-start gap-2 w-full text-left px-3 py-2.5 text-sm text-slate-600 rounded-lg hover:bg-indigo-50 hover:text-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <span className="shrink-0 text-base leading-5">{icon}</span>
-              <span className="leading-5">{text}</span>
-            </button>
-          ))}
+        <div className="px-4 pt-3 pb-1">
+          <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">历史记录</span>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {chatHistory.sessions.length === 0 && (
+            <p className="text-xs text-slate-300 text-center py-6">暂无对话记录</p>
+          )}
+          {chatHistory.sessions.map((session) => {
+            const isActive = session.id === chatHistory.activeSessionId;
+            return (
+              <div
+                key={session.id}
+                className={`group flex items-center gap-2 w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
+                  isActive
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <button
+                  onClick={() => loadSession(session.id)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <p className="text-sm truncate">{session.title}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {new Date(session.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" })}
+                  </p>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    chatHistory.deleteSession(session.id);
+                    if (isActive) startNewChat();
+                  }}
+                  className="shrink-0 p-1 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all"
+                  title="删除"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
         </div>
         <div className="p-3 border-t border-slate-100 space-y-2">
           <div className="flex items-center justify-center">
@@ -1203,38 +1307,11 @@ export default function Page() {
             </svg>
             知识库管理
           </Link>
-          <button
-            onClick={() => {
-              userScrolledUp.current = false;
-              append({ role: "user", content: "帮我生成一份数据分析报告" });
-              setSidebarOpen(false);
-            }}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-              <polyline points="14 2 14 8 20 8" />
-              <path d="M16 13H8" />
-              <path d="M16 17H8" />
-              <path d="M10 9H8" />
-            </svg>
-            生成报告
-          </button>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-white/60 backdrop-blur flex items-center gap-3">
+        <header className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-b border-slate-200 bg-white/60 backdrop-blur flex items-center gap-3 relative z-20">
           <button
             className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-700"
             onClick={() => setSidebarOpen(true)}
@@ -1260,56 +1337,109 @@ export default function Page() {
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5 hidden sm:block">
               {hasCanvas
-                ? "报告生成中 · 在左侧对话中继续修改"
+                ? canvasOpen
+                  ? "在左侧对话中继续修改报告"
+                  : "报告已收起 · 继续对话或展开报告"
                 : "搜索知识库 · 分析数据报表 · 自动生成图表"}
             </p>
           </div>
           {hasCanvas && (
             <>
+            {/* Panel toggle button */}
             <button
-              onClick={() => report.save()}
-              disabled={report.saving || !reportId}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setCanvasOpen((v) => !v)}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              title={canvasOpen ? "收起报告面板" : "展开报告面板"}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-              {report.saving ? "保存中..." : "保存报告"}
+              {canvasOpen ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M15 3v18" />
+                  <path d="m10 15 3-3-3-3" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M15 3v18" />
+                  <path d="m14 9-3 3 3 3" />
+                </svg>
+              )}
+              {canvasOpen ? "收起" : "报告"}
             </button>
-            <div className="relative">
+            {/* Save / Version / Export — only when panel is open */}
+            {canvasOpen && (
+              <>
               <button
-                onClick={() => {
-                  setVersionPanelOpen(!versionPanelOpen);
-                  if (!versionPanelOpen) versionHistory.fetchVersions();
-                }}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                title="版本历史"
+                onClick={() => report.save()}
+                disabled={report.saving || !reportId}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                  report.saveResult === "success"
+                    ? "bg-green-500 hover:bg-green-600"
+                    : report.saveResult === "error"
+                    ? "bg-red-500 hover:bg-red-600"
+                    : "bg-indigo-500 hover:bg-indigo-600"
+                }`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
                 </svg>
-                版本
+                {report.saving
+                  ? "保存中..."
+                  : report.saveResult === "success"
+                  ? "已保存"
+                  : report.saveResult === "error"
+                  ? "保存失败"
+                  : "保存报告"}
               </button>
-              {versionPanelOpen && (
-                <VersionHistoryPanel
-                  versions={versionHistory.versions}
-                  loading={versionHistory.loading}
-                  restoring={versionHistory.restoring}
-                  onRestore={(versionId) => {
-                    versionHistory.restoreVersion(versionId);
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setVersionPanelOpen(!versionPanelOpen);
+                    if (!versionPanelOpen) versionHistory.fetchVersions();
                   }}
-                  onClose={() => setVersionPanelOpen(false)}
-                />
-              )}
-            </div>
-            <ExportDropdown
-              canvasRef={canvasRef}
-              title={report.title}
-              sections={report.sections}
-            />
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                  title="版本历史"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  版本
+                </button>
+                {versionPanelOpen && (
+                  <VersionHistoryPanel
+                    versions={versionHistory.versions}
+                    loading={versionHistory.loading}
+                    restoring={versionHistory.restoring}
+                    onRestore={(versionId) => {
+                      versionHistory.restoreVersion(versionId);
+                    }}
+                    onClose={() => setVersionPanelOpen(false)}
+                  />
+                )}
+              </div>
+              <ExportDropdown
+                canvasRef={canvasRef}
+                title={report.title}
+                sections={report.sections}
+              />
+              </>
+            )}
+            {/* New chat button */}
+            <button
+              onClick={startNewChat}
+              disabled={isLoading}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+              title="开始新对话"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+              新对话
+            </button>
           </>
           )}
           <SpacePicker
@@ -1319,9 +1449,9 @@ export default function Page() {
           />
         </header>
 
-        <div className={`flex-1 flex min-h-0 ${hasCanvas ? "flex-row" : "flex-col"}`}>
+        <div className={`flex-1 flex min-h-0 ${hasCanvas && canvasOpen ? "flex-row" : "flex-col"}`}>
           {/* ── Chat area ── */}
-          <div className={`flex flex-col min-h-0 ${hasCanvas ? "w-[40%] border-r border-slate-200" : "flex-1"}`}>
+          <div className={`flex flex-col min-h-0 ${hasCanvas && canvasOpen ? "w-[40%] border-r border-slate-200" : "flex-1"}`}>
             <div
               ref={scrollRef}
               onScroll={handleScroll}
@@ -1329,14 +1459,29 @@ export default function Page() {
             >
               {messages.length === 0 && !isLoading && (
                 <div className="flex items-center justify-center h-full text-slate-300">
-                  <div className="text-center">
+                  <div className="text-center max-w-md">
                     <p className="text-4xl mb-3">🔍</p>
                     <p className="text-sm">
-                      在下方输入问题，或点击左侧快捷提问开始
+                      在下方输入问题，或点击快捷提问开始
                     </p>
+                    <div className="flex flex-wrap justify-center gap-2 mt-5">
+                      {QUICK_QUESTIONS.map(({ icon, text }) => (
+                        <button
+                          key={text}
+                          onClick={() => {
+                            userScrolledUp.current = false;
+                            append({ role: "user", content: text });
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-2 text-xs text-slate-500 bg-white border border-slate-200 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 shadow-sm transition-colors"
+                        >
+                          <span>{icon}</span>
+                          <span>{text}</span>
+                        </button>
+                      ))}
+                    </div>
                     <button
                       onClick={() => setUploadOpen(true)}
-                      className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 shadow-sm hover:shadow-md transition-all"
+                      className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 shadow-sm hover:shadow-md transition-all"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -1385,6 +1530,21 @@ export default function Page() {
                 }}
                 className="flex gap-2 md:gap-3 max-w-3xl mx-auto items-center"
               >
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearConfirm(true)}
+                    disabled={isLoading}
+                    className="shrink-0 p-2.5 rounded-xl border text-slate-400 bg-white border-slate-200 hover:text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40"
+                    title="清除对话"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setUploadOpen(true)}
@@ -1416,7 +1576,7 @@ export default function Page() {
           </div>
 
           {/* ── Canvas area (right panel) ── */}
-          {hasCanvas && (
+          {hasCanvas && canvasOpen && (
             <div className="w-[60%] flex flex-col min-h-0">
               <ReportCanvas
                 ref={canvasRef}
@@ -1426,6 +1586,8 @@ export default function Page() {
                 onEditSection={sectionEdit.editSection}
                 editingSectionId={sectionEdit.editingSectionId}
                 editProgress={sectionEdit.editProgress}
+                onTitleChange={report.setTitle}
+                onClose={() => setCanvasOpen(false)}
               />
             </div>
           )}
@@ -1438,6 +1600,41 @@ export default function Page() {
           onClose={() => setUploadOpen(false)}
           onUploaded={() => {}}
         />
+      )}
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowClearConfirm(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 p-6 text-center">
+            <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-semibold text-slate-800 mb-1">清除对话记录</h3>
+            <p className="text-xs text-slate-500 mb-5">清除后无法恢复，确定要清除所有对话消息吗？</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 px-4 py-2.5 text-xs font-medium text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  setShowClearConfirm(false);
+                  setMessages([]);
+                  userScrolledUp.current = false;
+                }}
+                className="flex-1 px-4 py-2.5 text-xs font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors"
+              >
+                确认清除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

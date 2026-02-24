@@ -87,7 +87,14 @@ export async function POST(req: Request) {
 
   // Load existing report sections for context (when in report mode)
   // Also activate report mode if user's message mentions "报告" (even without reportId yet)
-  let existingSections: { section_id: string; sort_order: number; title?: string; content_type: string }[] | undefined;
+  let existingSections:
+    | {
+        section_id: string;
+        sort_order: number;
+        title?: string;
+        content_type: string;
+      }[]
+    | undefined;
   const isReportRequest = !reportId && /报告|report/i.test(lastMsg);
   if (reportId) {
     const { data } = await supabase
@@ -110,11 +117,14 @@ export async function POST(req: Request) {
 
   // ── AI 流式调用 ──
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), isReportMode ? 120000 : 60000);
+  const timeout = setTimeout(
+    () => abortController.abort(),
+    isReportMode ? 120000 : 60000
+  );
 
   try {
     const result = await streamText({
-      model: dashscope("deepseek-v3.2-exp"),
+      model: dashscope("deepseek-v3"),
       abortSignal: abortController.signal,
       maxSteps: isReportMode ? 10 : 5,
       system: buildSystemPrompt(userSchemaStr, existingSections),
@@ -217,13 +227,8 @@ export async function POST(req: Request) {
             section_id: z
               .string()
               .describe('章节唯一标识，如 "intro", "s1", "chart-revenue"'),
-            sort_order: z
-              .number()
-              .describe("章节排序位置，1, 2, 3..."),
-            title: z
-              .string()
-              .optional()
-              .describe("章节标题，可省略"),
+            sort_order: z.number().describe("章节排序位置，1, 2, 3..."),
+            title: z.string().optional().describe("章节标题，可省略"),
             content_type: z
               .enum(["markdown", "chart", "table"])
               .describe("内容类型：markdown 文字、chart 图表、table 数据表"),
@@ -275,7 +280,8 @@ export async function POST(req: Request) {
                 let yKey = args.chart_y_key || "";
                 if (columns.length >= 2) {
                   if (!xKey) xKey = columns[0];
-                  if (!yKey) yKey = columns.find((c) => c !== xKey) || columns[1];
+                  if (!yKey)
+                    yKey = columns.find((c) => c !== xKey) || columns[1];
                 }
                 return {
                   section_id: args.section_id,

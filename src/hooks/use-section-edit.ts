@@ -3,11 +3,25 @@
 import { useState, useCallback, useRef } from "react";
 import type { ReportSection } from "@/lib/report-types";
 
-export type EditStep = "plan" | "query" | "analyze" | "write";
+export type EditStep = "plan" | "query" | "analyze" | "write" | "validate" | "reflect";
+
+export interface StepLog {
+  step: EditStep;
+  reasoning?: string;
+  suggestedSQL?: string;
+  queryResult?: string;
+  queryRowCount?: number;
+  analysisPlan?: string;
+  newContentType?: string;
+  validationErrors?: string[];
+  passed?: boolean;
+  retries?: number;
+}
 
 interface EditProgress {
   step: EditStep;
   needsQuery?: boolean;
+  logs: StepLog[];
 }
 
 export function useSectionEdit(
@@ -31,7 +45,7 @@ export function useSectionEdit(
 
       setEditingSectionId(sectionId);
       setIsEditing(true);
-      setEditProgress({ step: "plan" });
+      setEditProgress({ step: "plan", logs: [] });
 
       const allSections = getSections();
       const section = allSections.find((s) => s.section_id === sectionId);
@@ -76,10 +90,23 @@ export function useSectionEdit(
               try {
                 const data = JSON.parse(line.slice(6));
                 if (event === "step") {
-                  setEditProgress({
+                  const stepLog: StepLog = {
                     step: data.currentStep as EditStep,
-                    needsQuery: data.needsQuery,
-                  });
+                    reasoning: data.reasoning,
+                    suggestedSQL: data.suggestedSQL,
+                    queryResult: data.queryResult,
+                    queryRowCount: data.queryRowCount,
+                    analysisPlan: data.analysisPlan,
+                    newContentType: data.newContentType,
+                    validationErrors: data.validationErrors,
+                    passed: data.passed,
+                    retries: data.retries,
+                  };
+                  setEditProgress((prev) => ({
+                    step: data.currentStep as EditStep,
+                    needsQuery: data.needsQuery ?? prev?.needsQuery,
+                    logs: [...(prev?.logs ?? []), stepLog],
+                  }));
                 } else if (event === "section") {
                   onSectionUpdated(data as ReportSection);
                   // Also persist the updated section

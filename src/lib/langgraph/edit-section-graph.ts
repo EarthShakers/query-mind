@@ -1,6 +1,6 @@
 import { StateGraph, Annotation, END } from "@langchain/langgraph";
 import { createDashScopeLLM } from "./llm";
-import { PLAN_PROMPT, ANALYZE_PROMPT, WRITE_PROMPT } from "./edit-section-prompts";
+import { PLAN_PROMPT, ANALYZE_PROMPT, WRITE_PROMPT, REFLECT_PROMPT } from "./edit-section-prompts";
 import { queryUserData } from "@/lib/pg";
 import type { ReportSection } from "@/lib/report-types";
 
@@ -12,11 +12,14 @@ const EditSectionState = Annotation.Root({
   // Populated by nodes
   needsQuery: Annotation<boolean>({ reducer: (_, v) => v, default: () => false }),
   suggestedSQL: Annotation<string | null>({ reducer: (_, v) => v, default: () => null }),
+  planReasoning: Annotation<string>({ reducer: (_, v) => v, default: () => "" }),
   queryResult: Annotation<string>({ reducer: (_, v) => v, default: () => "" }),
   analysis: Annotation<string>({ reducer: (_, v) => v, default: () => "" }),
   updatedSection: Annotation<ReportSection | null>({ reducer: (_, v) => v, default: () => null }),
   currentStep: Annotation<string>({ reducer: (_, v) => v, default: () => "" }),
   error: Annotation<string | null>({ reducer: (_, v) => v, default: () => null }),
+  retries: Annotation<number>({ reducer: (_, v) => v, default: () => 0 }),
+  validationErrors: Annotation<string[]>({ reducer: (_, v) => v, default: () => [] }),
 });
 
 export type EditSectionStateType = typeof EditSectionState.State;
@@ -37,10 +40,11 @@ async function planNode(state: typeof EditSectionState.State) {
     return {
       needsQuery: !!parsed.needsQuery,
       suggestedSQL: parsed.suggestedSQL || null,
+      planReasoning: parsed.reasoning || "",
       currentStep: "plan",
     };
   } catch {
-    return { needsQuery: false, suggestedSQL: null, currentStep: "plan" };
+    return { needsQuery: false, suggestedSQL: null, planReasoning: "", currentStep: "plan" };
   }
 }
 
@@ -203,6 +207,114 @@ async function writeNode(state: typeof EditSectionState.State) {
   }
 }
 
+/* ─── Node: validate ─── */
+function validateNode(state: typeof EditSectionState.State) {
+  const errors: string[] = [];
+  const section = state.updatedSection;
+  const original = state.section;
+
+  if (!section) {
+    errors.push("updatedSection is null — LLM failed to produce output");
+    return { validationErrors: errors, currentStep: "validate" };
+  }
+
+  // Check section_id and sort_order match original
+  if (section.section_id !== original.section_id) {
+    errors.push(`section_id mismatch: expected "${original.section_id}", got "${section.section_id}"`);
+  }
+  if (section.sort_order !== original.sort_order) {
+    errors.push(`sort_order mismatch: expected ${original.sort_order}, got ${section.sort_order}`);
+  }
+
+  // Type-specific validations
+  if (section.content_type === "markdown") {
+    if (!section.content_markdown || section.content_markdown.length <= 10) {
+      errors.push("markdown section has empty or too-short content_markdown (must be > 10 chars)");
+    }
+  }
+
+  if (section.content_type === "chart") {
+    const cfg = section.chart_config;
+    if (!cfg) {
+      errors.push("chart section missing chart_config");
+    } else {
+      if (!Array.isArray(cfg.data) || cfg.data.length === 0) {
+        errors.push("chart_config.data must be a non-empty array");
+      }
+      const validChartTypes = ["bar", "line", "pie"];
+      if (!validChartTypes.includes(cfg.chartType)) {
+        errors.push(`chart_config.chartType "${cfg.chartType}" is not valid (must be bar|line|pie)`);
+      }
+      if (!cfg.xKey) {
+        errors.push("chart_config.xKey is missing or empty");
+      }
+      if (!cfg.yKey) {
+        errors.push("chart_config.yKey is missing or empty");
+      }
+      // Check keys exist in data
+      if (Array.isArray(cfg.data) && cfg.data.length > 0) {
+        const keys = Object.keys(cfg.data[0] as Record<string, unknown>);
+        if (cfg.xKey && !keys.includes(cfg.xKey)) {
+          errors.push(`chart_config.xKey "${cfg.xKey}" not found in data columns: [${keys.join(", ")}]`);
+        }
+        if (cfg.yKey && !keys.includes(cfg.yKey)) {
+          errors.push(`chart_config.yKey "${cfg.yKey}" not found in data columns: [${keys.join(", ")}]`);
+        }
+      }
+    }
+  }
+
+  if (section.content_type === "table") {
+    if (!section.table_data || !Array.isArray(section.table_data.data) || section.table_data.data.length === 0) {
+      errors.push("table section has empty or missing table_data.data");
+    }
+  }
+
+  return { validationErrors: errors, currentStep: "validate" };
+}
+
+/* ─── Node: reflect ─── */
+async function reflectNode(state: typeof EditSectionState.State) {
+  const llm = createDashScopeLLM();
+  const prompt = REFLECT_PROMPT
+    .replace("{section_json}", JSON.stringify(state.section, null, 2))
+    .replace("{instruction}", state.instruction)
+    .replace("{previous_output}", JSON.stringify(state.updatedSection, null, 2))
+    .replace("{validation_errors}", state.validationErrors.map((e, i) => `${i + 1}. ${e}`).join("\n"))
+    .replace("{section_id}", state.section.section_id)
+    .replace("{sort_order}", String(state.section.sort_order));
+
+  const response = await llm.invoke([{ role: "user", content: prompt }]);
+  const text = typeof response.content === "string" ? response.content : "";
+
+  const newData = parseQueryData(state.queryResult);
+
+  try {
+    const parsed = JSON.parse(
+      text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
+    );
+    const section = buildSafeSection(parsed, state.section, newData);
+    return {
+      updatedSection: section,
+      retries: state.retries + 1,
+      currentStep: "reflect",
+    };
+  } catch {
+    return {
+      retries: state.retries + 1,
+      currentStep: "reflect",
+      error: "Failed to parse reflect LLM response",
+    };
+  }
+}
+
+/* ─── Conditional edge: after validate ─── */
+function routeAfterValidate(state: typeof EditSectionState.State): string {
+  if (state.validationErrors.length === 0) return "__end__";
+  if (state.retries >= 2) return "__end__";
+  return "reflect";
+}
+
 /* ─── Conditional edge: after plan ─── */
 function routeAfterPlan(state: typeof EditSectionState.State): string {
   return state.needsQuery ? "query" : "analyze";
@@ -215,6 +327,8 @@ export function buildEditSectionGraph() {
     .addNode("query", queryNode)
     .addNode("analyze", analyzeNode)
     .addNode("write", writeNode)
+    .addNode("validate", validateNode)
+    .addNode("reflect", reflectNode)
     .addEdge("__start__", "plan")
     .addConditionalEdges("plan", routeAfterPlan, {
       query: "query",
@@ -222,7 +336,12 @@ export function buildEditSectionGraph() {
     })
     .addEdge("query", "analyze")
     .addEdge("analyze", "write")
-    .addEdge("write", END);
+    .addEdge("write", "validate")
+    .addConditionalEdges("validate", routeAfterValidate, {
+      reflect: "reflect",
+      __end__: END,
+    })
+    .addEdge("reflect", "write");
 
   return graph.compile();
 }

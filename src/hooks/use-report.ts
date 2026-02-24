@@ -7,6 +7,7 @@ export function useReport(reportId: string | null) {
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [title, setTitle] = useState("未命名报告");
   const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<"idle" | "success" | "error">("idle");
 
   /** Upsert a section — match by section_id, insert or replace */
   const upsertSection = useCallback((section: ReportSection) => {
@@ -26,13 +27,18 @@ export function useReport(reportId: string | null) {
     if (!reportId) return;
     setSaving(true);
     try {
-      await fetch(`/api/reports/${reportId}/sections`, {
+      const res = await fetch(`/api/reports/${reportId}/sections`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, sections }),
       });
+      if (!res.ok) throw new Error("save failed");
+      setSaveResult("success");
+    } catch {
+      setSaveResult("error");
     } finally {
       setSaving(false);
+      setTimeout(() => setSaveResult("idle"), 2000);
     }
   }, [reportId, title, sections]);
 
@@ -58,5 +64,5 @@ export function useReport(reportId: string | null) {
     );
   }, []);
 
-  return { sections, title, setTitle, upsertSection, replaceAllSections, save, saving, load };
+  return { sections, title, setTitle, upsertSection, replaceAllSections, save, saving, saveResult, load };
 }

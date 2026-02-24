@@ -87,6 +87,7 @@ ${hasUserTables ? "" : "- 注意：当前没有可查询的数据表，如果用
 - 每次调用 write_report_section 时，报告画布会实时更新
 - 修改已有章节时，复用原来的 section_id，画布会自动替换该章节内容
 - **不要在报告模式中使用 suggest_chart 和 show_chart**，所有图表都通过 write_report_section(content_type: "chart") 写入
+- **标题去重（非常重要）**：章节的 title 参数会自动渲染为标题，**content_markdown 内容中不要再写任何 # 标题**，直接写正文内容即可，否则会出现重复标题
 ${sectionContext}
 
 **报告必须包含图表（非常重要）：**

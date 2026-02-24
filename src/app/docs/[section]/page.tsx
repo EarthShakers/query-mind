@@ -12,8 +12,7 @@ function Overview() {
     <>
       <h2>概述</h2>
       <p>
-        QueryMind
-        让企业里的每个人都能用自然语言获取数据洞察——无需写一行
+        QueryMind 让企业里的每个人都能用自然语言获取数据洞察——无需写一行
         SQL，无需等待数据分析师排期。提一个问题，AI
         自动查库、自动画图、自动解读，秒级返回答案。
       </p>
@@ -25,11 +24,12 @@ function Overview() {
       </p>
       <ul>
         <li>
-          <strong>数据问题</strong> — AI 自动生成 SQL、执行查询、选择最佳图表呈现
+          <strong>数据问题</strong> — AI 自动生成
+          SQL、执行查询、选择最佳图表呈现
         </li>
         <li>
-          <strong>知识问题</strong> —
-          上传企业文档（政策、手册、FAQ），AI 向量检索后精准回答
+          <strong>知识问题</strong> — 上传企业文档（政策、手册、FAQ），AI
+          向量检索后精准回答
         </li>
         <li>
           <strong>混合问题</strong> — AI 自主判断意图，数据与知识双引擎协同工作
@@ -42,16 +42,16 @@ function Overview() {
           秒即可看到响应，接近实时对话体验
         </li>
         <li>
-          <strong>Generative UI</strong> — 生成式
-          UI，AI 根据数据语义自动选择表格、折线图、柱状图或饼图渲染
+          <strong>Generative UI</strong> — 生成式 UI，AI
+          根据数据语义自动选择表格、折线图、柱状图或饼图渲染
         </li>
         <li>
-          <strong>Structured Output</strong> — 结构化输出，Zod Schema
-          强制约束 AI 返回格式，杜绝幻觉式乱码
+          <strong>Structured Output</strong> — 结构化输出，Zod Schema 强制约束
+          AI 返回格式，杜绝幻觉式乱码
         </li>
         <li>
-          <strong>RAG</strong> — 检索增强生成，pgvector
-          向量搜索知识库，让 AI 回答有据可依
+          <strong>RAG</strong> — 检索增强生成，pgvector 向量搜索知识库，让 AI
+          回答有据可依
         </li>
       </ul>
     </>
@@ -103,7 +103,8 @@ function Permissions() {
     <>
       <h2>权限体系</h2>
       <p>
-        系统采用三层权限模型：<strong>系统级 → 企业级 → 空间级</strong>，逐层细化控制粒度。
+        系统采用三层权限模型：<strong>系统级 → 企业级 → 空间级</strong>
+        ，逐层细化控制粒度。
       </p>
 
       <h3>角色总览</h3>
@@ -111,49 +112,87 @@ function Permissions() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">层级</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">角色</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">字段</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">权限</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                层级
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                角色
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                字段
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                权限
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             <tr>
-              <td className="px-4 py-2.5" rowSpan={2}>系统级</td>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">superAdmin</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user.role</code></td>
-              <td className="px-4 py-2.5 text-slate-500">访问 /docs 技术文档、编辑 Roadmap</td>
+              <td className="px-4 py-2.5" rowSpan={2}>
+                系统级
+              </td>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">
+                superAdmin
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user.role</code>
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                访问 /docs 技术文档、编辑 Roadmap
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">user</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user.role</code>
+              </td>
               <td className="px-4 py-2.5 text-slate-500">普通用户（默认）</td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5" rowSpan={2}>企业级</td>
+              <td className="px-4 py-2.5" rowSpan={2}>
+                企业级
+              </td>
               <td className="px-4 py-2.5 font-mono text-indigo-600">admin</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole</code></td>
-              <td className="px-4 py-2.5 text-slate-500">创建空间、管理成员、审批加入申请</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user.tenantRole</code>
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                创建空间、管理成员、审批加入申请
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">member</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole</code></td>
-              <td className="px-4 py-2.5 text-slate-500">被审批通过后加入企业的普通成员</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user.tenantRole</code>
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                被审批通过后加入企业的普通成员
+              </td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5" rowSpan={3}>空间级</td>
+              <td className="px-4 py-2.5" rowSpan={3}>
+                空间级
+              </td>
               <td className="px-4 py-2.5 font-mono text-indigo-600">admin</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>space.role</code></td>
-              <td className="px-4 py-2.5 text-slate-500">重命名/删除空间、管理空间成员、上传文档</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>space.role</code>
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                重命名/删除空间、管理空间成员、上传文档
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">editor</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>space.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>space.role</code>
+              </td>
               <td className="px-4 py-2.5 text-slate-500">上传文档</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">viewer</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>space.role</code></td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>space.role</code>
+              </td>
               <td className="px-4 py-2.5 text-slate-500">查看文档（只读）</td>
             </tr>
           </tbody>
@@ -165,25 +204,39 @@ function Permissions() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">类型</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">判断条件</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">可访问空间</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                类型
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                判断条件
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                可访问空间
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="px-4 py-2.5 font-medium">未注册用户</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user = null</code></td>
-              <td className="px-4 py-2.5 text-slate-500">预置文档（只读，注册后可上传）</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user = null</code>
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                预置文档（只读，注册后可上传）
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">个人用户</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole = null</code></td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user.tenantRole = null</code>
+              </td>
               <td className="px-4 py-2.5 text-slate-500">个人空间</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">企业用户</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>user.tenantRole != null</code></td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>user.tenantRole != null</code>
+              </td>
               <td className="px-4 py-2.5 text-slate-500">企业空间</td>
             </tr>
           </tbody>
@@ -199,48 +252,92 @@ function Permissions() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">权益项</th>
-              <th className="px-4 py-3 text-center font-semibold text-slate-600">未注册用户</th>
-              <th className="px-4 py-3 text-center font-semibold text-slate-600">个人用户</th>
-              <th className="px-4 py-3 text-center font-semibold text-slate-600">企业用户</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                权益项
+              </th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-600">
+                未注册用户
+              </th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-600">
+                个人用户
+              </th>
+              <th className="px-4 py-3 text-center font-semibold text-slate-600">
+                企业用户
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="px-4 py-2.5 text-slate-600">文件上传上限</td>
-              <td className="px-4 py-2.5 text-center text-slate-400">不可上传</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">50</td>
+              <td className="px-4 py-2.5 text-center text-slate-400">
+                不可上传
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                10
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                50
+              </td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5 text-slate-600">聊天频率（次/分钟）</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">20</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">30</td>
+              <td className="px-4 py-2.5 text-slate-600">
+                聊天频率（次/分钟）
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                10
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                20
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                30
+              </td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5 text-slate-600">上传频率（次/分钟）</td>
+              <td className="px-4 py-2.5 text-slate-600">
+                上传频率（次/分钟）
+              </td>
               <td className="px-4 py-2.5 text-center text-slate-400">-</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">3</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">10</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                3
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                10
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">每日上传次数</td>
               <td className="px-4 py-2.5 text-center text-slate-400">-</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">20</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                20
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                100
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">单次输入字符数</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">200</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">500</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                100
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                200
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                500
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">每日 Token 预算</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">100K</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">200K</td>
-              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">1000K</td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                100K
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                200K
+              </td>
+              <td className="px-4 py-2.5 text-center font-mono text-indigo-600">
+                1000K
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 text-slate-600">预置文档</td>
@@ -347,8 +444,7 @@ function GenerativeUI() {
       </pre>
       <p>
         <strong>关键点：UI 由 AI 决定，而非前端硬编码。</strong>
-        同一句话，AI 可能选表格也可能选柱状图，这就是 Generative UI
-        的核心。
+        同一句话，AI 可能选表格也可能选柱状图，这就是 Generative UI 的核心。
       </p>
       <h3>客户端渲染逻辑</h3>
       <pre className="not-prose overflow-x-auto">
@@ -669,15 +765,17 @@ function Database() {
       <h2>数据存储</h2>
       <h3>知识文档</h3>
       <p>
-        上传的文档（PDF、Word、Markdown、TXT）经过分块处理后，
-        使用 <code>text-embedding-v3</code> 生成向量，存储在 Supabase 的 <code>documents</code> 表中，
-        通过 pgvector 进行语义搜索。
+        上传的文档（PDF、Word、Markdown、TXT）经过分块处理后， 使用{" "}
+        <code>text-embedding-v3</code> 生成向量，存储在 Supabase 的{" "}
+        <code>documents</code> 表中， 通过 pgvector 进行语义搜索。
       </p>
       <h3>数据报表</h3>
       <p>
-        上传的 Excel/CSV 文件会自动解析并在 PostgreSQL 中创建对应的数据表（表名以 <code>ud_</code> 开头），
-        表结构和列信息存储在 <code>data_tables</code> 和 <code>data_columns</code> 元数据表中。
-        AI 会根据表结构自动生成查询语句来分析数据。
+        上传的 Excel/CSV 文件会自动解析并在 PostgreSQL
+        中创建对应的数据表（表名以 <code>ud_</code> 开头），
+        表结构和列信息存储在 <code>data_tables</code> 和{" "}
+        <code>data_columns</code> 元数据表中。 AI
+        会根据表结构自动生成查询语句来分析数据。
       </p>
     </>
   );
@@ -732,7 +830,9 @@ Content-Type: application/json
                 execute_query
               </td>
               <td className="px-4 py-2.5 text-slate-500">sql: string</td>
-              <td className="px-4 py-2.5">查询用户上传的数据表，返回表格数据</td>
+              <td className="px-4 py-2.5">
+                查询用户上传的数据表，返回表格数据
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">
@@ -800,7 +900,7 @@ pnpm dev`}</code>
 const provider = createOpenAI({
   baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
 });
-model: provider("deepseek-v3.2")
+model: provider("deepseek-v3")
 
 // OpenAI
 const provider = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });

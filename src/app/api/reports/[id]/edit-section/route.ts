@@ -109,24 +109,90 @@ export async function POST(
           { streamMode: "updates" }
         );
 
+        let lastValidationErrors: string[] = [];
+        let lastSectionSent: unknown = null;
+
         for await (const chunk of streamResult) {
           // chunk is { nodeName: nodeOutput }
           for (const [nodeName, nodeOutput] of Object.entries(chunk)) {
             const output = nodeOutput as Record<string, unknown>;
-            send("step", {
+
+            // Build detailed step event with reasoning content
+            const stepData: Record<string, unknown> = {
               step: nodeName,
               currentStep: output.currentStep || nodeName,
               needsQuery: output.needsQuery,
-            });
+            };
+
+            // Include reasoning/detail from each node
+            if (nodeName === "plan" && output.planReasoning) {
+              stepData.reasoning = output.planReasoning;
+              stepData.suggestedSQL = output.suggestedSQL;
+            }
+            if (nodeName === "query" && output.queryResult) {
+              const qr = output.queryResult as string;
+              stepData.queryResult = qr.startsWith("Query error") ? qr : undefined;
+              // Send row count for successful queries
+              if (!qr.startsWith("Query error")) {
+                try {
+                  const rows = JSON.parse(qr);
+                  stepData.queryRowCount = Array.isArray(rows) ? rows.length : 0;
+                } catch {}
+              }
+            }
+            if (nodeName === "analyze" && output.analysis) {
+              // Parse analysis plan text
+              try {
+                const parsed = JSON.parse(
+                  (output.analysis as string).replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
+                );
+                stepData.analysisPlan = parsed.plan;
+                stepData.newContentType = parsed.newContentType;
+              } catch {
+                stepData.analysisPlan = output.analysis;
+              }
+            }
+            if (nodeName === "validate") {
+              const errors = (output.validationErrors as string[]) ?? [];
+              stepData.validationErrors = errors;
+              stepData.passed = errors.length === 0;
+              lastValidationErrors = errors;
+            }
+            if (nodeName === "reflect") {
+              stepData.retries = output.retries;
+            }
+
+            send("step", stepData);
 
             // If write node completed, send the updated section
             if (nodeName === "write" && output.updatedSection) {
+              lastSectionSent = output.updatedSection;
               send("section", output.updatedSection);
             }
             if (nodeName === "write" && output.error) {
               send("error", { message: output.error });
             }
+
+            // If reflect produced a corrected section, send it
+            if (nodeName === "reflect" && output.updatedSection) {
+              lastSectionSent = output.updatedSection;
+              send("section", output.updatedSection);
+            }
+
+            // Track validation state
+            if (nodeName === "validate") {
+              lastValidationErrors = (output.validationErrors as string[]) ?? [];
+            }
           }
+        }
+
+        // If stream ended with unresolved validation errors (retries exhausted),
+        // send the original section back so the UI doesn't show broken content
+        if (lastValidationErrors.length > 0) {
+          send("section", targetSection);
+          send("error", {
+            message: `编辑校验失败（已重试），已恢复原内容。问题: ${lastValidationErrors.join("; ")}`,
+          });
         }
 
         // Persist the updated section to database
