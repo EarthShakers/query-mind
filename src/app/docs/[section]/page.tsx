@@ -13,26 +13,29 @@ function Overview() {
       <h2>概述</h2>
       <p>
         QueryMind 让企业里的每个人都能用自然语言获取数据洞察——无需写一行
-        SQL，无需等待数据分析师排期。提一个问题，AI
-        自动查库、自动画图、自动解读，秒级返回答案。
+        SQL，无需等待数据分析师排期。一句话描述需求，AI
+        自动查库、自动画图、自动撰写分析，生成完整的多章节数据报告。
       </p>
       <h3>产品定位</h3>
       <p>
         传统 BI 工具（Tableau、Metabase）需要使用者具备 SQL
         或拖拽建模能力，学习成本高、响应周期长。QueryMind
-        将大语言模型作为中间层，把「自然语言 → 数据洞察」的链路缩短到一次对话：
+        将大语言模型作为中间层，提供三种核心交互模式：
       </p>
       <ul>
         <li>
-          <strong>数据问题</strong> — AI 自动生成
+          <strong>对话式分析</strong> — 用自然语言提问，AI 自动生成
           SQL、执行查询、选择最佳图表呈现
         </li>
         <li>
-          <strong>知识问题</strong> — 上传企业文档（政策、手册、FAQ），AI
-          向量检索后精准回答
+          <strong>Canvas 报告生成</strong> — 一句话生成多章节数据报告（查询→图表→分析→撰写），支持导出 PDF / Word
         </li>
         <li>
-          <strong>混合问题</strong> — AI 自主判断意图，数据与知识双引擎协同工作
+          <strong>Agent 智能编辑</strong> — 对报告任意章节下达修改指令，LangGraph Agent 多步推理（计划→查数据→分析→重写→校验→反思），全程可视化
+        </li>
+        <li>
+          <strong>知识库问答 (RAG)</strong> — 上传企业文档（.txt / .md / .pdf / .docx），AI
+          向量检索后精准回答
         </li>
       </ul>
       <h3>核心技术能力</h3>
@@ -44,6 +47,9 @@ function Overview() {
         <li>
           <strong>Generative UI</strong> — 生成式 UI，AI
           根据数据语义自动选择表格、折线图、柱状图或饼图渲染
+        </li>
+        <li>
+          <strong>LangGraph Agent</strong> — 多步推理工作流，plan → query → analyze → write → validate → reflect，支持自动重试和错误修正
         </li>
         <li>
           <strong>Structured Output</strong> — 结构化输出，Zod Schema 强制约束
@@ -62,38 +68,242 @@ function Architecture() {
   return (
     <>
       <h2>架构</h2>
+      <p>
+        QueryMind 采用 <strong>Next.js 15 App Router</strong> 全栈架构，前端流式渲染 +
+        后端 AI 编排，核心分为三条数据链路：
+      </p>
+
+      <h3>1. 对话式数据分析</h3>
       <pre className="not-prose overflow-x-auto">
-        <code>{`用户输入 → useChat (流式) → POST /api/chat → streamText + Zod Tools → AI 模型
+        <code>{`用户提问 → useChat (流式) → POST /api/chat → streamText + Zod Tools → DashScope LLM
                                                       ↓
-                                           execute_query / show_chart / search_knowledge
+                                           execute_query / show_chart / suggest_chart / search_knowledge
                                                       ↓
-                                           PostgreSQL 查询 / RAG 搜索 → 结果回传
+                                           PostgreSQL 查询 / pgvector RAG 搜索 → 结果回传
                                                       ↓
-                                客户端根据 toolName 渲染 <SqlResult> / <ChartResult>`}</code>
+                                客户端根据 toolName 渲染 <SqlResult> / <ChartResult> / <KnowledgeResult>`}</code>
       </pre>
+
+      <h3>2. Canvas 报告生成</h3>
+      <pre className="not-prose overflow-x-auto">
+        <code>{`用户描述需求 → /api/chat (report mode) → write_report_section Tool × N
+                                                      ↓
+                                    每个 section: AI 查询数据 → 分析 → 生成图表/表格/Markdown
+                                                      ↓
+                                    Supabase 持久化 (reports + report_sections + report_versions)
+                                                      ↓
+                                客户端 <ReportCanvas> 实时渲染多章节报告，支持导出 PDF / Word`}</code>
+      </pre>
+
+      <h3>3. Agent 智能编辑（LangGraph）</h3>
+      <pre className="not-prose overflow-x-auto">
+        <code>{`用户对章节下指令 → POST /api/reports/[id]/edit-section → LangGraph StateGraph
+                                                      ↓
+                              ┌─────────────────────────────────────────────────┐
+                              │  plan → query → analyze → write → validate     │
+                              │    ↑                                    ↓       │
+                              │    └──────────── reflect ←─────── (失败重试)    │
+                              └─────────────────────────────────────────────────┘
+                                                      ↓
+                              SSE 实时推送各节点推理过程 → 客户端 <EditProgressPanel> 可视化`}</code>
+      </pre>
+
+      <h3>技术栈</h3>
+      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">层级</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">技术</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="px-4 py-2.5 font-medium">框架</td>
+              <td className="px-4 py-2.5 text-slate-500">Next.js 15 (App Router) + React 19 + TypeScript</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">AI 对话</td>
+              <td className="px-4 py-2.5 text-slate-500">Vercel AI SDK (<code>streamText</code> + <code>useChat</code>) + DashScope deepseek-v3</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">Agent 编排</td>
+              <td className="px-4 py-2.5 text-slate-500">LangGraph (<code>StateGraph</code>) + LangChain ChatOpenAI</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">RAG</td>
+              <td className="px-4 py-2.5 text-slate-500">Supabase pgvector + DashScope text-embedding-v3 (1024d)</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">数据库</td>
+              <td className="px-4 py-2.5 text-slate-500">PostgreSQL（用户数据表） + Supabase（文档/报告/向量）</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">限流</td>
+              <td className="px-4 py-2.5 text-slate-500">Upstash Redis 滑动窗口 + 每日 Token 预算</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">图表</td>
+              <td className="px-4 py-2.5 text-slate-500">Recharts（柱状图 / 折线图 / 饼图）</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">导出</td>
+              <td className="px-4 py-2.5 text-slate-500">html2pdf.js (PDF) + docx (Word)</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">认证</td>
+              <td className="px-4 py-2.5 text-slate-500">bcryptjs + jose JWT + HttpOnly Cookie</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">样式</td>
+              <td className="px-4 py-2.5 text-slate-500">Tailwind CSS + GSAP 动画</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <h3>文件结构</h3>
       <pre className="not-prose overflow-x-auto">
         <code>{`src/
 ├── app/
-│   ├── page.tsx              # 产品首页
-│   ├── chat/page.tsx         # AI 查询界面
-│   ├── knowledge/page.tsx    # 知识库管理
-│   ├── docs/page.tsx         # 技术文档
-│   ├── api/chat/route.ts     # AI API Route（核心）
-│   ├── api/documents/        # 文档上传 API
-│   ├── api/data-tables/      # 数据报表 API
-│   ├── layout.tsx
-│   └── globals.css
+│   ├── page.tsx                          # 产品首页
+│   ├── chat/page.tsx                     # AI 对话 + Canvas 报告界面
+│   ├── knowledge/page.tsx                # 知识库管理
+│   ├── docs/                             # 技术文档（本页）
+│   ├── api/
+│   │   ├── chat/route.ts                 # AI 流式对话（核心）
+│   │   ├── reports/
+│   │   │   ├── route.ts                  # 报告 CRUD
+│   │   │   ├── generate-title/route.ts   # LLM 生成报告标题
+│   │   │   └── [id]/
+│   │   │       ├── route.ts              # 报告详情/更新
+│   │   │       ├── edit-section/route.ts # LangGraph Agent 编辑（SSE）
+│   │   │       ├── sections/route.ts     # 章节列表
+│   │   │       └── versions/             # 版本历史 & 回滚
+│   │   ├── documents/route.ts            # 知识文档上传
+│   │   ├── data-tables/                  # Excel/CSV 上传建表
+│   │   ├── auth/                         # 注册/登录/登出/me
+│   │   ├── spaces/                       # 空间 CRUD & 成员管理
+│   │   └── tenants/                      # 企业管理
+│   └── middleware.ts                     # JWT 鉴权 + 路由保护 + 安全头
 ├── lib/
-│   ├── prompt.ts             # AI 系统提示词
-│   ├── pg.ts                 # PostgreSQL 查询
-│   ├── rag.ts                # RAG 向量搜索
-│   ├── excel-parser.ts       # Excel/CSV 解析
-│   └── tier-config.ts        # 用户权益配置
+│   ├── prompt.ts                         # AI 系统提示词构建
+│   ├── pg.ts                             # PostgreSQL 只读查询
+│   ├── rag.ts                            # 向量嵌入 + pgvector 搜索
+│   ├── supabase.ts                       # Supabase 客户端
+│   ├── excel-parser.ts                   # Excel/CSV 解析建表
+│   ├── auth.ts                           # JWT + Session + 角色定义
+│   ├── ratelimit.ts                      # Redis 限流 + Token 预算
+│   ├── tier-config.ts                    # 用户权益分级
+│   ├── report-types.ts                   # 报告 TypeScript 类型
+│   ├── export-pdf.ts                     # PDF 导出
+│   ├── export-word.ts                    # Word 导出
+│   ├── parsers.ts                        # 文档解析（PDF/Word/TXT/MD）
+│   └── langgraph/
+│       ├── edit-section-graph.ts         # Agent StateGraph 定义
+│       ├── edit-section-prompts.ts       # 各节点提示词（中文）
+│       └── llm.ts                        # LangChain LLM 初始化
+├── hooks/
+│   ├── use-report.ts                     # 报告状态管理 + 保存反馈
+│   ├── use-section-edit.ts               # Agent 编辑进度追踪
+│   ├── use-version-history.ts            # 版本历史
+│   └── use-chat-history.ts              # localStorage 聊天记录
 └── components/
-    ├── sql-result.tsx         # 表格组件
-    └── chart-result.tsx       # 图表组件（Recharts）`}</code>
+    ├── report-canvas.tsx                 # Canvas 报告面板（可编辑标题/关闭）
+    ├── report-section-renderer.tsx       # 章节渲染（Markdown/图表/表格）
+    ├── section-edit-popover.tsx          # 编辑指令输入弹窗
+    ├── version-history-panel.tsx         # 版本历史侧边栏
+    ├── sql-result.tsx                    # 数据表格组件
+    ├── chart-result.tsx                  # 图表组件（Recharts）
+    ├── knowledge-result.tsx              # 知识检索结果
+    ├── nav-auth.tsx                      # 导航栏认证状态
+    ├── demo-section.tsx                  # 首页演示区
+    ├── page-animations.tsx               # GSAP 页面动画
+    └── roadmap-section.tsx               # Roadmap 编辑组件`}</code>
       </pre>
+
+      <h3>LangGraph Agent 编辑流程</h3>
+      <p>
+        报告章节编辑采用 <strong>LangGraph StateGraph</strong> 实现多步推理工作流，
+        每个节点的推理过程通过 SSE 实时推送到客户端：
+      </p>
+      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">节点</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">职责</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">输出</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">plan</td>
+              <td className="px-4 py-2.5 text-slate-500">分析修改意图，决定是否需要查询数据，生成 SQL</td>
+              <td className="px-4 py-2.5 text-slate-500">reasoning + suggestedSQL</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">query</td>
+              <td className="px-4 py-2.5 text-slate-500">在 PostgreSQL 执行 SQL，获取数据</td>
+              <td className="px-4 py-2.5 text-slate-500">queryResult + rowCount</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">analyze</td>
+              <td className="px-4 py-2.5 text-slate-500">分析数据，制定内容修改方案</td>
+              <td className="px-4 py-2.5 text-slate-500">analysisPlan</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">write</td>
+              <td className="px-4 py-2.5 text-slate-500">生成更新后的章节 JSON（markdown / chart / table）</td>
+              <td className="px-4 py-2.5 text-slate-500">updatedSection</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">validate</td>
+              <td className="px-4 py-2.5 text-slate-500">校验输出结构完整性（section_id、content_type 等）</td>
+              <td className="px-4 py-2.5 text-slate-500">passed / validationErrors</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">reflect</td>
+              <td className="px-4 py-2.5 text-slate-500">校验失败时自动修正，最多重试 3 次</td>
+              <td className="px-4 py-2.5 text-slate-500">fixedSection / retries</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>安全机制</h3>
+      <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">防护层</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">机制</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td className="px-4 py-2.5 font-medium">SQL 注入防御</td>
+              <td className="px-4 py-2.5 text-slate-500">SELECT 前缀校验 + 分号拦截 + <code>prepare().all()</code> 只读执行</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">认证鉴权</td>
+              <td className="px-4 py-2.5 text-slate-500">JWT HttpOnly Cookie + middleware 路由保护 + 三级角色控制</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">限流防刷</td>
+              <td className="px-4 py-2.5 text-slate-500">Upstash Redis 滑动窗口（对话 + 上传分别限流）+ 每日 Token 预算熔断</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">文件校验</td>
+              <td className="px-4 py-2.5 text-slate-500"><code>file-type</code> magic bytes 检测 + 大小限制 + MIME 白名单</td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5 font-medium">安全头</td>
+              <td className="px-4 py-2.5 text-slate-500">X-Frame-Options / X-Content-Type-Options / CSP / Referrer-Policy</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
