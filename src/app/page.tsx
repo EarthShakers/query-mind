@@ -5,44 +5,34 @@ import { NavAuth } from "@/components/nav-auth";
 
 const FEATURES = [
   {
+    icon: "📑",
+    title: "AI 一键生成数据报告",
+    desc: "描述你的需求，AI 自动查询数据、生成图表、撰写分析，输出完整的多章节报告，支持导出 PDF / Word。",
+  },
+  {
+    icon: "🤖",
+    title: "Agent 智能编辑",
+    desc: "对报告任意章节下达修改指令，AI Agent 自动推理→查数据→分析→重写→校验→修正，全程可视化。",
+  },
+  {
     icon: "💬",
-    title: "像聊天一样查数据",
-    desc: "直接用中文提问，AI 自动理解意图、分析数据并返回结果，业务人员无需学习任何技术。",
+    title: "对话式数据分析",
+    desc: "用中文描述你想知道的，AI 自动理解意图、生成 SQL、执行查询并返回结果，业务人员零门槛使用。",
   },
   {
     icon: "📊",
     title: "上传报表即可分析",
-    desc: "拖拽 Excel / CSV 文件上传，AI 自动识别表结构、理解字段含义，立即支持自然语言查询和图表生成。",
+    desc: "拖拽 Excel / CSV 上传，AI 自动识别表结构和字段含义，立即支持自然语言查询和图表生成。",
   },
   {
     icon: "📚",
-    title: "企业知识随问随答",
-    desc: "上传公司文档、政策手册、FAQ，遇到知识类问题 AI 自动检索文档精准回答，不再翻文件。",
+    title: "企业知识库问答",
+    desc: "上传公司文档、政策手册、FAQ，AI 向量检索精准回答知识问题，数据分析与知识问答双引擎驱动。",
   },
   {
     icon: "🎨",
-    title: "自动生成图表",
-    desc: "问到趋势自动画折线图，问到对比自动出柱状图，问到占比自动生成饼图——你只管提问。",
-  },
-  {
-    icon: "🔒",
-    title: "空间隔离，数据安全",
-    desc: "每个团队拥有独立空间，文档和报表严格隔离，角色权限精细管控，企业数据安全有保障。",
-  },
-  {
-    icon: "🚀",
-    title: "零配置，开箱即用",
-    desc: "注册即用，无需对接数据库、无需技术实施。上传文件就能开始分析，几分钟完成部署。",
-  },
-  {
-    icon: "📱",
-    title: "手机也能用",
-    desc: "手机、平板、电脑均可流畅使用，出差路上也能随时查数据、看报表。",
-  },
-  {
-    icon: "👥",
-    title: "团队协作",
-    desc: "多空间管理、成员角色分配、知识共享，让整个团队都能用 AI 获取数据洞察。",
+    title: "智能图表生成",
+    desc: "趋势自动折线图，对比自动柱状图，占比自动饼图——AI 根据数据语义自动选择最佳图表类型。",
   },
 ];
 
@@ -50,37 +40,41 @@ const COMPARISONS = [
   {
     name: "QueryMind",
     nl: true,
+    report: true,
+    agent: true,
     autoViz: true,
     excel: true,
     rag: true,
-    deploy: "零配置",
     price: "¥299起",
   },
   {
     name: "ChatBI（百度）",
     nl: true,
+    report: false,
+    agent: false,
     autoViz: true,
     excel: false,
     rag: false,
-    deploy: "SaaS",
     price: "按量",
   },
   {
     name: "Tableau",
     nl: false,
+    report: false,
+    agent: false,
     autoViz: false,
     excel: true,
     rag: false,
-    deploy: "高",
     price: "$70/人/月",
   },
   {
     name: "ChatGPT",
     nl: true,
+    report: false,
+    agent: false,
     autoViz: false,
     excel: false,
     rag: false,
-    deploy: "SaaS",
     price: "$20/月",
   },
 ];
@@ -90,7 +84,7 @@ const PRICING = [
     name: "免费版",
     price: "¥0",
     period: "永久",
-    features: ["每天 20 次提问", "1 个空间", "知识文档上传", "基础图表"],
+    features: ["每天 20 次提问", "1 个空间", "基础报告生成", "基础图表"],
     cta: "免费开始",
     primary: false,
   },
@@ -98,7 +92,7 @@ const PRICING = [
     name: "专业版",
     price: "¥299",
     period: "/月",
-    features: ["无限提问", "5 个空间", "Excel 报表分析", "图表导出", "历史记录"],
+    features: ["无限提问", "5 个空间", "完整报告生成", "Agent 编辑", "报告导出 PDF/Word"],
     cta: "立即订阅",
     primary: true,
   },
@@ -170,18 +164,18 @@ export default function LandingPage() {
             data-hero="badge"
             className="inline-block px-4 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-sm font-medium mb-6"
           >
-            不用写 SQL，不用装软件
+            AI 生成报告 · Agent 智能编辑
           </div>
           <h1
             data-hero="title"
             className="text-3xl md:text-5xl font-bold leading-tight mb-6"
           >
-            问一句话，
+            一句话生成
             <span
               data-hero="gradient"
               className="inline-block bg-gradient-to-r from-indigo-600 to-cyan-500 bg-clip-text text-transparent"
             >
-              数据和答案自动呈现
+              完整数据报告
             </span>
           </h1>
           <p
@@ -189,8 +183,8 @@ export default function LandingPage() {
             className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
             QueryMind
-            让业务人员也能自主获取数据洞察。上传 Excel 报表，AI 自动分析出图表；上传公司文档，AI
-            自动检索给答案——无需技术背景，无需等人帮忙。
+            让 AI 自动查询数据、生成图表、撰写分析，输出多章节数据报告。不满意？对任意章节下达修改指令，Agent
+            自动推理、查数据、重写、校验，全程可视化。
           </p>
           <div
             data-hero="cta"
@@ -217,29 +211,29 @@ export default function LandingPage() {
             {/* Header */}
             <div className="px-6 py-4 bg-gradient-to-r from-indigo-600 to-cyan-500">
               <h2 className="text-lg md:text-xl font-bold text-white">
-                上传文件，AI 即刻分析
+                从提问到报告，全程 AI 驱动
               </h2>
               <p className="text-sm text-white/80 mt-1">
-                知识文档 + 数据报表，两种能力一个平台搞定
+                数据报告生成 + Agent 智能编辑，一个平台搞定
               </p>
             </div>
             {/* Content */}
             <div className="p-5 md:p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 {
-                  icon: "📊",
-                  title: "Excel 报表分析",
-                  desc: "上传 Excel/CSV，AI 自动建表识别字段，对话即可查询统计",
+                  icon: "📑",
+                  title: "一键生成数据报告",
+                  desc: "描述需求，AI 自动查询数据、生成图表、撰写分析，输出多章节完整报告",
                 },
                 {
-                  icon: "📄",
-                  title: "知识文档检索",
-                  desc: "PDF / Word / Markdown，AI 自动解析向量化，精准回答知识问题",
+                  icon: "🤖",
+                  title: "Agent 智能编辑",
+                  desc: "对任意章节下达修改指令，Agent 自动推理→查数据→重写→校验→修正",
                 },
                 {
-                  icon: "🎨",
-                  title: "智能图表生成",
-                  desc: "数据查询结果自动匹配最佳图表类型，趋势、对比、占比一目了然",
+                  icon: "💬",
+                  title: "对话式数据分析",
+                  desc: "用中文提问，AI 自动生成 SQL 查询并返回图表结果，零技术门槛",
                 },
                 {
                   icon: "👥",
@@ -300,7 +294,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10 md:mb-16" data-anim="heading">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">核心能力</h2>
-            <p className="text-slate-500">上传文件，提问即得答案</p>
+            <p className="text-slate-500">AI 报告生成 + Agent 编辑 + 对话分析</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map((f) => (
@@ -327,24 +321,24 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10 md:mb-16" data-anim="heading">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">怎么用？</h2>
-            <p className="text-slate-500">三步开始用 AI 分析数据</p>
+            <p className="text-slate-500">三步完成数据报告</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
                 step: "01",
-                title: "上传文件",
-                desc: "将 Excel 报表或企业文档拖拽上传，AI 自动识别内容结构",
+                title: "描述你的需求",
+                desc: "用自然语言告诉 AI 你想分析什么，比如「生成上季度各部门销售对比报告」",
               },
               {
                 step: "02",
-                title: "用中文提问",
-                desc: "像和同事聊天一样描述你想知道的，比如「上月哪个产品销量最高」",
+                title: "AI 自动生成报告",
+                desc: "AI 自动查询数据、生成图表、撰写分析，输出多章节完整报告",
               },
               {
                 step: "03",
-                title: "结果即时呈现",
-                desc: "数据自动配上最合适的图表，知识问题直接给出精准答案",
+                title: "Agent 编辑优化",
+                desc: "对任意章节下指令修改，Agent 自动推理重写，全程可视化，导出 PDF / Word",
               },
             ].map((s) => (
               <div key={s.step} className="text-center" data-anim="step">
@@ -384,6 +378,12 @@ export default function LandingPage() {
                     产品
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
+                    AI 报告
+                  </th>
+                  <th className="px-4 py-4 text-center font-semibold text-slate-700">
+                    Agent 编辑
+                  </th>
+                  <th className="px-4 py-4 text-center font-semibold text-slate-700">
                     自然语言
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
@@ -394,9 +394,6 @@ export default function LandingPage() {
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
                     知识库
-                  </th>
-                  <th className="px-4 py-4 text-center font-semibold text-slate-700">
-                    部署成本
                   </th>
                   <th className="px-4 py-4 text-center font-semibold text-slate-700">
                     价格
@@ -417,6 +414,12 @@ export default function LandingPage() {
                       )}
                     </td>
                     <td className="px-4 py-4 text-center">
+                      {c.report ? "✅" : "❌"}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {c.agent ? "✅" : "❌"}
+                    </td>
+                    <td className="px-4 py-4 text-center">
                       {c.nl ? "✅" : "❌"}
                     </td>
                     <td className="px-4 py-4 text-center">
@@ -427,9 +430,6 @@ export default function LandingPage() {
                     </td>
                     <td className="px-4 py-4 text-center">
                       {c.rag ? "✅" : "❌"}
-                    </td>
-                    <td className="px-4 py-4 text-center text-slate-500">
-                      {c.deploy}
                     </td>
                     <td className="px-4 py-4 text-center text-slate-500">
                       {c.price}
@@ -507,10 +507,10 @@ export default function LandingPage() {
       >
         <div className="max-w-3xl mx-auto text-center text-white">
           <h2 className="text-2xl md:text-3xl font-bold mb-4">
-            上传文件，开始提问
+            一句话，生成完整数据报告
           </h2>
           <p className="text-indigo-100 mb-8">
-            免费体验 QueryMind，让数据和知识为你所用。
+            免费体验 QueryMind，AI 报告生成 + Agent 智能编辑，让数据为你所用。
           </p>
           <Link
             href="/chat"
