@@ -51,5 +51,12 @@ export function useReport(reportId: string | null) {
     }
   }, [reportId]);
 
-  return { sections, title, setTitle, upsertSection, save, saving, load };
+  /** Replace all sections at once (for version restore) */
+  const replaceAllSections = useCallback((newSections: ReportSection[]) => {
+    setSections(
+      [...newSections].sort((a, b) => a.sort_order - b.sort_order)
+    );
+  }, []);
+
+  return { sections, title, setTitle, upsertSection, replaceAllSections, save, saving, load };
 }

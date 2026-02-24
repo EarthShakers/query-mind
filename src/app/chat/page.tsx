@@ -8,7 +8,10 @@ import { ChartResult } from "@/components/chart-result";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
 import { useReport } from "@/hooks/use-report";
+import { useSectionEdit } from "@/hooks/use-section-edit";
+import { useVersionHistory } from "@/hooks/use-version-history";
 import { ReportCanvas } from "@/components/report-canvas";
+import { VersionHistoryPanel } from "@/components/version-history-panel";
 import type { ReportSection } from "@/lib/report-types";
 
 const QUICK_QUESTIONS = [
@@ -1002,6 +1005,12 @@ export default function Page() {
   const creatingReport = useRef(false);
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  // ── Section edit + version history hooks ──
+  const getSections = useCallback(() => report.sections, [report.sections]);
+  const sectionEdit = useSectionEdit(reportId, getSections, report.upsertSection);
+  const versionHistory = useVersionHistory(reportId, report.replaceAllSections);
+  const [versionPanelOpen, setVersionPanelOpen] = useState(false);
+
   // Build available spaces list (always include demo space for preset docs)
   const availableSpaces = useMemo(() => {
     const demo = { spaceId: DEMO_SPACE_ID, spaceName: "预置文档" };
@@ -1269,6 +1278,33 @@ export default function Page() {
               </svg>
               {report.saving ? "保存中..." : "保存报告"}
             </button>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setVersionPanelOpen(!versionPanelOpen);
+                  if (!versionPanelOpen) versionHistory.fetchVersions();
+                }}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                title="版本历史"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+                版本
+              </button>
+              {versionPanelOpen && (
+                <VersionHistoryPanel
+                  versions={versionHistory.versions}
+                  loading={versionHistory.loading}
+                  restoring={versionHistory.restoring}
+                  onRestore={(versionId) => {
+                    versionHistory.restoreVersion(versionId);
+                  }}
+                  onClose={() => setVersionPanelOpen(false)}
+                />
+              )}
+            </div>
             <ExportDropdown
               canvasRef={canvasRef}
               title={report.title}
@@ -1387,6 +1423,9 @@ export default function Page() {
                 sections={report.sections}
                 title={report.title}
                 isStreaming={isLoading}
+                onEditSection={sectionEdit.editSection}
+                editingSectionId={sectionEdit.editingSectionId}
+                editProgress={sectionEdit.editProgress}
               />
             </div>
           )}

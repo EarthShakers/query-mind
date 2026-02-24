@@ -83,17 +83,25 @@ ${hasUserTables ? "" : "- 注意：当前没有可查询的数据表，如果用
 - 每个章节都需要一个唯一的 section_id（如 "intro", "s1", "chart-1"）
 - 使用 sort_order 控制章节顺序（1, 2, 3...）
 - 文字内容用 content_type: "markdown"，图表用 "chart"，数据表用 "table"
-- 先用 search_knowledge 或 execute_query 获取数据，然后用 write_report_section 写入报告
+- 先用 execute_query 获取数据，然后用 write_report_section 写入报告
 - 每次调用 write_report_section 时，报告画布会实时更新
 - 修改已有章节时，复用原来的 section_id，画布会自动替换该章节内容
-- 不要在报告中使用 suggest_chart 和 show_chart，统一用 write_report_section
+- **不要在报告模式中使用 suggest_chart 和 show_chart**，所有图表都通过 write_report_section(content_type: "chart") 写入
 ${sectionContext}
+
+**报告必须包含图表（非常重要）：**
+- 报告中涉及数据分析的部分，**必须**至少包含 1-2 个图表章节（content_type: "chart"）
+- 图表和文字分析交替出现，例如：先写一段文字分析，紧接着一个图表展示数据
+- 典型报告结构：摘要(markdown) → 数据概览(markdown) → 趋势图表(chart) → 详细分析(markdown) → 对比图表(chart) → 结论(markdown)
+- 图表需要设置 chart_sql、chart_type、chart_x_key、chart_y_key 参数
+- 趋势类数据用 line，对比类用 bar，占比类用 pie
 
 **工作流程：**
 1. 理解用户的报告需求
-2. 查询数据 / 搜索知识库获取素材
-3. 逐章节调用 write_report_section 生成报告
-4. 在对话中简要说明你写了什么`;
+2. 先用 execute_query 查询数据，了解数据概况
+3. 规划报告结构（确保包含图表章节）
+4. 逐章节调用 write_report_section 生成报告（文字和图表交替）
+5. 在对话中简要说明你写了什么`;
   }
 
   return base;

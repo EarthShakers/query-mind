@@ -86,7 +86,9 @@ export async function POST(req: Request) {
   }
 
   // Load existing report sections for context (when in report mode)
+  // Also activate report mode if user's message mentions "报告" (even without reportId yet)
   let existingSections: { section_id: string; sort_order: number; title?: string; content_type: string }[] | undefined;
+  const isReportRequest = !reportId && /报告|report/i.test(lastMsg);
   if (reportId) {
     const { data } = await supabase
       .from("report_sections")
@@ -99,17 +101,22 @@ export async function POST(req: Request) {
       // reportId exists but no sections yet — still activate report mode
       existingSections = [];
     }
+  } else if (isReportRequest) {
+    // No reportId yet but user asked for a report — activate report mode with empty sections
+    existingSections = [];
   }
+
+  const isReportMode = reportId || isReportRequest;
 
   // ── AI 流式调用 ──
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), reportId ? 120000 : 60000);
+  const timeout = setTimeout(() => abortController.abort(), isReportMode ? 120000 : 60000);
 
   try {
     const result = await streamText({
       model: dashscope("deepseek-v3.2-exp"),
       abortSignal: abortController.signal,
-      maxSteps: reportId ? 10 : 5,
+      maxSteps: isReportMode ? 10 : 5,
       system: buildSystemPrompt(userSchemaStr, existingSections),
       messages: sanitizeMessages(messages),
       tools: {
@@ -250,9 +257,26 @@ export async function POST(req: Request) {
               .describe("数据表的 SQL 查询，content_type 为 table 时必填"),
           }),
           execute: async (args) => {
-            if (args.content_type === "chart" && args.chart_sql) {
+            if (args.content_type === "chart") {
+              if (!args.chart_sql) {
+                return {
+                  section_id: args.section_id,
+                  sort_order: args.sort_order,
+                  title: args.title,
+                  content_type: "chart" as const,
+                  error: "缺少 chart_sql 参数，无法生成图表",
+                };
+              }
               try {
                 const data = await executeQuery(args.chart_sql);
+                // Auto-infer xKey/yKey from data columns if LLM didn't provide them
+                const columns = data.length > 0 ? Object.keys(data[0]) : [];
+                let xKey = args.chart_x_key || "";
+                let yKey = args.chart_y_key || "";
+                if (columns.length >= 2) {
+                  if (!xKey) xKey = columns[0];
+                  if (!yKey) yKey = columns.find((c) => c !== xKey) || columns[1];
+                }
                 return {
                   section_id: args.section_id,
                   sort_order: args.sort_order,
@@ -260,9 +284,9 @@ export async function POST(req: Request) {
                   content_type: args.content_type,
                   chart_config: {
                     data,
-                    chartType: args.chart_type!,
-                    xKey: args.chart_x_key!,
-                    yKey: args.chart_y_key!,
+                    chartType: args.chart_type || "bar",
+                    xKey,
+                    yKey,
                     groupKey: args.chart_group_key,
                   },
                 };
@@ -271,7 +295,16 @@ export async function POST(req: Request) {
                 return { ...args, error: msg };
               }
             }
-            if (args.content_type === "table" && args.table_sql) {
+            if (args.content_type === "table") {
+              if (!args.table_sql) {
+                return {
+                  section_id: args.section_id,
+                  sort_order: args.sort_order,
+                  title: args.title,
+                  content_type: "table" as const,
+                  error: "缺少 table_sql 参数，无法生成数据表",
+                };
+              }
               try {
                 const data = await executeQuery(args.table_sql);
                 return {
