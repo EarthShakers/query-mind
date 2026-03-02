@@ -38,7 +38,11 @@ export default function Page() {
 
   // ── Section edit + version history hooks ──
   const getSections = useCallback(() => report.sections, [report.sections]);
-  const sectionEdit = useSectionEdit(reportId, getSections, report.upsertSection);
+  const sectionEdit = useSectionEdit(
+    reportId,
+    getSections,
+    report.upsertSection
+  );
   const versionHistory = useVersionHistory(reportId, report.replaceAllSections);
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [canvasOpen, setCanvasOpen] = useState(true);
@@ -137,7 +141,10 @@ export default function Page() {
           const res = await fetch("/api/reports", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: autoTitle, spaceId: [...selectedSpaceIds][0] }),
+            body: JSON.stringify({
+              title: autoTitle,
+              spaceId: [...selectedSpaceIds][0],
+            }),
           });
           const data = await res.json();
           if (data.id) setReportId(data.id);
@@ -171,23 +178,26 @@ export default function Page() {
     chatHistory.setActiveSessionId(null);
   }, [setMessages, report, chatHistory]);
 
-  const loadSession = useCallback((id: string) => {
-    const session = chatHistory.sessions.find((s) => s.id === id);
-    if (!session) return;
-    // Reset report state
-    setReportId(null);
-    report.setTitle("未命名报告");
-    report.replaceAllSections([]);
-    setCanvasOpen(true);
-    setVersionPanelOpen(false);
-    creatingReport.current = false;
-    userScrolledUp.current = false;
-    // Load session
-    setSessionId(session.id);
-    setMessages(session.messages);
-    chatHistory.setActiveSessionId(session.id);
-    setSidebarOpen(false);
-  }, [chatHistory, setMessages, report]);
+  const loadSession = useCallback(
+    (id: string) => {
+      const session = chatHistory.sessions.find((s) => s.id === id);
+      if (!session) return;
+      // Reset report state
+      setReportId(null);
+      report.setTitle("未命名报告");
+      report.replaceAllSections([]);
+      setCanvasOpen(true);
+      setVersionPanelOpen(false);
+      creatingReport.current = false;
+      userScrolledUp.current = false;
+      // Load session
+      setSessionId(session.id);
+      setMessages(session.messages);
+      chatHistory.setActiveSessionId(session.id);
+      setSidebarOpen(false);
+    },
+    [chatHistory, setMessages, report]
+  );
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -261,7 +271,16 @@ export default function Page() {
             disabled={isLoading}
             className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 disabled:opacity-40 transition-colors"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M12 5v14" />
               <path d="M5 12h14" />
             </svg>
@@ -269,11 +288,15 @@ export default function Page() {
           </button>
         </div>
         <div className="px-4 pt-3 pb-1">
-          <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">历史记录</span>
+          <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+            历史记录
+          </span>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {chatHistory.sessions.length === 0 && (
-            <p className="text-xs text-slate-300 text-center py-6">暂无对话记录</p>
+            <p className="text-xs text-slate-300 text-center py-6">
+              暂无对话记录
+            </p>
           )}
           {chatHistory.sessions.map((session) => {
             const isActive = session.id === chatHistory.activeSessionId;
@@ -292,7 +315,12 @@ export default function Page() {
                 >
                   <p className="text-sm truncate">{session.title}</p>
                   <p className="text-[10px] text-slate-400 mt-0.5">
-                    {new Date(session.createdAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" })}
+                    {new Date(session.createdAt).toLocaleDateString("zh-CN", {
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "numeric",
+                    })}
                   </p>
                 </button>
                 <button
@@ -304,7 +332,16 @@ export default function Page() {
                   className="shrink-0 p-1 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all"
                   title="删除"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M18 6 6 18" />
                     <path d="m6 6 12 12" />
                   </svg>
@@ -373,102 +410,147 @@ export default function Page() {
           </div>
           {hasCanvas && (
             <>
-            {/* Panel toggle button */}
-            <button
-              onClick={() => setCanvasOpen((v) => !v)}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-              title={canvasOpen ? "收起报告面板" : "展开报告面板"}
-            >
-              {canvasOpen ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M15 3v18" />
-                  <path d="m10 15 3-3-3-3" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect width="18" height="18" x="3" y="3" rx="2" />
-                  <path d="M15 3v18" />
-                  <path d="m14 9-3 3 3 3" />
-                </svg>
-              )}
-              {canvasOpen ? "收起" : "报告"}
-            </button>
-            {/* Save / Version / Export — only when panel is open */}
-            {canvasOpen && (
-              <>
+              {/* Panel toggle button */}
               <button
-                onClick={() => report.save()}
-                disabled={report.saving || !reportId}
-                className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
-                  report.saveResult === "success"
-                    ? "bg-green-500 hover:bg-green-600"
-                    : report.saveResult === "error"
-                    ? "bg-red-500 hover:bg-red-600"
-                    : "bg-indigo-500 hover:bg-indigo-600"
-                }`}
+                onClick={() => setCanvasOpen((v) => !v)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                title={canvasOpen ? "收起报告面板" : "展开报告面板"}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-                {report.saving
-                  ? "保存中..."
-                  : report.saveResult === "success"
-                  ? "已保存"
-                  : report.saveResult === "error"
-                  ? "保存失败"
-                  : "保存报告"}
-              </button>
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    setVersionPanelOpen(!versionPanelOpen);
-                    if (!versionPanelOpen) versionHistory.fetchVersions();
-                  }}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                  title="版本历史"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="12 6 12 12 16 14" />
+                {canvasOpen ? (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect width="18" height="18" x="3" y="3" rx="2" />
+                    <path d="M15 3v18" />
+                    <path d="m10 15 3-3-3-3" />
                   </svg>
-                  版本
-                </button>
-                {versionPanelOpen && (
-                  <VersionHistoryPanel
-                    versions={versionHistory.versions}
-                    loading={versionHistory.loading}
-                    restoring={versionHistory.restoring}
-                    onRestore={(versionId) => {
-                      versionHistory.restoreVersion(versionId);
-                    }}
-                    onClose={() => setVersionPanelOpen(false)}
-                  />
+                ) : (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect width="18" height="18" x="3" y="3" rx="2" />
+                    <path d="M15 3v18" />
+                    <path d="m14 9-3 3 3 3" />
+                  </svg>
                 )}
-              </div>
-              <ExportDropdown
-                canvasRef={canvasRef}
-                title={report.title}
-                sections={report.sections}
-              />
-              </>
-            )}
-            {/* New chat button */}
-            <button
-              onClick={startNewChat}
-              disabled={isLoading}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
-              title="开始新对话"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
-              </svg>
-              新对话
-            </button>
-          </>
+                {canvasOpen ? "收起" : "报告"}
+              </button>
+              {/* Save / Version / Export — only when panel is open */}
+              {canvasOpen && (
+                <>
+                  <button
+                    onClick={() => report.save()}
+                    disabled={report.saving || !reportId}
+                    className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+                      report.saveResult === "success"
+                        ? "bg-green-500 hover:bg-green-600"
+                        : report.saveResult === "error"
+                        ? "bg-red-500 hover:bg-red-600"
+                        : "bg-indigo-500 hover:bg-indigo-600"
+                    }`}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    {report.saving
+                      ? "保存中..."
+                      : report.saveResult === "success"
+                      ? "已保存"
+                      : report.saveResult === "error"
+                      ? "保存失败"
+                      : "保存报告"}
+                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setVersionPanelOpen(!versionPanelOpen);
+                        if (!versionPanelOpen) versionHistory.fetchVersions();
+                      }}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                      title="版本历史"
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      版本
+                    </button>
+                    {versionPanelOpen && (
+                      <VersionHistoryPanel
+                        versions={versionHistory.versions}
+                        loading={versionHistory.loading}
+                        restoring={versionHistory.restoring}
+                        onRestore={(versionId) => {
+                          versionHistory.restoreVersion(versionId);
+                        }}
+                        onClose={() => setVersionPanelOpen(false)}
+                      />
+                    )}
+                  </div>
+                  <ExportDropdown
+                    canvasRef={canvasRef}
+                    title={report.title}
+                    sections={report.sections}
+                  />
+                </>
+              )}
+              {/* New chat button */}
+              <button
+                onClick={startNewChat}
+                disabled={isLoading}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                title="开始新对话"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                新对话
+              </button>
+            </>
           )}
           <SpacePicker
             spaces={availableSpaces}
@@ -477,9 +559,19 @@ export default function Page() {
           />
         </header>
 
-        <div className={`flex-1 flex min-h-0 ${hasCanvas && canvasOpen ? "flex-row" : "flex-col"}`}>
+        <div
+          className={`flex-1 flex min-h-0 ${
+            hasCanvas && canvasOpen ? "flex-row" : "flex-col"
+          }`}
+        >
           {/* ── Chat area ── */}
-          <div className={`flex flex-col min-h-0 ${hasCanvas && canvasOpen ? "w-[40%] border-r border-slate-200" : "flex-1"}`}>
+          <div
+            className={`flex flex-col min-h-0 ${
+              hasCanvas && canvasOpen
+                ? "w-[40%] border-r border-slate-200"
+                : "flex-1"
+            }`}
+          >
             <div
               ref={scrollRef}
               onScroll={handleScroll}
@@ -511,7 +603,16 @@ export default function Page() {
                       onClick={() => setUploadOpen(true)}
                       className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 text-xs font-medium text-white bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-xl hover:from-indigo-600 hover:to-cyan-600 shadow-sm hover:shadow-md transition-all"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" x2="12" y1="3" y2="15" />
@@ -566,7 +667,16 @@ export default function Page() {
                     className="shrink-0 p-2.5 rounded-xl border text-slate-400 bg-white border-slate-200 hover:text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40"
                     title="清除对话"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M3 6h18" />
                       <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
                       <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
@@ -579,7 +689,16 @@ export default function Page() {
                   className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-indigo-500 bg-indigo-50 border border-indigo-100 rounded-xl hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
                   title="上传文件到知识库"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <polyline points="17 8 12 3 7 8" />
                     <line x1="12" x2="12" y1="3" y2="15" />
@@ -632,17 +751,34 @@ export default function Page() {
 
       {showClearConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowClearConfirm(false)} />
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowClearConfirm(false)}
+          />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 p-6 text-center">
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-red-500"
+              >
                 <path d="M3 6h18" />
                 <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
                 <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-slate-800 mb-1">清除对话记录</h3>
-            <p className="text-xs text-slate-500 mb-5">清除后无法恢复，确定要清除所有对话消息吗？</p>
+            <h3 className="text-sm font-semibold text-slate-800 mb-1">
+              清除对话记录
+            </h3>
+            <p className="text-xs text-slate-500 mb-5">
+              清除后无法恢复，确定要清除所有对话消息吗？
+            </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowClearConfirm(false)}

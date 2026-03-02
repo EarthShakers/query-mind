@@ -222,7 +222,7 @@ export async function POST(req: Request) {
         },
         write_report_section: {
           description:
-            "写入或更新报告的一个章节。每个章节调用一次。修改已有章节时复用相同 section_id。",
+            "【报告模式必须调用】写入或更新报告的一个章节。报告模式下，必须通过此工具输出内容，每个章节调用一次，禁止只用文字回复。修改已有章节时复用相同 section_id。",
           parameters: z.object({
             section_id: z
               .string()

@@ -10,6 +10,7 @@ function getSecret() {
   return new TextEncoder().encode(secret);
 }
 
+// 安全策略：设置 HTTP 响应头
 function applySecurityHeaders(res: NextResponse) {
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
@@ -46,7 +47,6 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  const isLoggedIn = !!userId;
   const isTenantAdmin = tenantRole === "admin";
   const isSuperAdmin = userRole === "superAdmin";
   const pathname = req.nextUrl.pathname;
