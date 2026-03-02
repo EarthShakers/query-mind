@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.0 — 文档解析增强 & RAG 优化 <sub>2026-03-03</sub>
+
+- **PDF 转 Markdown（LlamaParse）**：PDF 上传自动调用 LlamaParse API 转 Markdown，保留表格、标题结构，回退兼容 pdf-parse
+- **DOCX 转 Markdown**：mammoth HTML + turndown，表格和标题层级完整保留
+- **Markdown 标题切分**：按 `#` `##` `###` 标题切出语义段落，超长段落递归按句子切分，每个 chunk 携带标题层级上下文
+- **知识库优先检索**：system prompt 强制 LLM 先调用 search_knowledge，避免跳过知识库直接回答
+- **Middleware spaceRole 修复**：从 JWT spaces 数组中解析 spaceRole 注入 request header
+- **文档 Markdown 预览**：预览 modal 支持 Markdown 渲染（含 HTML 表格），可切换分片视图
+- **文档删除 & 同名覆盖**：支持删除文档，重新上传同名文件自动覆盖旧 chunks
+
 ## v1.5.0 — Canvas 报告 & Agent 编辑 & 聊天历史 <sub>2026-02-24</sub>
 
 - **Canvas 数据报告**：一句话生成多章节数据报告（查询→图表→分析→撰写），支持导出 PDF / Word
