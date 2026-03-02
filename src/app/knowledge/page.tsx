@@ -4,6 +4,9 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 
 interface DocItem {
   title: string;
@@ -1134,6 +1137,9 @@ function SpaceDocuments({
   } | null>(null);
   const [chunks, setChunks] = useState<ChunkItem[]>([]);
   const [chunksLoading, setChunksLoading] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"chunks" | "markdown">("markdown");
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState<string | null>(null);
+  const [deletingDoc, setDeletingDoc] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"docs" | "data">("docs");
 
@@ -1201,6 +1207,29 @@ function SpaceDocuments({
       // ignore
     } finally {
       setChunksLoading(false);
+    }
+  }
+
+  async function handleDeleteDoc(title: string) {
+    setDeletingDoc(true);
+    try {
+      const res = await fetch("/api/documents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, spaceId }),
+      });
+      if (res.ok) {
+        setConfirmDeleteDoc(null);
+        setPreview(null);
+        fetchDocs();
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(data?.error || "删除失败");
+      }
+    } catch {
+      alert("删除失败");
+    } finally {
+      setDeletingDoc(false);
     }
   }
 
@@ -1652,9 +1681,20 @@ function SpaceDocuments({
                       </div>
                     </div>
                   </div>
-                  <div className="absolute bottom-3 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute bottom-3 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                    {canUpload && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteDoc(doc.title);
+                        }}
+                        className="text-[11px] text-red-400 hover:text-red-600 font-medium"
+                      >
+                        删除
+                      </button>
+                    )}
                     <span className="text-[11px] text-indigo-400 font-medium">
-                      点击预览 →
+                      预览 →
                     </span>
                   </div>
                 </div>
@@ -1665,6 +1705,41 @@ function SpaceDocuments({
         </>
         )}
       </div>
+
+      {/* Delete Document Confirmation */}
+      {confirmDeleteDoc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          onClick={() => !deletingDoc && setConfirmDeleteDoc(null)}
+        >
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-800">确认删除文档</h3>
+            <p className="text-sm text-slate-500 mt-2">
+              删除后，该文档的所有片段将被永久清除，AI 将无法再检索此文档。此操作不可撤销。
+            </p>
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                onClick={() => setConfirmDeleteDoc(null)}
+                disabled={deletingDoc}
+                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDeleteDoc(confirmDeleteDoc)}
+                disabled={deletingDoc}
+                className="px-4 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {deletingDoc ? "删除中..." : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Preview Modal */}
       {preview && (
@@ -1717,6 +1792,29 @@ function SpaceDocuments({
                 </button>
               </div>
             </div>
+            {/* Tab switcher */}
+            <div className="px-6 pt-3 pb-0 flex gap-1 border-b border-slate-100">
+              <button
+                onClick={() => setPreviewMode("markdown")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-colors ${
+                  previewMode === "markdown"
+                    ? "bg-white text-indigo-600 border border-b-white border-slate-200 -mb-px"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Markdown 预览
+              </button>
+              <button
+                onClick={() => setPreviewMode("chunks")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-colors ${
+                  previewMode === "chunks"
+                    ? "bg-white text-indigo-600 border border-b-white border-slate-200 -mb-px"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                分片视图
+              </button>
+            </div>
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto px-6 py-5">
               {chunksLoading ? (
@@ -1728,6 +1826,12 @@ function SpaceDocuments({
                 <p className="text-center py-16 text-sm text-slate-400">
                   暂无内容
                 </p>
+              ) : previewMode === "markdown" ? (
+                <div className="prose prose-sm prose-slate max-w-none prose-headings:text-slate-800 prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                    {chunks.map((c) => c.content).join("\n\n")}
+                  </ReactMarkdown>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {chunks.map((chunk, i) => (
@@ -1754,10 +1858,10 @@ function SpaceDocuments({
                           {chunk.content.length} 字
                         </span>
                       </div>
-                      <div className="px-4 py-3">
-                        <p className="text-[13px] text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      <div className="px-4 py-3 prose prose-sm prose-slate max-w-none prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                           {chunk.content}
-                        </p>
+                        </ReactMarkdown>
                       </div>
                     </div>
                   ))}

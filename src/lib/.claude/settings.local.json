@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(npx mammoth --help:*)",
+      "Bash(node -e:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm ls:*)",
+      "Bash(npm install:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(pnpm add:*)"
+    ]
+  }
+}

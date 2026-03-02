@@ -165,6 +165,13 @@ export async function POST(req: Request) {
       }
     }
 
+    // 同名文档覆盖：先删除旧 chunks
+    await supabase
+      .from("documents")
+      .delete()
+      .eq("title", title)
+      .eq("space_id", uploadSpaceId);
+
     const content = await extractText(file);
     const chunks = await ingestDocument(
       title,
@@ -175,6 +182,43 @@ export async function POST(req: Request) {
     );
 
     return Response.json({ success: true, title, chunks });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return Response.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const ctx = getSpaceContext(req);
+    const { userId, spaceRole, tenantRole } = ctx;
+
+    if (!userId) {
+      return Response.json({ error: "请先登录" }, { status: 401 });
+    }
+
+    const { title, spaceId } = await req.json();
+    if (!title || !spaceId) {
+      return Response.json({ error: "缺少 title 或 spaceId" }, { status: 400 });
+    }
+
+    // Permission check
+    if (tenantRole) {
+      const canEdit = spaceRole === "admin" || spaceRole === "editor" || tenantRole === "admin";
+      if (!canEdit) {
+        return Response.json({ error: "没有删除权限" }, { status: 403 });
+      }
+    }
+
+    const { error, count } = await supabase
+      .from("documents")
+      .delete()
+      .eq("title", title)
+      .eq("space_id", spaceId);
+
+    if (error) throw new Error(error.message);
+
+    return Response.json({ success: true, deleted: count ?? 0 });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return Response.json({ error: msg }, { status: 500 });

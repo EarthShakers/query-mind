@@ -114,6 +114,13 @@ function splitChunks(
       rawChunks.push(current.trim());
       current = "";
     }
+    // 单段落超长时硬切
+    if (trimmed.length > maxLen) {
+      for (let j = 0; j < trimmed.length; j += maxLen) {
+        rawChunks.push(trimmed.slice(j, j + maxLen));
+      }
+      continue;
+    }
     current += (current ? "\n\n" : "") + trimmed;
   }
   if (current.trim()) {

@@ -130,6 +130,7 @@ export async function POST(req: Request) {
       system: buildSystemPrompt(userSchemaStr, existingSections),
       messages: sanitizeMessages(messages),
       tools: {
+        // 结构化数据sql查询
         execute_query: {
           description: "Execute a SQL query and display results as a table",
           parameters: z.object({
@@ -144,6 +145,7 @@ export async function POST(req: Request) {
             }
           },
         },
+        // 图表生成
         show_chart: {
           description:
             "Generate and display a chart. Only use when user EXPLICITLY requests a chart (e.g. '用图表展示', '生成图表').",
@@ -183,6 +185,7 @@ export async function POST(req: Request) {
             }
           },
         },
+        // 图表建议
         suggest_chart: {
           description:
             "Suggest a chart visualization to the user. Use after answering with text, when the data would benefit from a chart. The user can then choose to view it.",
@@ -220,6 +223,7 @@ export async function POST(req: Request) {
             }
           },
         },
+        // 写入或更新报告
         write_report_section: {
           description:
             "【报告模式必须调用】写入或更新报告的一个章节。报告模式下，必须通过此工具输出内容，每个章节调用一次，禁止只用文字回复。修改已有章节时复用相同 section_id。",
@@ -337,6 +341,7 @@ export async function POST(req: Request) {
         },
         ...(enableKnowledge
           ? {
+              // 知识库检索 RAG
               search_knowledge: {
                 description:
                   "Search the knowledge base for company policies, product docs, FAQs, and general information. Use when the question is NOT about querying database numbers or statistics.",
