@@ -1,10 +1,7 @@
 import { getSpaceContext } from "@/lib/auth";
 import { checkFileLimit } from "@/lib/file-limits";
 import { supabase } from "@/lib/supabase";
-import {
-  parseFile,
-  createAndPopulateTable,
-} from "@/lib/excel-parser";
+import { parseFile, createAndPopulateTable } from "@/lib/excel-parser";
 
 const ALLOWED_EXTS = ["xlsx", "xls", "csv"];
 const MAX_SIZE = 20 * 1024 * 1024; // 20MB
@@ -25,7 +22,9 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("data_tables")
-      .select("id, table_name, display_name, description, row_count, file_name, created_at")
+      .select(
+        "id, table_name, display_name, description, row_count, file_name, created_at"
+      )
       .eq("space_id", spaceId)
       .order("created_at", { ascending: false });
 
@@ -80,8 +79,13 @@ export async function POST(req: Request) {
 
     // Permission: enterprise users need editor+ role
     if (ctx.tenantRole) {
-      const canEdit = ctx.spaceRole === "admin" || ctx.spaceRole === "editor" || ctx.tenantRole === "admin";
+      const canEdit =
+        ctx.spaceRole === "admin" ||
+        ctx.spaceRole === "editor" ||
+        ctx.tenantRole === "admin";
       if (!canEdit) {
+        console.log(ctx, "ctx");
+
         return Response.json({ error: "没有上传权限" }, { status: 403 });
       }
     }

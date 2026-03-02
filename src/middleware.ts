@@ -33,6 +33,7 @@ export async function middleware(req: NextRequest) {
   let tenantId: string | null = null;
   let tenantRole: string | null = null;
   let activeSpaceId: string | null = null;
+  let spaceRole: string | null = null;
 
   if (token && secret) {
     try {
@@ -42,6 +43,15 @@ export async function middleware(req: NextRequest) {
       tenantId = (payload as any).tenantId ?? null;
       tenantRole = (payload as any).tenantRole ?? null;
       activeSpaceId = (payload as any).activeSpaceId ?? null;
+
+      // Resolve spaceRole from the spaces array in JWT
+      const spaces = (payload as any).spaces as
+        | { spaceId: string; role: string }[]
+        | undefined;
+      if (activeSpaceId && spaces) {
+        const match = spaces.find((s) => s.spaceId === activeSpaceId);
+        if (match) spaceRole = match.role;
+      }
     } catch {
       // Invalid token — treat as anonymous
     }
@@ -59,6 +69,7 @@ export async function middleware(req: NextRequest) {
     requestHeaders.set("x-tenant-id", tenantId!);
     if (tenantRole) requestHeaders.set("x-tenant-role", tenantRole);
     if (activeSpaceId) requestHeaders.set("x-active-space-id", activeSpaceId);
+    if (spaceRole) requestHeaders.set("x-space-role", spaceRole);
 
     const rewriteRes = NextResponse.next({
       request: { headers: requestHeaders },
