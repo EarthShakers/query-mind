@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { UploadProgress } from "./parsers";
 
 export interface DocResult {
   title: string;
@@ -70,12 +71,20 @@ export async function ingestDocument(
   content: string,
   metadata: Record<string, unknown> = {},
   spaceId?: string,
-  tenantId?: string
+  tenantId?: string,
+  onProgress?: (p: UploadProgress) => void,
+  signal?: AbortSignal
 ): Promise<number> {
   const chunks = splitMarkdown(content);
+
+  onProgress?.({ stage: "chunking", total: chunks.length });
+
   const rows = [];
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    if (signal?.aborted) throw new Error("上传已取消");
+
+    const chunk = chunks[i];
     // 把标题上下文拼到内容前面，提升检索语义
     const contextPrefix = chunk.headers.length
       ? chunk.headers.join(" > ") + "\n\n"
@@ -83,6 +92,9 @@ export async function ingestDocument(
     const textForEmbedding = contextPrefix + chunk.content;
 
     const embedding = await embed(textForEmbedding);
+
+    onProgress?.({ stage: "embedding", current: i + 1, total: chunks.length });
+
     rows.push({
       title,
       content: textForEmbedding,
@@ -95,6 +107,10 @@ export async function ingestDocument(
       ...(spaceId ? { space_id: spaceId } : {}),
     });
   }
+
+  if (signal?.aborted) throw new Error("上传已取消");
+
+  onProgress?.({ stage: "storing" });
 
   const { error } = await supabase.from("documents").insert(rows);
   if (error) throw new Error(`Ingest error: ${error.message}`);

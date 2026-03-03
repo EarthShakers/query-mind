@@ -8,7 +8,11 @@
       "Bash(npm ls:*)",
       "Bash(npm install:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   }
 }

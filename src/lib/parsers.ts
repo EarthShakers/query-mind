@@ -2,6 +2,15 @@ import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import TurndownService from "turndown";
 
+export interface UploadProgress {
+  stage: "parsing" | "chunking" | "embedding" | "storing" | "done" | "error";
+  message?: string;
+  current?: number;
+  total?: number;
+  title?: string;
+  chunks?: number;
+}
+
 const turndown = new TurndownService({
   headingStyle: "atx",
   codeBlockStyle: "fenced",
@@ -13,7 +22,9 @@ const LLAMA_PARSE_BASE = "https://api.cloud.llamaindex.ai/api/v2";
 
 async function pdfToMarkdownViaLlamaParse(
   buf: Buffer,
-  filename: string
+  filename: string,
+  onProgress?: (p: UploadProgress) => void,
+  signal?: AbortSignal
 ): Promise<string> {
   const apiKey = process.env.LLAMA_CLOUD_API_KEY;
   if (!apiKey) return "";
@@ -28,7 +39,7 @@ async function pdfToMarkdownViaLlamaParse(
   form.append(
     "configuration",
     JSON.stringify({
-      tier: "cost_effective",
+      tier: "fast",
       version: "latest",
     })
   );
@@ -49,7 +60,10 @@ async function pdfToMarkdownViaLlamaParse(
   // 2. 轮询结果（最多等 120 秒）
   const maxAttempts = 60;
   for (let i = 0; i < maxAttempts; i++) {
+    if (signal?.aborted) throw new Error("上传已取消");
     await new Promise((r) => setTimeout(r, 2000));
+
+    onProgress?.({ stage: "parsing", message: `LlamaParse 解析中 (${i + 1}/${maxAttempts})` });
 
     const pollRes = await fetch(
       `${LLAMA_PARSE_BASE}/parse/${jobId}?expand=markdown`,
@@ -107,7 +121,11 @@ async function docxToMarkdown(buf: Buffer): Promise<string> {
  * PDF：优先 LlamaParse API → 回退 pdf-parse 纯文本
  * DOCX：mammoth → HTML → turndown → Markdown
  */
-export async function extractText(file: File): Promise<string> {
+export async function extractText(
+  file: File,
+  onProgress?: (p: UploadProgress) => void,
+  signal?: AbortSignal
+): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
 
   switch (ext) {
@@ -118,13 +136,18 @@ export async function extractText(file: File): Promise<string> {
     case "pdf": {
       const buf = Buffer.from(await file.arrayBuffer());
 
+      onProgress?.({ stage: "parsing", message: "正在解析 PDF..." });
+
       // 优先使用 LlamaParse 转 Markdown（保留表格等结构）
       try {
-        const markdown = await pdfToMarkdownViaLlamaParse(buf, file.name);
+        const markdown = await pdfToMarkdownViaLlamaParse(buf, file.name, onProgress, signal);
         if (markdown.trim()) return markdown;
       } catch (error) {
+        if (signal?.aborted) throw error;
         console.log("pdfToMarkdownViaLlamaParse error", error);
       }
+
+      onProgress?.({ stage: "parsing", message: "使用备用解析器..." });
 
       // 回退：纯文本提取
       const result = await pdfParse(buf);
@@ -135,6 +158,7 @@ export async function extractText(file: File): Promise<string> {
     }
 
     case "docx": {
+      onProgress?.({ stage: "parsing", message: "正在解析 Word 文档..." });
       const buf = Buffer.from(await file.arrayBuffer());
       return docxToMarkdown(buf);
     }
