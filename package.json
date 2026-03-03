@@ -2,7 +2,7 @@
   "name": "ai-sql-demo",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.cjs",
     "build": "next build",
     "seed-docs": "tsx scripts/seed-docs.ts"
   },
