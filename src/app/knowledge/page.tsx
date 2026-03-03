@@ -1130,6 +1130,13 @@ function SpaceDocuments({
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<{
+    stage: string;
+    message?: string;
+    current?: number;
+    total?: number;
+  } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<{
     title: string;
@@ -1165,24 +1172,72 @@ function SpaceDocuments({
   async function handleUpload(file: File) {
     setUploading(true);
     setUploadMsg("");
+    setUploadProgress(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const form = new FormData();
       form.append("file", file);
       form.append("title", file.name.replace(/\.\w+$/, ""));
       form.append("spaceId", spaceId);
-      const res = await fetch("/api/documents", { method: "POST", body: form });
-      if (!res.ok) {
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+
+      // Non-SSE error responses (validation errors return JSON)
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream")) {
         const body = await res.json().catch(() => null);
         setUploadMsg(body?.error || `上传失败 (${res.status})`);
-      } else {
-        const json = await res.json();
-        setUploadMsg(`"${json.title}" 已导入（${json.chunks} 个片段）`);
-        fetchDocs();
+        return;
       }
-    } catch {
-      setUploadMsg("上传失败，请重试");
+
+      // Read SSE stream
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            setUploadProgress(data);
+
+            if (data.stage === "done") {
+              setUploadMsg(`"${data.title}" 已导入（${data.chunks} 个片段）`);
+              setUploadProgress(null);
+              fetchDocs();
+            } else if (data.stage === "error") {
+              setUploadMsg(data.message || "上传失败");
+              setUploadProgress(null);
+            }
+          } catch {
+            // ignore malformed SSE lines
+          }
+        }
+      }
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setUploadMsg("上传已取消");
+      } else {
+        setUploadMsg("上传失败，请重试");
+      }
+      setUploadProgress(null);
     } finally {
       setUploading(false);
+      abortRef.current = null;
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -1437,7 +1492,49 @@ function SpaceDocuments({
               />
               <div className="flex flex-col sm:flex-row items-center gap-4 py-6 px-6">
                 {uploading ? (
-                  <span className="w-10 h-10 border-[3px] border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
+                  <div className="flex-1 w-full">
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="w-8 h-8 border-[3px] border-indigo-200 border-t-indigo-500 rounded-full animate-spin shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-700">
+                          {uploadProgress?.stage === "parsing"
+                            ? uploadProgress.message || "正在解析文档..."
+                            : uploadProgress?.stage === "chunking"
+                            ? `切分完成，共 ${uploadProgress.total} 个片段`
+                            : uploadProgress?.stage === "embedding"
+                            ? `向量化中 ${uploadProgress.current}/${uploadProgress.total}`
+                            : uploadProgress?.stage === "storing"
+                            ? "正在写入数据库..."
+                            : "正在处理..."}
+                        </p>
+                        {uploadProgress?.stage === "embedding" &&
+                          uploadProgress.total &&
+                          uploadProgress.current != null && (
+                            <div className="mt-2 w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="bg-gradient-to-r from-indigo-500 to-cyan-500 h-2 rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${Math.round(
+                                    (uploadProgress.current / uploadProgress.total) * 100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          abortRef.current?.abort();
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                      >
+                        取消上传
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-sm shrink-0">
                     <svg
@@ -1456,11 +1553,10 @@ function SpaceDocuments({
                     </svg>
                   </div>
                 )}
+                {!uploading && (
                 <div className="text-center sm:text-left">
                   <p className="text-sm font-medium text-slate-700">
-                    {uploading
-                      ? "正在解析并向量化文档..."
-                      : "拖拽文件到此处，或点击选择文件"}
+                    拖拽文件到此处，或点击选择文件
                   </p>
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 mt-2">
                     {Object.entries(FORMAT_META).map(([ext, meta]) => (
@@ -1476,6 +1572,7 @@ function SpaceDocuments({
                     </span>
                   </div>
                 </div>
+                )}
               </div>
             </div>
 

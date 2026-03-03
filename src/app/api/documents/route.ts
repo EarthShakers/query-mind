@@ -1,5 +1,6 @@
 import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
+import type { UploadProgress } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
 import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
@@ -165,23 +166,76 @@ export async function POST(req: Request) {
       }
     }
 
-    // 同名文档覆盖：先删除旧 chunks
-    await supabase
-      .from("documents")
-      .delete()
-      .eq("title", title)
-      .eq("space_id", uploadSpaceId);
+    // SSE streaming response
+    const encoder = new TextEncoder();
+    const abortController = new AbortController();
+    const signal = abortController.signal;
 
-    const content = await extractText(file);
-    const chunks = await ingestDocument(
-      title,
-      content,
-      { filename: file.name },
-      uploadSpaceId,
-      tenantId
-    );
+    // Detect client disconnect
+    req.signal.addEventListener("abort", () => {
+      abortController.abort();
+    });
 
-    return Response.json({ success: true, title, chunks });
+    const stream = new ReadableStream({
+      async start(controller) {
+        function send(data: UploadProgress) {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch {
+            // stream already closed
+          }
+        }
+
+        try {
+          // 同名文档覆盖：先删除旧 chunks
+          await supabase
+            .from("documents")
+            .delete()
+            .eq("title", title)
+            .eq("space_id", uploadSpaceId);
+
+          if (signal.aborted) throw new Error("上传已取消");
+
+          send({ stage: "parsing", message: "正在解析文档..." });
+
+          const content = await extractText(file, (p) => send(p), signal);
+
+          if (signal.aborted) throw new Error("上传已取消");
+
+          const chunks = await ingestDocument(
+            title,
+            content,
+            { filename: file.name },
+            uploadSpaceId,
+            tenantId,
+            (p) => send(p),
+            signal
+          );
+
+          send({ stage: "done", title, chunks });
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg === "上传已取消") {
+            send({ stage: "error", message: "上传已取消" });
+          } else {
+            send({ stage: "error", message: msg });
+          }
+        } finally {
+          controller.close();
+        }
+      },
+      cancel() {
+        abortController.abort();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return Response.json({ error: msg }, { status: 500 });
