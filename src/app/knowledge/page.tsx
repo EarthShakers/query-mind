@@ -138,6 +138,31 @@ const MARKDOWN_ALLOWED_ELEMENTS = [
 const MARKDOWN_COMPONENTS: Components = {
   // Avoid <p> nesting from mixed markdown + raw html content.
   p: ({ node, ...props }) => <div {...props} />,
+  // Render images with responsive styling and fallback alt display.
+  img: ({ node, src, alt, ...props }) => (
+    <span className="block my-3">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt ?? ""}
+        className="max-w-full rounded-lg border border-slate-200 shadow-sm"
+        loading="lazy"
+        onError={(e) => {
+          const target = e.currentTarget;
+          target.style.display = "none";
+          const fallback = target.nextElementSibling as HTMLElement | null;
+          if (fallback) fallback.style.display = "inline";
+        }}
+        {...props}
+      />
+      <span
+        className="hidden text-xs text-slate-400 italic"
+        aria-label={alt ?? ""}
+      >
+        [{alt ?? "图片"}]
+      </span>
+    </span>
+  ),
 };
 
 function normalizeMarkdownHighlights(markdown: string): string {

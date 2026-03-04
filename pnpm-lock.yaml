@@ -20,6 +20,9 @@ importers:
       '@langchain/openai':
         specifier: ^1.2.9
         version: 1.2.9(@langchain/core@1.1.27(@opentelemetry/api@1.9.0))(ws@8.19.0)
+      '@llamaindex/llama-cloud':
+        specifier: ^1.7.0
+        version: 1.7.0
       '@supabase/supabase-js':
         specifier: ^2.95.3
         version: 2.95.3
@@ -640,6 +643,9 @@ packages:
         optional: true
       gpt-tokenizer:
         optional: true
+
+  '@llamaindex/llama-cloud@1.7.0':
+    resolution: {integrity: sha512-1N07WXRMSEBcj5eFFHaRzDkKgO5mZrdzArRx2GLYvhLIPEZYHnLBm3Xtki0Tbo7s6aQh6YsIfRPnCQ194gUGrA==}
 
   '@llamaindex/node-parser@2.0.22':
     resolution: {integrity: sha512-uj5O89WShAAyiSZ8f8tU7hnLJ6pSmlY2a6hkAOs8odkUgT87dEqaPHpsK7w0iJdEFiob7GoLeRhv2K624FooXg==}
@@ -2832,6 +2838,8 @@ snapshots:
       '@aws-crypto/sha256-js': 5.2.0
       js-tiktoken: 1.0.21
       pathe: 1.1.2
+
+  '@llamaindex/llama-cloud@1.7.0': {}
 
   '@llamaindex/node-parser@2.0.22(@llamaindex/core@0.6.22)(@llamaindex/env@0.1.30)(tree-sitter@0.22.4)(web-tree-sitter@0.24.7)':
     dependencies:

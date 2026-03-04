@@ -1,6 +1,7 @@
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import TurndownService from "turndown";
+import { LlamaCloud, toFile } from "@llamaindex/llama-cloud";
 import { supabaseAdmin } from "./supabase";
 
 export interface UploadProgress {
@@ -29,16 +30,16 @@ const turndown = new TurndownService({
   codeBlockStyle: "fenced",
 });
 
-/* ─── LlamaParse: PDF → Markdown（保留表格、标题结构） ─── */
+/* ─── LlamaParse: PDF / DOCX → Markdown（via @llamaindex/llama-cloud SDK） ─── */
 
-const LLAMA_PARSE_BASE = "https://api.cloud.llamaindex.ai/api/v2";
-const LLAMA_PARSE_POLL_INTERVAL_MS = 2500;
-const LLAMA_PARSE_MAX_POLL_INTERVAL_MS = 8000;
+// Polling intervals in seconds (SDK uses seconds, not ms).
+const LLAMA_PARSE_POLL_INTERVAL_S = 2.5;
+const LLAMA_PARSE_MAX_INTERVAL_S = 8;
 const LLAMA_PARSE_IMAGE_BUCKET = process.env.RAG_IMAGE_BUCKET ?? "rag-images";
 const LLAMA_PARSE_MAX_IMAGES = 20;
-const LLAMA_PARSE_TIMEOUT_MS = (() => {
+const LLAMA_PARSE_TIMEOUT_S = (() => {
   const raw = Number(process.env.LLAMA_PARSE_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 180000;
+  return Number.isFinite(raw) && raw > 0 ? raw / 1000 : 180;
 })();
 
 // 解析并返回最终使用的 LlamaParse 档位（优先参数，其次环境变量）。
@@ -198,92 +199,10 @@ function isLowQualityLocalPdfText(text: string): boolean {
   return suspiciousRatio > 0.08 || repeatedRatio > 0.2;
 }
 
-// 可中断的 sleep，用于轮询时及时响应取消上传。
-async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
-  if (!signal) {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    return;
-  }
-  const abortSignal = signal;
-  if (abortSignal.aborted) throw new Error("上传已取消");
-
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      abortSignal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-
-    function onAbort() {
-      clearTimeout(timer);
-      abortSignal.removeEventListener("abort", onAbort);
-      reject(new Error("上传已取消"));
-    }
-
-    abortSignal.addEventListener("abort", onAbort);
-  });
-}
-
-// 兼容多种返回结构，优先提取 markdown，失败时回退到 text。
-function extractMarkdownFromParseResult(result: unknown): string {
-  if (!result || typeof result !== "object") return "";
-  const data = result as {
-    markdown?:
-      | { pages?: Array<{ md?: string; markdown?: string; content?: string }> }
-      | string;
-    markdown_full?: string;
-    text?: { pages?: Array<{ text?: string; content?: string }> } | string;
-    text_full?: string;
-  };
-
-  if (typeof data.markdown === "string" && data.markdown.trim()) {
-    return data.markdown;
-  }
-  if (typeof data.markdown_full === "string" && data.markdown_full.trim()) {
-    return data.markdown_full;
-  }
-
-  const markdownPages =
-    data.markdown && typeof data.markdown === "object"
-      ? data.markdown.pages
-      : undefined;
-  if (Array.isArray(markdownPages)) {
-    const mergedMarkdown = markdownPages
-      .map((p) => p.md ?? p.markdown ?? p.content ?? "")
-      .join("\n\n")
-      .trim();
-    if (mergedMarkdown) return mergedMarkdown;
-  }
-
-  const textPages =
-    data.text && typeof data.text === "object" ? data.text.pages : undefined;
-  if (Array.isArray(textPages)) {
-    const mergedText = textPages
-      .map((p) => p.text ?? p.content ?? "")
-      .join("\n\n")
-      .trim();
-    if (mergedText) return mergedText;
-  }
-  if (typeof data.text_full === "string") return data.text_full.trim();
-  if (typeof data.text === "string") return data.text.trim();
-
-  return "";
-}
-
 type ParseImageItem = {
   filename?: string;
   presigned_url?: string;
-  page_number?: number;
 };
-
-function extractImagesFromParseResult(result: unknown): ParseImageItem[] {
-  if (!result || typeof result !== "object") return [];
-  const data = result as {
-    images_content_metadata?: { images?: ParseImageItem[] };
-  };
-  return Array.isArray(data.images_content_metadata?.images)
-    ? data.images_content_metadata.images
-    : [];
-}
 
 function toSafeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -327,30 +246,7 @@ async function uploadImageToStorage(
   return data.publicUrl;
 }
 
-async function buildImageAppendixMarkdown(
-  result: unknown,
-  sourceName: string,
-  signal?: AbortSignal
-): Promise<string> {
-  const images = extractImagesFromParseResult(result).slice(
-    0,
-    LLAMA_PARSE_MAX_IMAGES
-  );
-  if (images.length === 0) return "";
-
-  const imageLines: string[] = [];
-  for (const image of images) {
-    const url = await uploadImageToStorage(image, sourceName, signal);
-    if (!url) continue;
-    const label = image.filename ?? `page-${image.page_number ?? "unknown"}`;
-    imageLines.push(`![${label}](${url})`);
-  }
-
-  if (imageLines.length === 0) return "";
-  return `### 解析图片\n\n${imageLines.join("\n\n")}`;
-}
-
-// 调用 LlamaParse 上传并轮询，返回统一 markdown/text 内容。
+// 调用 LlamaParse SDK 上传并等待完成，返回 markdown 内容（图片插入对应页面）。
 async function fileToMarkdownViaLlamaParse(
   buf: Buffer,
   filename: string,
@@ -362,123 +258,74 @@ async function fileToMarkdownViaLlamaParse(
   const apiKey = process.env.LLAMA_CLOUD_API_KEY;
   if (!apiKey) return "";
 
-  // 1. 提交解析任务
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([new Uint8Array(buf)], { type: mimeType }),
-    filename
-  );
-  form.append(
-    "configuration",
-    JSON.stringify({
-      tier,
-      version: "latest",
-      output_options: {
-        markdown: {
-          tables: {
-            output_tables_as_markdown: true,
-          },
-        },
-        embedded_images: {
-          enable: true,
-        },
-        images_to_save: ["embedded"],
-      },
-    })
-  );
-
-  const uploadRes = await fetch(`${LLAMA_PARSE_BASE}/parse/upload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-    signal,
+  onProgress?.({
+    stage: "parsing",
+    message: "LlamaParse 上传中，请耐心等待...",
   });
 
-  if (!uploadRes.ok) {
-    const err = await uploadRes.text();
-    throw new Error(`LlamaParse upload error (${uploadRes.status}): ${err}`);
-  }
+  const client = new LlamaCloud({ apiKey });
+  const uploadFile = await toFile(buf, filename, { type: mimeType });
 
-  const { id: jobId } = await uploadRes.json();
-
-  // 2. 轮询结果（超时时间可通过 LLAMA_PARSE_TIMEOUT_MS 配置）
-  const startedAt = Date.now();
-  let attempt = 0;
-  let pollIntervalMs = LLAMA_PARSE_POLL_INTERVAL_MS;
-  while (Date.now() - startedAt < LLAMA_PARSE_TIMEOUT_MS) {
-    attempt += 1;
-    if (signal?.aborted) throw new Error("上传已取消");
-    await sleepWithAbort(pollIntervalMs, signal);
-
-    const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
-    onProgress?.({
-      stage: "parsing",
-      message: `LlamaParse 解析中（第 ${attempt} 次轮询，已等待 ${elapsedSeconds}s）`,
-    });
-
-    const pollRes = await fetch(
-      `${LLAMA_PARSE_BASE}/parse/${jobId}?expand=markdown,text,items,images_content_metadata`,
-      { headers: { Authorization: `Bearer ${apiKey}` }, signal }
-    );
-
-    if (!pollRes.ok) {
-      const errorBody = await pollRes.text();
-      if ([400, 401, 403, 404].includes(pollRes.status)) {
-        throw new Error(
-          `LlamaParse poll error (${pollRes.status}): ${
-            errorBody || "request rejected"
-          }`
-        );
-      }
-      if (pollRes.status === 429 || pollRes.status >= 500) {
-        pollIntervalMs = Math.min(
-          LLAMA_PARSE_MAX_POLL_INTERVAL_MS,
-          Math.floor(pollIntervalMs * 1.5)
-        );
-        continue;
-      }
-      throw new Error(
-        `LlamaParse poll error (${pollRes.status}): ${
-          errorBody || "unknown error"
-        }`
-      );
+  const result = await client.parsing.parse(
+    {
+      upload_file: uploadFile,
+      tier,
+      version: "latest",
+      expand: ["markdown", "text", "images_content_metadata"],
+      output_options: {
+        markdown: {
+          tables: { output_tables_as_markdown: true },
+          inline_images: true,
+          annotate_links: true,
+        },
+        // images_to_save: ["embedded"],
+      },
+    },
+    {
+      pollingInterval: LLAMA_PARSE_POLL_INTERVAL_S,
+      maxInterval: LLAMA_PARSE_MAX_INTERVAL_S,
+      timeout: LLAMA_PARSE_TIMEOUT_S,
+      backoff: "linear",
+      signal,
     }
-
-    // 轮询成功后恢复较快节奏
-    pollIntervalMs = LLAMA_PARSE_POLL_INTERVAL_MS;
-
-    const result = await pollRes.json();
-    const jobStatus = (result.job?.status ?? result.status ?? "").toUpperCase();
-    if (jobStatus === "SUCCESS" || jobStatus === "COMPLETED") {
-      const content = extractMarkdownFromParseResult(result);
-      const imageAppendix = await buildImageAppendixMarkdown(
-        result,
-        filename,
-        signal
-      );
-      if (content) {
-        if (imageAppendix) {
-          return `${content}\n\n---\n\n${imageAppendix}`;
-        }
-        return content;
-      }
-      if (imageAppendix) return imageAppendix;
-      throw new Error("LlamaParse succeeded but returned empty content");
-    }
-    if (jobStatus === "ERROR" || jobStatus === "FAILED") {
-      throw new Error(
-        `LlamaParse job failed: ${result.job?.error_message ?? "unknown"}`
-      );
-    }
-    // PENDING / STARTED / PROCESSING → 继续轮询
-  }
-
-  throw new Error(
-    `LlamaParse timeout: 解析超时（超过 ${Math.floor(
-      LLAMA_PARSE_TIMEOUT_MS / 1000
-    )} 秒）`
   );
+
+  onProgress?.({ stage: "parsing", message: "LlamaParse 解析完成，处理图片中..." });
+
+  // ── 1. Build filename → Supabase public URL map ──
+  const images = (result.images_content_metadata?.images ?? []).slice(0, LLAMA_PARSE_MAX_IMAGES);
+  const urlMap = new Map<string, string>();
+
+  for (const img of images) {
+    if (!img.presigned_url) continue;
+    const publicUrl = await uploadImageToStorage(
+      { filename: img.filename, presigned_url: img.presigned_url },
+      filename,
+      signal,
+    );
+    if (publicUrl) urlMap.set(img.filename, publicUrl);
+  }
+
+  // ── 2. Assemble per-page markdown, replacing image filenames with public URLs ──
+  const pages = result.markdown?.pages;
+  if (!pages || pages.length === 0) {
+    throw new Error("LlamaParse succeeded but returned no pages");
+  }
+
+  const parts = pages.map((page) => {
+    if (!("markdown" in page)) return "";
+    let md = page.markdown.trim();
+    for (const [fname, url] of urlMap) {
+      md = md.replaceAll(`(${fname})`, `(${url})`);
+    }
+    return md;
+  });
+
+  const content = parts.filter(Boolean).join("\n\n---\n\n");
+  if (!content.trim()) {
+    throw new Error("LlamaParse succeeded but returned empty content");
+  }
+  return content;
 }
 
 /* ─── DOCX → Markdown（mammoth HTML + turndown） ─── */

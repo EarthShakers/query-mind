@@ -1,9 +1,28 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 import { ChartResult } from "@/components/chart-result";
 import { TOOL_LABELS, CHART_TYPE_LABELS } from "./constants";
 import { ThinkingDetails } from "./thinking-details";
+
+const CHAT_MD_COMPONENTS: Components = {
+  p: ({ node, ...props }) => <div className="mb-1 last:mb-0" {...props} />,
+  img: ({ node, src, alt, ...props }) => (
+    <span className="block my-2">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt ?? ""}
+        className="max-w-full rounded-lg border border-slate-200 shadow-sm"
+        loading="lazy"
+        {...props}
+      />
+    </span>
+  ),
+};
 
 /* ─── Collect all tool invocations, deduped ─── */
 function useAllTools(assistantMessages: any[]) {
@@ -286,13 +305,18 @@ export function AssistantTurn({
 
           {/* Final text answer */}
           {finalText && (
-            <p
-              className={`text-sm text-slate-700 whitespace-pre-wrap leading-relaxed${
+            <div
+              className={`text-sm text-slate-700 leading-relaxed prose prose-sm prose-slate max-w-none prose-p:my-0.5 prose-headings:text-slate-800${
                 directCharts.length > 0 ? " mt-3" : ""
               }`}
             >
-              {finalText}
-            </p>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={CHAT_MD_COMPONENTS}
+              >
+                {finalText}
+              </ReactMarkdown>
+            </div>
           )}
 
           {/* Error fallback: all tool calls failed, no answer */}
