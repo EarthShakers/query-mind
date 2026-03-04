@@ -28,14 +28,17 @@ function Overview() {
           SQL、执行查询、选择最佳图表呈现
         </li>
         <li>
-          <strong>Canvas 报告生成</strong> — 一句话生成多章节数据报告（查询→图表→分析→撰写），支持导出 PDF / Word
+          <strong>Canvas 报告生成</strong> —
+          一句话生成多章节数据报告（查询→图表→分析→撰写），支持导出 PDF / Word
         </li>
         <li>
-          <strong>Agent 智能编辑</strong> — 对报告任意章节下达修改指令，LangGraph Agent 多步推理（计划→查数据→分析→重写→校验→反思），全程可视化
+          <strong>Agent 智能编辑</strong> —
+          对报告任意章节下达修改指令，LangGraph Agent
+          多步推理（计划→查数据→分析→重写→校验→反思），全程可视化
         </li>
         <li>
-          <strong>知识库问答 (RAG)</strong> — 上传企业文档（.txt / .md / .pdf / .docx），AI
-          向量检索后精准回答
+          <strong>知识库问答 (RAG)</strong> — 上传企业文档（.txt / .md / .pdf /
+          .docx），AI 向量检索后精准回答
         </li>
       </ul>
       <h3>核心技术能力</h3>
@@ -49,7 +52,8 @@ function Overview() {
           根据数据语义自动选择表格、折线图、柱状图或饼图渲染
         </li>
         <li>
-          <strong>LangGraph Agent</strong> — 多步推理工作流，plan → query → analyze → write → validate → reflect，支持自动重试和错误修正
+          <strong>LangGraph Agent</strong> — 多步推理工作流，plan → query →
+          analyze → write → validate → reflect，支持自动重试和错误修正
         </li>
         <li>
           <strong>Structured Output</strong> — 结构化输出，Zod Schema 强制约束
@@ -69,8 +73,8 @@ function Architecture() {
     <>
       <h2>架构</h2>
       <p>
-        QueryMind 采用 <strong>Next.js 15 App Router</strong> 全栈架构，前端流式渲染 +
-        后端 AI 编排，核心分为三条数据链路：
+        QueryMind 采用 <strong>Next.js 15 App Router</strong>{" "}
+        全栈架构，前端流式渲染 + 后端 AI 编排，核心分为三条数据链路：
       </p>
 
       <h3>1. 对话式数据分析</h3>
@@ -113,50 +117,75 @@ function Architecture() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">层级</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">技术</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                层级
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                技术
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="px-4 py-2.5 font-medium">框架</td>
-              <td className="px-4 py-2.5 text-slate-500">Next.js 15 (App Router) + React 19 + TypeScript</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Next.js 15 (App Router) + React 19 + TypeScript
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">AI 对话</td>
-              <td className="px-4 py-2.5 text-slate-500">Vercel AI SDK (<code>streamText</code> + <code>useChat</code>) + DashScope deepseek-v3</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Vercel AI SDK (<code>streamText</code> + <code>useChat</code>) +
+                DashScope deepseek-v3
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">Agent 编排</td>
-              <td className="px-4 py-2.5 text-slate-500">LangGraph (<code>StateGraph</code>) + LangChain ChatOpenAI</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                LangGraph (<code>StateGraph</code>) + LangChain ChatOpenAI
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">RAG</td>
-              <td className="px-4 py-2.5 text-slate-500">Supabase pgvector + DashScope text-embedding-v3 (1024d)</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Supabase pgvector + DashScope text-embedding-v4 (1024d)
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">数据库</td>
-              <td className="px-4 py-2.5 text-slate-500">PostgreSQL（用户数据表） + Supabase（文档/报告/向量）</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                PostgreSQL（用户数据表） + Supabase（文档/报告/向量）
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">限流</td>
-              <td className="px-4 py-2.5 text-slate-500">Upstash Redis 滑动窗口 + 每日 Token 预算</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Upstash Redis 滑动窗口 + 每日 Token 预算
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">图表</td>
-              <td className="px-4 py-2.5 text-slate-500">Recharts（柱状图 / 折线图 / 饼图）</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Recharts（柱状图 / 折线图 / 饼图）
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">导出</td>
-              <td className="px-4 py-2.5 text-slate-500">html2pdf.js (PDF) + docx (Word)</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                html2pdf.js (PDF) + docx (Word)
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">认证</td>
-              <td className="px-4 py-2.5 text-slate-500">bcryptjs + jose JWT + HttpOnly Cookie</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                bcryptjs + jose JWT + HttpOnly Cookie
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">样式</td>
-              <td className="px-4 py-2.5 text-slate-500">Tailwind CSS + GSAP 动画</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Tailwind CSS + GSAP 动画
+              </td>
             </tr>
           </tbody>
         </table>
@@ -224,48 +253,76 @@ function Architecture() {
 
       <h3>LangGraph Agent 编辑流程</h3>
       <p>
-        报告章节编辑采用 <strong>LangGraph StateGraph</strong> 实现多步推理工作流，
-        每个节点的推理过程通过 SSE 实时推送到客户端：
+        报告章节编辑采用 <strong>LangGraph StateGraph</strong>{" "}
+        实现多步推理工作流， 每个节点的推理过程通过 SSE 实时推送到客户端：
       </p>
       <div className="not-prose overflow-x-auto rounded-xl border border-slate-200 my-6">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">节点</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">职责</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">输出</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                节点
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                职责
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                输出
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">plan</td>
-              <td className="px-4 py-2.5 text-slate-500">分析修改意图，决定是否需要查询数据，生成 SQL</td>
-              <td className="px-4 py-2.5 text-slate-500">reasoning + suggestedSQL</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                分析修改意图，决定是否需要查询数据，生成 SQL
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                reasoning + suggestedSQL
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">query</td>
-              <td className="px-4 py-2.5 text-slate-500">在 PostgreSQL 执行 SQL，获取数据</td>
-              <td className="px-4 py-2.5 text-slate-500">queryResult + rowCount</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                在 PostgreSQL 执行 SQL，获取数据
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                queryResult + rowCount
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">analyze</td>
-              <td className="px-4 py-2.5 text-slate-500">分析数据，制定内容修改方案</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                分析数据，制定内容修改方案
+              </td>
               <td className="px-4 py-2.5 text-slate-500">analysisPlan</td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">write</td>
-              <td className="px-4 py-2.5 text-slate-500">生成更新后的章节 JSON（markdown / chart / table）</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                生成更新后的章节 JSON（markdown / chart / table）
+              </td>
               <td className="px-4 py-2.5 text-slate-500">updatedSection</td>
             </tr>
             <tr>
-              <td className="px-4 py-2.5 font-mono text-indigo-600">validate</td>
-              <td className="px-4 py-2.5 text-slate-500">校验输出结构完整性（section_id、content_type 等）</td>
-              <td className="px-4 py-2.5 text-slate-500">passed / validationErrors</td>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">
+                validate
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                校验输出结构完整性（section_id、content_type 等）
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                passed / validationErrors
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-mono text-indigo-600">reflect</td>
-              <td className="px-4 py-2.5 text-slate-500">校验失败时自动修正，最多重试 3 次</td>
-              <td className="px-4 py-2.5 text-slate-500">fixedSection / retries</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                校验失败时自动修正，最多重试 3 次
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                fixedSection / retries
+              </td>
             </tr>
           </tbody>
         </table>
@@ -276,30 +333,46 @@ function Architecture() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">防护层</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-600">机制</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                防护层
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-600">
+                机制
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             <tr>
               <td className="px-4 py-2.5 font-medium">SQL 注入防御</td>
-              <td className="px-4 py-2.5 text-slate-500">SELECT 前缀校验 + 分号拦截 + <code>prepare().all()</code> 只读执行</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                SELECT 前缀校验 + 分号拦截 + <code>prepare().all()</code>{" "}
+                只读执行
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">认证鉴权</td>
-              <td className="px-4 py-2.5 text-slate-500">JWT HttpOnly Cookie + middleware 路由保护 + 三级角色控制</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                JWT HttpOnly Cookie + middleware 路由保护 + 三级角色控制
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">限流防刷</td>
-              <td className="px-4 py-2.5 text-slate-500">Upstash Redis 滑动窗口（对话 + 上传分别限流）+ 每日 Token 预算熔断</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                Upstash Redis 滑动窗口（对话 + 上传分别限流）+ 每日 Token
+                预算熔断
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">文件校验</td>
-              <td className="px-4 py-2.5 text-slate-500"><code>file-type</code> magic bytes 检测 + 大小限制 + MIME 白名单</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                <code>file-type</code> magic bytes 检测 + 大小限制 + MIME 白名单
+              </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5 font-medium">安全头</td>
-              <td className="px-4 py-2.5 text-slate-500">X-Frame-Options / X-Content-Type-Options / CSP / Referrer-Policy</td>
+              <td className="px-4 py-2.5 text-slate-500">
+                X-Frame-Options / X-Content-Type-Options / CSP / Referrer-Policy
+              </td>
             </tr>
           </tbody>
         </table>
@@ -726,7 +799,7 @@ function RAG() {
     ↓
 AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
     ↓
-1. Embedding：将问题转为 1024 维向量（百炼 text-embedding-v3）
+1. Embedding：将问题转为 1024 维向量（百炼 text-embedding-v4）
     ↓
 2. 向量搜索：在 Supabase pgvector 中找最相似的文档片段（cosine similarity）
     ↓
@@ -756,7 +829,7 @@ AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
 async function embed(text: string): Promise<number[]> {
   const res = await fetch("https://dashscope.aliyuncs.com/.../embeddings", {
     body: JSON.stringify({
-      model: "text-embedding-v3",
+      model: "text-embedding-v4",
       input: text,
       dimensions: 1024,
     }),
@@ -813,7 +886,7 @@ async function searchDocuments(query: string, topK = 5) {
             <tr>
               <td className="px-4 py-2.5">Embedding</td>
               <td className="px-4 py-2.5 font-mono text-indigo-600">
-                text-embedding-v3
+                text-embedding-v4
               </td>
               <td className="px-4 py-2.5 text-slate-500">
                 复用百炼 API Key，中文效果好，1024 维平衡精度与性能
@@ -976,7 +1049,7 @@ function Database() {
       <h3>知识文档</h3>
       <p>
         上传的文档（PDF、Word、Markdown、TXT）经过分块处理后， 使用{" "}
-        <code>text-embedding-v3</code> 生成向量，存储在 Supabase 的{" "}
+        <code>text-embedding-v4</code> 生成向量，存储在 Supabase 的{" "}
         <code>documents</code> 表中， 通过 pgvector 进行语义搜索。
       </p>
       <h3>数据报表</h3>

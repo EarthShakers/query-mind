@@ -12,8 +12,8 @@
 
 ## v1.5.0 — Canvas 报告 & Agent 编辑 & 聊天历史 <sub>2026-02-24</sub>
 
-- **Canvas 数据报告**：一句话生成多章节数据报告（查询→图表→分析→撰写），支持导出 PDF / Word
-- **Agent 智能编辑（LangGraph）**：对报告任意章节下达修改指令，Agent 多步推理（计划→查数据→分析→重写→校验→反思），全程可视化
+- **Canvas 数据报告**：一句话生成多章节数据报告（查询 → 图表 → 分析 → 撰写），支持导出 PDF / Word
+- **Agent 智能编辑（LangGraph）**：对报告任意章节下达修改指令，Agent 多步推理（计划 → 查数据 → 分析 → 重写 → 校验 → 反思），全程可视化
 - **聊天历史**：左侧边栏 localStorage 聊天记录，支持切换/删除历史会话
 - **首页改版**：突出 AI 报告生成 + Agent 编辑核心能力，竞品对比新增 AI 报告/Agent 列
 
@@ -77,7 +77,7 @@
 ## v0.6.0 — RAG 知识库 & SQL 混合驱动 <sub>2026-02-16</sub>
 
 - **新增 `search_knowledge` Tool**：AI 自动判断数据问题查 SQL、知识问题查文档
-- **Supabase pgvector 向量存储** + 百炼 `text-embedding-v3` 嵌入模型
+- **Supabase pgvector 向量存储** + 百炼 `text-embedding-v4` 嵌入模型
 - 文档自动切片 + 向量化 + 入库，预置 4 篇示例文档
 
 ## v0.5.0 — 防刷限流 & 代码重构 <sub>2026-02-16</sub>

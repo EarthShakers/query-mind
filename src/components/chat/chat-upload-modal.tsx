@@ -4,6 +4,21 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
+type LlamaParseTierOption = "fast" | "cost_effective" | "agentic" | "agentic_plus";
+type ParseModeOption = "local" | "cloud";
+
+const LLAMA_TIER_OPTIONS: Array<{ value: LlamaParseTierOption; label: string }> = [
+  { value: "fast", label: "fast" },
+  { value: "cost_effective", label: "cost_effective" },
+  { value: "agentic", label: "agentic" },
+  { value: "agentic_plus", label: "agentic_plus" },
+];
+
+const PARSE_MODE_OPTIONS: Array<{ value: ParseModeOption; label: string }> = [
+  { value: "local", label: "本地解析" },
+  { value: "cloud", label: "云端解析" },
+];
+
 export function ChatUploadModal({
   spaces,
   onClose,
@@ -21,6 +36,8 @@ export function ChatUploadModal({
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [llamaParseTier, setLlamaParseTier] = useState<LlamaParseTierOption>("cost_effective");
+  const [parseMode, setParseMode] = useState<ParseModeOption>("local");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const accept = tab === "docs" ? ".txt,.md,.pdf,.docx" : ".xlsx,.xls,.csv";
@@ -32,16 +49,66 @@ export function ChatUploadModal({
       const fd = new FormData();
       fd.append("file", file);
       fd.append("spaceId", selectedSpaceId);
-      if (tab === "docs") fd.append("title", file.name.replace(/\.[^.]+$/, ""));
+      if (tab === "docs") {
+        fd.append("title", file.name.replace(/\.[^.]+$/, ""));
+        fd.append("llamaParseTier", llamaParseTier);
+        fd.append("parseMode", parseMode);
+      }
 
       const url = tab === "docs" ? "/api/documents" : "/api/data-tables";
       const res = await fetch(url, { method: "POST", body: fd });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error || `上传失败 (${res.status})`);
+
+      if (tab === "docs") {
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("text/event-stream")) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error || `上传失败 (${res.status})`);
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("上传失败：未收到服务器响应流");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let done = false;
+
+        while (!done) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += decoder.decode(chunk.value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.stage === "done") {
+                setUploadMsg({ ok: true, text: `${file.name} 上传成功` });
+                onUploaded();
+                done = true;
+                break;
+              }
+              if (data.stage === "error") {
+                throw new Error(data.message || "上传失败");
+              }
+            } catch (e) {
+              if (e instanceof Error) throw e;
+            }
+          }
+        }
+
+        if (!done) {
+          throw new Error("上传未完成，请稍后重试");
+        }
+      } else {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.error || `上传失败 (${res.status})`);
+        }
+        setUploadMsg({ ok: true, text: `${file.name} 上传成功` });
+        onUploaded();
       }
-      setUploadMsg({ ok: true, text: `${file.name} 上传成功` });
-      onUploaded();
     } catch (err: any) {
       setUploadMsg({ ok: false, text: err.message || "上传失败" });
     } finally {
@@ -151,6 +218,38 @@ export function ChatUploadModal({
               ))}
             </select>
           </label>
+          {tab === "docs" && (
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500 mb-1.5 block">解析方式</span>
+              <select
+                value={parseMode}
+                onChange={(e) => setParseMode(e.target.value as ParseModeOption)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-colors"
+              >
+                {PARSE_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {tab === "docs" && (
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500 mb-1.5 block">LlamaParse Tier</span>
+              <select
+                value={llamaParseTier}
+                onChange={(e) => setLlamaParseTier(e.target.value as LlamaParseTierOption)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-colors"
+              >
+                {LLAMA_TIER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {/* Drop zone */}
           <div

@@ -1,6 +1,7 @@
 import { ingestDocument } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import type { UploadProgress } from "@/lib/parsers";
+import type { ExtractTextOptions, LlamaParseTier, ParseMode } from "@/lib/parsers";
 import { supabase } from "@/lib/supabase";
 import { checkUploadRateLimit } from "@/lib/ratelimit";
 import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
@@ -122,6 +123,21 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File | null;
     const title =
       (formData.get("title") as string) || file?.name || "未命名文档";
+    const rawLlamaTier = (formData.get("llamaParseTier") as string | null)?.trim().toLowerCase();
+    const rawParseMode = (formData.get("parseMode") as string | null)?.trim().toLowerCase();
+
+    const llamaParseTier: LlamaParseTier | undefined =
+      rawLlamaTier === "fast" ||
+      rawLlamaTier === "cost_effective" ||
+      rawLlamaTier === "agentic" ||
+      rawLlamaTier === "agentic_plus"
+        ? rawLlamaTier
+        : undefined;
+
+    const parseMode: ParseMode | undefined =
+      rawParseMode === "local" || rawParseMode === "cloud" ? rawParseMode : undefined;
+
+    const parseOptions: ExtractTextOptions = { llamaParseTier, parseMode };
 
     // Allow explicit spaceId from form data; fall back to active space
     const explicitSpaceId = formData.get("spaceId") as string | null;
@@ -198,7 +214,7 @@ export async function POST(req: Request) {
 
           send({ stage: "parsing", message: "正在解析文档..." });
 
-          const content = await extractText(file, (p) => send(p), signal);
+          const content = await extractText(file, (p) => send(p), signal, parseOptions);
 
           if (signal.aborted) throw new Error("上传已取消");
 

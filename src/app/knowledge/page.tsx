@@ -40,6 +40,9 @@ interface SpaceCard {
   memberCount?: number;
 }
 
+type LlamaParseTierOption = "fast" | "cost_effective" | "agentic" | "agentic_plus";
+type ParseModeOption = "local" | "cloud";
+
 const FORMAT_FILTERS = [
   { label: "全部", value: "all" },
   { label: "PDF", value: "pdf" },
@@ -87,6 +90,18 @@ const ROLE_LABELS: Record<string, { text: string; color: string; bg: string }> =
   editor: { text: "编辑者", color: "text-emerald-600", bg: "bg-emerald-50" },
   viewer: { text: "查看者", color: "text-slate-500", bg: "bg-slate-100" },
 };
+
+const LLAMA_TIER_OPTIONS: Array<{ value: LlamaParseTierOption; label: string }> = [
+  { value: "fast", label: "fast" },
+  { value: "cost_effective", label: "cost_effective" },
+  { value: "agentic", label: "agentic" },
+  { value: "agentic_plus", label: "agentic_plus" },
+];
+
+const PARSE_MODE_OPTIONS: Array<{ value: ParseModeOption; label: string }> = [
+  { value: "local", label: "本地解析" },
+  { value: "cloud", label: "云端解析" },
+];
 
 /* ─── Nav (shared) ─── */
 function Nav() {
@@ -1149,6 +1164,8 @@ function SpaceDocuments({
   const [deletingDoc, setDeletingDoc] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"docs" | "data">("docs");
+  const [llamaParseTier, setLlamaParseTier] = useState<LlamaParseTierOption>("cost_effective");
+  const [parseMode, setParseMode] = useState<ParseModeOption>("local");
 
   const canUpload =
     spaceRole === "admin" || spaceRole === "editor" || isAdmin;
@@ -1182,6 +1199,8 @@ function SpaceDocuments({
       form.append("file", file);
       form.append("title", file.name.replace(/\.\w+$/, ""));
       form.append("spaceId", spaceId);
+      form.append("llamaParseTier", llamaParseTier);
+      form.append("parseMode", parseMode);
       const res = await fetch("/api/documents", {
         method: "POST",
         body: form,
@@ -1464,6 +1483,40 @@ function SpaceDocuments({
         {/* Upload Card */}
         {canUpload && (
           <div className="pt-5">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row">
+              <label className="block">
+                <span className="text-xs font-medium text-slate-500 mb-1.5 block">
+                  解析方式
+                </span>
+                <select
+                  value={parseMode}
+                  onChange={(e) => setParseMode(e.target.value as ParseModeOption)}
+                  className="w-full sm:w-44 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  {PARSE_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-slate-500 mb-1.5 block">
+                  LlamaParse Tier
+                </span>
+                <select
+                  value={llamaParseTier}
+                  onChange={(e) => setLlamaParseTier(e.target.value as LlamaParseTierOption)}
+                  className="w-full sm:w-72 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  {LLAMA_TIER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div
               className={`relative rounded-2xl border-2 border-dashed bg-white transition-all cursor-pointer ${
                 dragOver

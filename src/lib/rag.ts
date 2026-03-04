@@ -7,10 +7,62 @@ export interface DocResult {
   similarity: number;
 }
 
+interface EmbeddingProviderError {
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
+  };
+  request_id?: string;
+  id?: string;
+}
+
+function formatEmbeddingApiError(status: number, rawBody: string): string {
+  let parsed: EmbeddingProviderError | null = null;
+  try {
+    parsed = JSON.parse(rawBody) as EmbeddingProviderError;
+  } catch {
+    // Non-JSON payload, keep fallback message below.
+  }
+
+  const code = parsed?.error?.code ?? parsed?.error?.type ?? "";
+  const providerMessage = parsed?.error?.message?.trim() ?? "";
+  const requestId = parsed?.request_id ?? parsed?.id ?? "";
+
+  if (code === "Arrearage") {
+    return [
+      "Embedding 服务不可用：DashScope 账户处于欠费状态，请先完成充值或恢复账户可用状态。",
+      requestId ? `request_id: ${requestId}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (status === 401 || code === "InvalidApiKey") {
+    return "Embedding 服务鉴权失败，请检查 DASHSCOPE_API_KEY 是否正确且仍有效。";
+  }
+
+  if (status === 429 || code === "Throttling") {
+    return "Embedding 服务限流，请稍后重试，或降低并发上传。";
+  }
+
+  return [
+    `Embedding API error (${status})`,
+    providerMessage || rawBody.slice(0, 300),
+    requestId ? `request_id: ${requestId}` : "",
+  ]
+    .filter(Boolean)
+    .join(": ");
+}
+
 /**
- * 调用百炼 text-embedding-v3 生成向量
+ * 调用百炼 text-embedding-v4 生成向量
  */
 export async function embed(text: string): Promise<number[]> {
+  if (!process.env.DASHSCOPE_API_KEY) {
+    throw new Error("缺少 DASHSCOPE_API_KEY，无法执行向量化。");
+  }
+
   const res = await fetch(
     "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
     {
@@ -20,7 +72,7 @@ export async function embed(text: string): Promise<number[]> {
         Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "text-embedding-v3",
+        model: "text-embedding-v4",
         input: text,
         dimensions: 1024,
       }),
@@ -29,7 +81,7 @@ export async function embed(text: string): Promise<number[]> {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Embedding API error: ${err}`);
+    throw new Error(formatEmbeddingApiError(res.status, err));
   }
 
   const json = await res.json();
