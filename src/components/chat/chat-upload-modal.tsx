@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 
 type LlamaParseTierOption = "fast" | "cost_effective" | "agentic" | "agentic_plus";
-type ParseModeOption = "local" | "cloud";
+type ParseModeOption = "local" | "smart" | "cloud";
 
 const LLAMA_TIER_OPTIONS: Array<{ value: LlamaParseTierOption; label: string }> = [
   { value: "fast", label: "fast" },
@@ -16,6 +16,7 @@ const LLAMA_TIER_OPTIONS: Array<{ value: LlamaParseTierOption; label: string }> 
 
 const PARSE_MODE_OPTIONS: Array<{ value: ParseModeOption; label: string }> = [
   { value: "local", label: "本地解析" },
+  { value: "smart", label: "智能解析" },
   { value: "cloud", label: "云端解析" },
 ];
 
@@ -37,7 +38,7 @@ export function ChatUploadModal({
   const [uploadMsg, setUploadMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [llamaParseTier, setLlamaParseTier] = useState<LlamaParseTierOption>("cost_effective");
-  const [parseMode, setParseMode] = useState<ParseModeOption>("local");
+  const [parseMode, setParseMode] = useState<ParseModeOption>("smart");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const accept = tab === "docs" ? ".txt,.md,.pdf,.docx" : ".xlsx,.xls,.csv";

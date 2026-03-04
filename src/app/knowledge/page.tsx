@@ -41,7 +41,7 @@ interface SpaceCard {
 }
 
 type LlamaParseTierOption = "fast" | "cost_effective" | "agentic" | "agentic_plus";
-type ParseModeOption = "local" | "cloud";
+type ParseModeOption = "local" | "smart" | "cloud";
 
 const FORMAT_FILTERS = [
   { label: "全部", value: "all" },
@@ -100,6 +100,7 @@ const LLAMA_TIER_OPTIONS: Array<{ value: LlamaParseTierOption; label: string }> 
 
 const PARSE_MODE_OPTIONS: Array<{ value: ParseModeOption; label: string }> = [
   { value: "local", label: "本地解析" },
+  { value: "smart", label: "智能解析" },
   { value: "cloud", label: "云端解析" },
 ];
 
@@ -1165,7 +1166,7 @@ function SpaceDocuments({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<"docs" | "data">("docs");
   const [llamaParseTier, setLlamaParseTier] = useState<LlamaParseTierOption>("cost_effective");
-  const [parseMode, setParseMode] = useState<ParseModeOption>("local");
+  const [parseMode, setParseMode] = useState<ParseModeOption>("smart");
 
   const canUpload =
     spaceRole === "admin" || spaceRole === "editor" || isAdmin;

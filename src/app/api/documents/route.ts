@@ -135,7 +135,9 @@ export async function POST(req: Request) {
         : undefined;
 
     const parseMode: ParseMode | undefined =
-      rawParseMode === "local" || rawParseMode === "cloud" ? rawParseMode : undefined;
+      rawParseMode === "local" || rawParseMode === "smart" || rawParseMode === "cloud"
+        ? rawParseMode
+        : undefined;
 
     const parseOptions: ExtractTextOptions = { llamaParseTier, parseMode };
 
