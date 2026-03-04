@@ -1,6 +1,7 @@
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import TurndownService from "turndown";
+import { supabaseAdmin } from "./supabase";
 
 export interface UploadProgress {
   stage: "parsing" | "chunking" | "embedding" | "storing" | "done" | "error";
@@ -11,7 +12,11 @@ export interface UploadProgress {
   chunks?: number;
 }
 
-export type LlamaParseTier = "fast" | "cost_effective" | "agentic" | "agentic_plus";
+export type LlamaParseTier =
+  | "fast"
+  | "cost_effective"
+  | "agentic"
+  | "agentic_plus";
 export type ParseMode = "local" | "cloud" | "smart";
 
 export interface ExtractTextOptions {
@@ -29,6 +34,8 @@ const turndown = new TurndownService({
 const LLAMA_PARSE_BASE = "https://api.cloud.llamaindex.ai/api/v2";
 const LLAMA_PARSE_POLL_INTERVAL_MS = 2500;
 const LLAMA_PARSE_MAX_POLL_INTERVAL_MS = 8000;
+const LLAMA_PARSE_IMAGE_BUCKET = process.env.RAG_IMAGE_BUCKET ?? "rag-images";
+const LLAMA_PARSE_MAX_IMAGES = 20;
 const LLAMA_PARSE_TIMEOUT_MS = (() => {
   const raw = Number(process.env.LLAMA_PARSE_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : 180000;
@@ -59,7 +66,11 @@ function resolveLlamaParseTier(overrideTier?: LlamaParseTier): LlamaParseTier {
 
 // 解析并返回最终解析模式（优先参数，其次环境变量，默认 smart）。
 function resolveParseMode(overrideMode?: ParseMode): ParseMode {
-  if (overrideMode === "local" || overrideMode === "cloud" || overrideMode === "smart") {
+  if (
+    overrideMode === "local" ||
+    overrideMode === "cloud" ||
+    overrideMode === "smart"
+  ) {
     return overrideMode;
   }
 
@@ -78,16 +89,18 @@ export function isLikelyComplexLayoutPdf(text: string): boolean {
     .filter(Boolean);
   if (lines.length === 0) return true;
 
-  const multiSpaceColumns = lines.filter((line) => /\S\s{3,}\S/.test(line)).length;
+  const multiSpaceColumns = lines.filter((line) =>
+    /\S\s{3,}\S/.test(line)
+  ).length;
   const tabSeparatedLines = lines.filter((line) => /\t/.test(line)).length;
   const tableLikeLines = lines.filter((line) => {
     const trimmed = line.trim();
     const pipeCount = (trimmed.match(/\|/g) ?? []).length;
     const markdownTableRow = pipeCount >= 2 && /^\|?.+\|.+\|?.*$/.test(trimmed);
-    const markdownSeparatorRow = pipeCount >= 2 && /^[:\-\s|]{8,}$/.test(trimmed);
-    const numericColumnsRow = /^(\s*[-+]?\d+(?:[.,]\d+)?\s+){3,}[-+]?\d+(?:[.,]\d+)?\s*$/.test(
-      trimmed
-    );
+    const markdownSeparatorRow =
+      pipeCount >= 2 && /^[:\-\s|]{8,}$/.test(trimmed);
+    const numericColumnsRow =
+      /^(\s*[-+]?\d+(?:[.,]\d+)?\s+){3,}[-+]?\d+(?:[.,]\d+)?\s*$/.test(trimmed);
     return markdownTableRow || markdownSeparatorRow || numericColumnsRow;
   }).length;
   const shortLines = lines.filter((line) => line.length <= 32).length;
@@ -116,7 +129,11 @@ function isSuspiciousArtifactLine(line: string): boolean {
   const compact = trimmed.replace(/\s+/g, "");
   if (compact.length < 20) return false;
 
-  if (/^[A-Za-z0-9_]+$/.test(compact) && /[A-Za-z]/.test(compact) && /\d/.test(compact)) {
+  if (
+    /^[A-Za-z0-9_]+$/.test(compact) &&
+    /[A-Za-z]/.test(compact) &&
+    /\d/.test(compact)
+  ) {
     return true;
   }
 
@@ -149,7 +166,10 @@ function cleanLocalPdfText(text: string): string {
     previous = line;
   }
 
-  return cleanedLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return cleanedLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // 评估本地抽取文本质量，识别是否存在明显重复/噪声污染。
@@ -165,8 +185,12 @@ function isLowQualityLocalPdfText(text: string): boolean {
     lineFreq.set(line, (lineFreq.get(line) ?? 0) + 1);
   }
 
-  const suspiciousCount = lines.filter((line) => isSuspiciousArtifactLine(line)).length;
-  const repeatedCount = lines.filter((line) => (lineFreq.get(line) ?? 0) >= 3 && line.length >= 12).length;
+  const suspiciousCount = lines.filter((line) =>
+    isSuspiciousArtifactLine(line)
+  ).length;
+  const repeatedCount = lines.filter(
+    (line) => (lineFreq.get(line) ?? 0) >= 3 && line.length >= 12
+  ).length;
 
   const suspiciousRatio = suspiciousCount / lines.length;
   const repeatedRatio = repeatedCount / lines.length;
@@ -203,16 +227,25 @@ async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
 function extractMarkdownFromParseResult(result: unknown): string {
   if (!result || typeof result !== "object") return "";
   const data = result as {
-    markdown?: { pages?: Array<{ md?: string; markdown?: string; content?: string }> } | string;
+    markdown?:
+      | { pages?: Array<{ md?: string; markdown?: string; content?: string }> }
+      | string;
     markdown_full?: string;
     text?: { pages?: Array<{ text?: string; content?: string }> } | string;
     text_full?: string;
   };
 
-  if (typeof data.markdown === "string" && data.markdown.trim()) return data.markdown;
-  if (typeof data.markdown_full === "string" && data.markdown_full.trim()) return data.markdown_full;
+  if (typeof data.markdown === "string" && data.markdown.trim()) {
+    return data.markdown;
+  }
+  if (typeof data.markdown_full === "string" && data.markdown_full.trim()) {
+    return data.markdown_full;
+  }
 
-  const markdownPages = data.markdown && typeof data.markdown === "object" ? data.markdown.pages : undefined;
+  const markdownPages =
+    data.markdown && typeof data.markdown === "object"
+      ? data.markdown.pages
+      : undefined;
   if (Array.isArray(markdownPages)) {
     const mergedMarkdown = markdownPages
       .map((p) => p.md ?? p.markdown ?? p.content ?? "")
@@ -221,7 +254,8 @@ function extractMarkdownFromParseResult(result: unknown): string {
     if (mergedMarkdown) return mergedMarkdown;
   }
 
-  const textPages = data.text && typeof data.text === "object" ? data.text.pages : undefined;
+  const textPages =
+    data.text && typeof data.text === "object" ? data.text.pages : undefined;
   if (Array.isArray(textPages)) {
     const mergedText = textPages
       .map((p) => p.text ?? p.content ?? "")
@@ -233,6 +267,87 @@ function extractMarkdownFromParseResult(result: unknown): string {
   if (typeof data.text === "string") return data.text.trim();
 
   return "";
+}
+
+type ParseImageItem = {
+  filename?: string;
+  presigned_url?: string;
+  page_number?: number;
+};
+
+function extractImagesFromParseResult(result: unknown): ParseImageItem[] {
+  if (!result || typeof result !== "object") return [];
+  const data = result as {
+    images_content_metadata?: { images?: ParseImageItem[] };
+  };
+  return Array.isArray(data.images_content_metadata?.images)
+    ? data.images_content_metadata.images
+    : [];
+}
+
+function toSafeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function extFromImageName(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase();
+  if (ext && ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) return ext;
+  return "jpg";
+}
+
+async function uploadImageToStorage(
+  image: ParseImageItem,
+  sourceName: string,
+  signal?: AbortSignal
+): Promise<string | null> {
+  if (!image.presigned_url) return null;
+  if (!supabaseAdmin) return image.presigned_url;
+
+  const response = await fetch(image.presigned_url, { signal });
+  if (!response.ok) return image.presigned_url;
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const ext = extFromImageName(image.filename ?? "");
+  const safeSource = toSafeFileName(sourceName.replace(/\.[^.]+$/, ""));
+  const objectPath = `llamaparse/${safeSource}/${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}.${ext}`;
+
+  const { error } = await supabaseAdmin.storage
+    .from(LLAMA_PARSE_IMAGE_BUCKET)
+    .upload(objectPath, bytes, {
+      contentType: response.headers.get("content-type") ?? `image/${ext}`,
+      upsert: false,
+    });
+
+  if (error) return image.presigned_url;
+  const { data } = supabaseAdmin.storage
+    .from(LLAMA_PARSE_IMAGE_BUCKET)
+    .getPublicUrl(objectPath);
+  return data.publicUrl;
+}
+
+async function buildImageAppendixMarkdown(
+  result: unknown,
+  sourceName: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const images = extractImagesFromParseResult(result).slice(
+    0,
+    LLAMA_PARSE_MAX_IMAGES
+  );
+  if (images.length === 0) return "";
+
+  const imageLines: string[] = [];
+  for (const image of images) {
+    const url = await uploadImageToStorage(image, sourceName, signal);
+    if (!url) continue;
+    const label = image.filename ?? `page-${image.page_number ?? "unknown"}`;
+    imageLines.push(`![${label}](${url})`);
+  }
+
+  if (imageLines.length === 0) return "";
+  return `### 解析图片\n\n${imageLines.join("\n\n")}`;
 }
 
 // 调用 LlamaParse 上传并轮询，返回统一 markdown/text 内容。
@@ -265,6 +380,10 @@ async function fileToMarkdownViaLlamaParse(
             output_tables_as_markdown: true,
           },
         },
+        embedded_images: {
+          enable: true,
+        },
+        images_to_save: ["embedded"],
       },
     })
   );
@@ -299,7 +418,7 @@ async function fileToMarkdownViaLlamaParse(
     });
 
     const pollRes = await fetch(
-      `${LLAMA_PARSE_BASE}/parse/${jobId}?expand=markdown,text`,
+      `${LLAMA_PARSE_BASE}/parse/${jobId}?expand=markdown,text,items,images_content_metadata`,
       { headers: { Authorization: `Bearer ${apiKey}` }, signal }
     );
 
@@ -307,7 +426,9 @@ async function fileToMarkdownViaLlamaParse(
       const errorBody = await pollRes.text();
       if ([400, 401, 403, 404].includes(pollRes.status)) {
         throw new Error(
-          `LlamaParse poll error (${pollRes.status}): ${errorBody || "request rejected"}`
+          `LlamaParse poll error (${pollRes.status}): ${
+            errorBody || "request rejected"
+          }`
         );
       }
       if (pollRes.status === 429 || pollRes.status >= 500) {
@@ -318,7 +439,9 @@ async function fileToMarkdownViaLlamaParse(
         continue;
       }
       throw new Error(
-        `LlamaParse poll error (${pollRes.status}): ${errorBody || "unknown error"}`
+        `LlamaParse poll error (${pollRes.status}): ${
+          errorBody || "unknown error"
+        }`
       );
     }
 
@@ -329,7 +452,18 @@ async function fileToMarkdownViaLlamaParse(
     const jobStatus = (result.job?.status ?? result.status ?? "").toUpperCase();
     if (jobStatus === "SUCCESS" || jobStatus === "COMPLETED") {
       const content = extractMarkdownFromParseResult(result);
-      if (content) return content;
+      const imageAppendix = await buildImageAppendixMarkdown(
+        result,
+        filename,
+        signal
+      );
+      if (content) {
+        if (imageAppendix) {
+          return `${content}\n\n---\n\n${imageAppendix}`;
+        }
+        return content;
+      }
+      if (imageAppendix) return imageAppendix;
       throw new Error("LlamaParse succeeded but returned empty content");
     }
     if (jobStatus === "ERROR" || jobStatus === "FAILED") {
@@ -341,7 +475,9 @@ async function fileToMarkdownViaLlamaParse(
   }
 
   throw new Error(
-    `LlamaParse timeout: 解析超时（超过 ${Math.floor(LLAMA_PARSE_TIMEOUT_MS / 1000)} 秒）`
+    `LlamaParse timeout: 解析超时（超过 ${Math.floor(
+      LLAMA_PARSE_TIMEOUT_MS / 1000
+    )} 秒）`
   );
 }
 
@@ -418,7 +554,10 @@ export async function extractText(
       const localResult = await pdfParse(buf);
       const localText = localResult.text?.trim() ?? "";
       if (!localText) {
-        onProgress?.({ stage: "parsing", message: "检测到低文本 PDF，尝试云端解析..." });
+        onProgress?.({
+          stage: "parsing",
+          message: "检测到低文本 PDF，尝试云端解析...",
+        });
         const markdown = await fileToMarkdownViaLlamaParse(
           buf,
           file.name,
@@ -437,7 +576,10 @@ export async function extractText(
       const localQualityPoor = isLowQualityLocalPdfText(localText);
 
       if (localQualityPoor) {
-        onProgress?.({ stage: "parsing", message: "检测到本地解析噪声，尝试云端增强解析..." });
+        onProgress?.({
+          stage: "parsing",
+          message: "检测到本地解析噪声，尝试云端增强解析...",
+        });
         try {
           const markdown = await fileToMarkdownViaLlamaParse(
             buf,
@@ -455,11 +597,17 @@ export async function extractText(
       }
 
       if (!isLikelyComplexLayoutPdf(cleanedLocalText)) {
-        onProgress?.({ stage: "parsing", message: "检测为纯文本布局，使用快速文本解析" });
+        onProgress?.({
+          stage: "parsing",
+          message: "检测为纯文本布局，使用快速文本解析",
+        });
         return cleanedLocalText;
       }
 
-      onProgress?.({ stage: "parsing", message: "检测到复杂布局，启用 LlamaParse 增强解析..." });
+      onProgress?.({
+        stage: "parsing",
+        message: "检测到复杂布局，启用 LlamaParse 增强解析...",
+      });
       try {
         const markdown = await fileToMarkdownViaLlamaParse(
           buf,
@@ -475,7 +623,10 @@ export async function extractText(
         console.log("fileToMarkdownViaLlamaParse error", error);
       }
 
-      onProgress?.({ stage: "parsing", message: "LlamaParse 不可用，回退文本解析" });
+      onProgress?.({
+        stage: "parsing",
+        message: "LlamaParse 不可用，回退文本解析",
+      });
       return cleanedLocalText;
     }
 

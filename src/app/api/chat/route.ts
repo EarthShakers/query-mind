@@ -344,7 +344,7 @@ export async function POST(req: Request) {
               // 知识库检索 RAG
               search_knowledge: {
                 description:
-                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Use when the question is NOT about querying database numbers or statistics.",
+                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics.",
                 parameters: z.object({
                   query: z
                     .string()

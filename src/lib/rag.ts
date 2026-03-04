@@ -137,11 +137,15 @@ export async function ingestDocument(
     if (signal?.aborted) throw new Error("上传已取消");
 
     const chunk = chunks[i];
-    // 把标题上下文拼到内容前面，提升检索语义
-    const contextPrefix = chunk.headers.length
+    // 向量化使用纯文本标题上下文，提升召回准确率
+    const embeddingPrefix = chunk.headers.length
       ? chunk.headers.join(" > ") + "\n\n"
       : "";
-    const textForEmbedding = contextPrefix + chunk.content;
+    const textForEmbedding = embeddingPrefix + chunk.content;
+    // 存储内容使用 Markdown 粗体标题，兼顾预览可读性
+    const displayPrefix = chunk.headers.length
+      ? `**${chunk.headers.join(" > ")}**\n\n`
+      : "";
 
     const embedding = await embed(textForEmbedding);
 
@@ -149,7 +153,7 @@ export async function ingestDocument(
 
     rows.push({
       title,
-      content: textForEmbedding,
+      content: displayPrefix + chunk.content,
       embedding,
       metadata: {
         ...metadata,

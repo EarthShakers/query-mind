@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth-context";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 
@@ -103,6 +103,47 @@ const PARSE_MODE_OPTIONS: Array<{ value: ParseModeOption; label: string }> = [
   { value: "smart", label: "智能解析" },
   { value: "cloud", label: "云端解析" },
 ];
+
+const MARKDOWN_ALLOWED_ELEMENTS = [
+  "p",
+  "br",
+  "blockquote",
+  "code",
+  "pre",
+  "em",
+  "strong",
+  "del",
+  "a",
+  "ul",
+  "ol",
+  "li",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+  "img",
+  "span",
+  "mark",
+] as const;
+
+const MARKDOWN_COMPONENTS: Components = {
+  // Avoid <p> nesting from mixed markdown + raw html content.
+  p: ({ node, ...props }) => <div {...props} />,
+};
+
+function normalizeMarkdownHighlights(markdown: string): string {
+  // Support common highlight syntax: ==text== -> <mark>text</mark>
+  return markdown.replace(/==([^=\n][^=\n]*?)==/g, "<mark>$1</mark>");
+}
 
 /* ─── Nav (shared) ─── */
 function Nav() {
@@ -1979,8 +2020,14 @@ function SpaceDocuments({
                 </p>
               ) : previewMode === "markdown" ? (
                 <div className="prose prose-sm prose-slate max-w-none prose-headings:text-slate-800 prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                    {chunks.map((c) => c.content).join("\n\n")}
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
+                    allowedElements={MARKDOWN_ALLOWED_ELEMENTS}
+                    unwrapDisallowed
+                    components={MARKDOWN_COMPONENTS}
+                  >
+                    {normalizeMarkdownHighlights(chunks.map((c) => c.content).join("\n\n"))}
                   </ReactMarkdown>
                 </div>
               ) : (
@@ -2010,8 +2057,14 @@ function SpaceDocuments({
                         </span>
                       </div>
                       <div className="px-4 py-3 prose prose-sm prose-slate max-w-none prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                          {chunk.content}
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeRaw]}
+                          allowedElements={MARKDOWN_ALLOWED_ELEMENTS}
+                          unwrapDisallowed
+                          components={MARKDOWN_COMPONENTS}
+                        >
+                          {normalizeMarkdownHighlights(chunk.content)}
                         </ReactMarkdown>
                       </div>
                     </div>
