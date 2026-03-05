@@ -1,5 +1,5 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { getDashScopeLLM } from "./llm";
 
 const summaryPrompt = ChatPromptTemplate.fromMessages([
   [
@@ -16,15 +16,7 @@ const summaryPrompt = ChatPromptTemplate.fromMessages([
 export async function generateChunkSummary(content: string): Promise<string> {
   if (!content.trim()) return "";
 
-  const llm = new ChatOpenAI({
-    modelName: "qwen-turbo",
-    configuration: {
-      baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKey: process.env.DASHSCOPE_API_KEY,
-    },
-    temperature: 0.2, // 低温，结果更加稳定、严谨、确定。
-    maxTokens: 512,
-  });
+  const llm = getDashScopeLLM({ model: "qwen-turbo", temperature: 0.2, maxTokens: 512 });
 
   try {
     const chain = summaryPrompt.pipe(llm);

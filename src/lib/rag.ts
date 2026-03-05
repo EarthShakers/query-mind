@@ -5,6 +5,7 @@ import {
   type ChunkStrategy,
   type ParentChildOptions,
 } from "./chunking";
+import { parseSelfQuery } from "./self-query";
 
 export type { ParentChildOptions };
 import type { UploadProgress } from "./parsers";
@@ -103,13 +104,20 @@ export async function embed(text: string): Promise<number[]> {
   return json.data[0].embedding;
 }
 
+/** 元数据过滤条件（用于 Self-Query） */
+export interface SearchFilter {
+  /** 按文档标题模糊匹配 */
+  filterTitle?: string;
+}
+
 /**
- * 向量相似度搜索，返回最相关的文档片段（按 spaceIds 过滤）
+ * 向量相似度搜索，返回最相关的文档片段（支持 spaceIds、filterTitle 过滤）
  */
 export async function searchDocuments(
   query: string,
   topK = 5,
-  spaceIds?: string[]
+  spaceIds?: string[],
+  filter?: SearchFilter
 ): Promise<DocResult[]> {
   const queryEmbedding = await embed(query);
 
@@ -117,6 +125,7 @@ export async function searchDocuments(
     query_embedding: queryEmbedding,
     match_count: topK,
     filter_spaces: spaceIds?.length ? spaceIds : null,
+    filter_title: filter?.filterTitle?.trim() || null,
   });
 
   if (error) throw new Error(`Vector search error: ${error.message}`);
@@ -166,6 +175,23 @@ export async function searchDocuments(
       .map(({ parentId: _, ...r }) => r);
   }
   return results.map(({ parentId: _, ...r }) => r);
+}
+
+/**
+ * Self-Query 检索：从用户问题解析 query + filter，再执行向量检索
+ */
+export async function searchWithSelfQuery(
+  userMessage: string,
+  topK = 5,
+  spaceIds?: string[]
+): Promise<DocResult[]> {
+  const { query, filterTitle } = await parseSelfQuery(userMessage);
+  if (!query.trim()) return [];
+
+  const filter: SearchFilter | undefined =
+    filterTitle ? { filterTitle } : undefined;
+
+  return searchDocuments(query, topK, spaceIds, filter);
 }
 
 /**

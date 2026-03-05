@@ -1,12 +1,8 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { getDashScopeLLM } from "@/lib/llm";
 
 export function createDashScopeLLM() {
-  return new ChatOpenAI({
-    modelName: "deepseek-v3",
-    configuration: {
-      baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKey: process.env.DASHSCOPE_API_KEY,
-    },
+  return getDashScopeLLM({
+    model: "deepseek-v3",
     temperature: 0.3,
     maxTokens: 4096,
   });

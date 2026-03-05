@@ -1,23 +1,18 @@
 import { streamText, type CoreMessage } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import { queryUserData } from "@/lib/pg";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
-import { searchDocuments } from "@/lib/rag";
+import { searchWithSelfQuery } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { dashscopeProvider } from "@/lib/llm";
 import {
   checkRateLimit,
   checkDailyBudget,
   checkInputLength,
   recordTokenUsage,
 } from "@/lib/ratelimit";
-
-const dashscope = createOpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY,
-  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-});
 
 /** useChat 发送的 messages 含 toolInvocations，streamText 无法解析，需要清洗 */
 function sanitizeMessages(
@@ -124,7 +119,7 @@ export async function POST(req: Request) {
 
   try {
     const result = await streamText({
-      model: dashscope("deepseek-v3"),
+      model: dashscopeProvider("deepseek-v3"),
       abortSignal: abortController.signal,
       maxSteps: isReportMode ? 10 : 5,
       system: buildSystemPrompt(userSchemaStr, existingSections),
@@ -341,18 +336,18 @@ export async function POST(req: Request) {
         },
         ...(enableKnowledge
           ? {
-              // 知识库检索 RAG
+              // 知识库检索 RAG（Self-Query：自动解析用户问题中的文档限定，如「产品手册里」「XX.pdf 中」）
               search_knowledge: {
                 description:
-                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics.",
+                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics. Pass the user's full question for metadata-aware search.",
                 parameters: z.object({
                   query: z
                     .string()
-                    .describe("The search query in natural language"),
+                    .describe("The user's full question or search query in natural language"),
                 }),
                 execute: async ({ query: q }) => {
                   try {
-                    const results = await searchDocuments(q, 5, searchSpaceIds);
+                    const results = await searchWithSelfQuery(q, 5, searchSpaceIds);
                     return { query: q, results };
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : String(e);
