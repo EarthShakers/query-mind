@@ -2,7 +2,7 @@ import { streamText, type CoreMessage } from "ai";
 import { z } from "zod";
 import { queryUserData } from "@/lib/pg";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
-import { searchDocuments } from "@/lib/rag";
+import { searchWithSelfQuery } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -336,19 +336,19 @@ export async function POST(req: Request) {
         },
         ...(enableKnowledge
           ? {
-              // 知识库检索 RAG
+              // 知识库检索 RAG（Self-Query：LangChain 解析 query + filter，便于 debug）
               search_knowledge: {
                 description:
-                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics.",
+                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics. Pass the user's exact question.",
                 parameters: z.object({
                   query: z
                     .string()
-                    .describe("The search query in natural language"),
+                    .describe("The user's exact question, verbatim from their message"),
                 }),
                 execute: async ({ query: q }) => {
                   try {
-                    const results = await searchDocuments(q, 5, searchSpaceIds);
-                    return { query: q, results };
+                    const results = await searchWithSelfQuery(lastMsg || q, 5, searchSpaceIds);
+                    return { query: lastMsg || q, results };
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : String(e);
                     return { query: q, results: [], error: msg };

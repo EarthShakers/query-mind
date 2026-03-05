@@ -187,6 +187,9 @@ export async function searchWithSelfQuery(
   spaceIds?: string[]
 ): Promise<DocResult[]> {
   const { query, filterTitle } = await parseSelfQuery(userMessage);
+  // debug: 服务端日志，便于排查 Self-Query 解析
+  console.log("[Self-Query] input:", userMessage, "| parsed:", { query, filterTitle });
+
   if (!query.trim()) return [];
 
   const filter: SearchFilter | undefined =
@@ -195,6 +198,7 @@ export async function searchWithSelfQuery(
   const results = await searchDocuments(query, topK, spaceIds, filter);
   // 带 filter 无结果时，回退为无 filter 检索（避免误解析导致漏检）
   if (filter && results.length === 0) {
+    console.log("[Self-Query] filter 无结果，回退为无 filter 检索");
     return searchDocuments(query, topK, spaceIds);
   }
   return results;
