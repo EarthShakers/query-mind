@@ -37,6 +37,11 @@ export function KnowledgeResult({
                   {Math.round(doc.similarity * 100)}% 相关
                 </span>
               </div>
+              {doc.summary && (
+                <p className="text-[11px] text-indigo-600/90 leading-relaxed mb-1.5">
+                  摘要：{doc.summary}
+                </p>
+              )}
               <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
                 {doc.content}
               </p>

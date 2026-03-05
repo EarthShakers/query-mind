@@ -57,7 +57,7 @@ export async function GET(req: Request) {
 
       const { data, error } = await supabase
         .from("documents")
-        .select("id, content, created_at")
+        .select("id, content, metadata, created_at")
         .eq("title", title)
         .or(orFilter)
         .order("id", { ascending: true });

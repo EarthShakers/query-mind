@@ -9,6 +9,8 @@ export interface DocResult {
   title: string;
   content: string;
   similarity: number;
+  /** 摘要索引生成的 chunk 摘要，有则展示 */
+  summary?: string;
 }
 
 interface EmbeddingProviderError {
@@ -110,13 +112,35 @@ export async function searchDocuments(
 
   if (error) throw new Error(`Vector search error: ${error.message}`);
 
-  return (data ?? []).map(
-    (row: { title: string; content: string; similarity: number }) => ({
+  const rows = (data ?? []) as {
+    id: number;
+    title: string;
+    content: string;
+    similarity: number;
+  }[];
+
+  if (rows.length === 0) return [];
+
+  const { data: metaRows } = await supabase
+    .from("documents")
+    .select("id, metadata")
+    .in("id", rows.map((r) => r.id));
+
+  const metaMap = new Map<number, Record<string, unknown>>();
+  for (const r of metaRows ?? []) {
+    metaMap.set(r.id, (r.metadata as Record<string, unknown>) ?? {});
+  }
+
+  return rows.map((row) => {
+    const meta = metaMap.get(row.id);
+    const summary = typeof meta?.summary === "string" ? meta.summary : undefined;
+    return {
       title: row.title,
       content: row.content,
       similarity: row.similarity,
-    })
-  );
+      ...(summary ? { summary } : {}),
+    };
+  });
 }
 
 /**

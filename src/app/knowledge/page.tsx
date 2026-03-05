@@ -18,6 +18,7 @@ interface DocItem {
 interface ChunkItem {
   id: number;
   content: string;
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 
@@ -1621,13 +1622,16 @@ function SpaceDocuments({
                             ? uploadProgress.message || "正在解析文档..."
                             : uploadProgress?.stage === "chunking"
                             ? `切分完成，共 ${uploadProgress.total} 个片段`
+                            : uploadProgress?.stage === "summarizing"
+                            ? `生成摘要 ${uploadProgress.current}/${uploadProgress.total}`
                             : uploadProgress?.stage === "embedding"
                             ? `向量化中 ${uploadProgress.current}/${uploadProgress.total}`
                             : uploadProgress?.stage === "storing"
                             ? "正在写入数据库..."
                             : "正在处理..."}
                         </p>
-                        {uploadProgress?.stage === "embedding" &&
+                        {(uploadProgress?.stage === "summarizing" ||
+                          uploadProgress?.stage === "embedding") &&
                           uploadProgress.total &&
                           uploadProgress.current != null && (
                             <div className="mt-2 w-full bg-slate-200 rounded-full h-2 overflow-hidden">
@@ -2057,7 +2061,12 @@ function SpaceDocuments({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {chunks.map((chunk, i) => (
+                  {chunks.map((chunk, i) => {
+                    const summary =
+                      typeof chunk.metadata?.summary === "string"
+                        ? chunk.metadata.summary
+                        : undefined;
+                    return (
                     <div
                       key={chunk.id}
                       className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-200 transition-colors"
@@ -2081,6 +2090,14 @@ function SpaceDocuments({
                           {chunk.content.length} 字
                         </span>
                       </div>
+                      {summary && (
+                        <div className="px-4 py-2 bg-indigo-50/50 border-b border-indigo-100/50">
+                          <p className="text-[11px] text-indigo-700 leading-relaxed">
+                            <span className="font-medium text-indigo-600">摘要：</span>
+                            {summary}
+                          </p>
+                        </div>
+                      )}
                       <div className="px-4 py-3 prose prose-sm prose-slate max-w-none prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
@@ -2093,7 +2110,8 @@ function SpaceDocuments({
                         </ReactMarkdown>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

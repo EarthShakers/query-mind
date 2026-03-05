@@ -78,7 +78,7 @@ export function ThinkingDetails({
               </span>
               {results.length > 0 && (
                 <div className="mt-1 space-y-1">
-                  {results.map((doc: any, i: number) => (
+                  {results.map((doc: { title: string; content: string; similarity: number; summary?: string }, i: number) => (
                     <div
                       key={i}
                       className="p-2 bg-slate-50 rounded border border-slate-100"
@@ -91,6 +91,11 @@ export function ThinkingDetails({
                           {Math.round(doc.similarity * 100)}%
                         </span>
                       </div>
+                      {doc.summary && (
+                        <p className="text-[10px] text-indigo-600/80 leading-relaxed mb-1">
+                          摘要：{doc.summary}
+                        </p>
+                      )}
                       <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3">
                         {doc.content}
                       </p>
