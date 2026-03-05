@@ -1,5 +1,9 @@
 import { supabase } from "./supabase";
+import { generateChunkSummary } from "./summary";
 import type { UploadProgress } from "./parsers";
+
+const ENABLE_SUMMARY_INDEX =
+  process.env.ENABLE_SUMMARY_INDEX === "true" || process.env.ENABLE_SUMMARY_INDEX === "1";
 
 export interface DocResult {
   title: string;
@@ -137,15 +141,27 @@ export async function ingestDocument(
     if (signal?.aborted) throw new Error("上传已取消");
 
     const chunk = chunks[i];
-    // 向量化使用纯文本标题上下文，提升召回准确率
     const embeddingPrefix = chunk.headers.length
       ? chunk.headers.join(" > ") + "\n\n"
       : "";
-    const textForEmbedding = embeddingPrefix + chunk.content;
-    // 存储内容使用 Markdown 粗体标题，兼顾预览可读性
     const displayPrefix = chunk.headers.length
       ? `**${chunk.headers.join(" > ")}**\n\n`
       : "";
+
+    let textForEmbedding: string;
+    let chunkMeta: Record<string, unknown> = {
+      ...metadata,
+      ...(chunk.headers.length ? { section: chunk.headers.join(" > ") } : {}),
+    };
+
+    if (ENABLE_SUMMARY_INDEX) {
+      onProgress?.({ stage: "summarizing", current: i + 1, total: chunks.length });
+      const summary = await generateChunkSummary(chunk.content);
+      textForEmbedding = embeddingPrefix + (summary || chunk.content);
+      chunkMeta = { ...chunkMeta, summary: summary || undefined };
+    } else {
+      textForEmbedding = embeddingPrefix + chunk.content;
+    }
 
     const embedding = await embed(textForEmbedding);
 
@@ -155,10 +171,7 @@ export async function ingestDocument(
       title,
       content: displayPrefix + chunk.content,
       embedding,
-      metadata: {
-        ...metadata,
-        ...(chunk.headers.length ? { section: chunk.headers.join(" > ") } : {}),
-      },
+      metadata: chunkMeta,
       ...(tenantId ? { tenant_id: tenantId } : {}),
       ...(spaceId ? { space_id: spaceId } : {}),
     });

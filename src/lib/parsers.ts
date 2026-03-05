@@ -5,7 +5,7 @@ import { LlamaCloud, toFile } from "@llamaindex/llama-cloud";
 import { supabaseAdmin } from "./supabase";
 
 export interface UploadProgress {
-  stage: "parsing" | "chunking" | "embedding" | "storing" | "done" | "error";
+  stage: "parsing" | "chunking" | "summarizing" | "embedding" | "storing" | "done" | "error";
   message?: string;
   current?: number;
   total?: number;
