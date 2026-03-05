@@ -20,6 +20,9 @@ importers:
       '@langchain/openai':
         specifier: ^1.2.9
         version: 1.2.9(@langchain/core@1.1.27(@opentelemetry/api@1.9.0))(ws@8.19.0)
+      '@langchain/textsplitters':
+        specifier: ^1.0.1
+        version: 1.0.1(@langchain/core@1.1.27(@opentelemetry/api@1.9.0))
       '@llamaindex/llama-cloud':
         specifier: ^1.7.0
         version: 1.7.0
@@ -629,6 +632,12 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': ^1.1.27
+
+  '@langchain/textsplitters@1.0.1':
+    resolution: {integrity: sha512-rheJlB01iVtrOUzttscutRgLybPH9qR79EyzBEbf1u97ljWyuxQfCwIWK+SjoQTM9O8M7GGLLRBSYE26Jmcoww==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.0.0
 
   '@llamaindex/core@0.6.22':
     resolution: {integrity: sha512-/BXyemkvpxMaUhOkbwJ2PTvzKjSWkL8+6QLpz/n+pk8xBwMMe1GVBgli/J57gCyi8GbrlBafBj6GaPOgWub2Eg==}
@@ -2821,6 +2830,11 @@ snapshots:
       zod: 3.25.76
     transitivePeerDependencies:
       - ws
+
+  '@langchain/textsplitters@1.0.1(@langchain/core@1.1.27(@opentelemetry/api@1.9.0))':
+    dependencies:
+      '@langchain/core': 1.1.27(@opentelemetry/api@1.9.0)
+      js-tiktoken: 1.0.21
 
   '@llamaindex/core@0.6.22':
     dependencies:

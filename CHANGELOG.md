@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.7.0 — RAG 分片策略 & 知识库层级 & 解析增强 <sub>2026-03-03</sub>
+
+- **RAG 分片策略升级**：支持三种策略——标准（Markdown 标题切分）、精细（父子块）、语义边界（embedding 相似度找边界），上传时可选
+- **知识库分片层级展示**：分片视图按 `metadata.section` 递归渲染，最多 6 层，层级标题带缩进
+- **Chunk 摘要索引**：可选启用 `ENABLE_SUMMARY_INDEX`，用 LangChain promptTemplate 为每个 chunk 生成摘要，提升检索相关性
+- **文档解析增强**：LlamaParse 支持图片解析、URL 持久化、云端/本地双模式；默认智能解析
+- **文件解析体验**：上传支持取消、进度展示
+- **开发体验**：`npm run dev` 端口占用时自动探测并切换可用端口（3001、3002...）
+
 ## v1.6.0 — 文档解析增强 & RAG 优化 <sub>2026-03-03</sub>
 
 - **PDF 转 Markdown（LlamaParse）**：PDF 上传自动调用 LlamaParse API 转 Markdown，保留表格、标题结构，回退兼容 pdf-parse

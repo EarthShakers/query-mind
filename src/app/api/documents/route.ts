@@ -1,4 +1,4 @@
-import { ingestDocument } from "@/lib/rag";
+import { ingestDocument, type ChunkStrategy, type ParentChildOptions } from "@/lib/rag";
 import { extractText } from "@/lib/parsers";
 import type { UploadProgress } from "@/lib/parsers";
 import type { ExtractTextOptions, LlamaParseTier, ParseMode } from "@/lib/parsers";
@@ -125,6 +125,35 @@ export async function POST(req: Request) {
       (formData.get("title") as string) || file?.name || "未命名文档";
     const rawLlamaTier = (formData.get("llamaParseTier") as string | null)?.trim().toLowerCase();
     const rawParseMode = (formData.get("parseMode") as string | null)?.trim().toLowerCase();
+    const rawChunkStrategy = (formData.get("chunkStrategy") as string | null)?.trim().toLowerCase();
+
+    const chunkStrategy: ChunkStrategy =
+      rawChunkStrategy === "parentchild" || rawChunkStrategy === "parent_child"
+        ? "parentChild"
+        : rawChunkStrategy === "semantic"
+          ? "semantic"
+          : "standard";
+
+    const rawParentChunkSize = formData.get("parentChunkSize") as string | null;
+    const rawParentOverlap = formData.get("parentOverlap") as string | null;
+    const rawChildChunkSize = formData.get("childChunkSize") as string | null;
+    const rawChildOverlap = formData.get("childOverlap") as string | null;
+
+    const chunkOptions: ParentChildOptions | undefined =
+      rawParentChunkSize ||
+      rawParentOverlap ||
+      (chunkStrategy === "parentChild" && (rawChildChunkSize || rawChildOverlap))
+        ? {
+            parentChunkSize: rawParentChunkSize ? parseInt(rawParentChunkSize, 10) : undefined,
+            parentOverlap: rawParentOverlap ? parseInt(rawParentOverlap, 10) : undefined,
+            ...(chunkStrategy === "parentChild"
+              ? {
+                  childChunkSize: rawChildChunkSize ? parseInt(rawChildChunkSize, 10) : undefined,
+                  childOverlap: rawChildOverlap ? parseInt(rawChildOverlap, 10) : undefined,
+                }
+              : {}),
+          }
+        : undefined;
 
     const llamaParseTier: LlamaParseTier | undefined =
       rawLlamaTier === "fast" ||
@@ -227,7 +256,9 @@ export async function POST(req: Request) {
             uploadSpaceId,
             tenantId,
             (p) => send(p),
-            signal
+            signal,
+            chunkStrategy,
+            chunkOptions
           );
 
           send({ stage: "done", title, chunks });

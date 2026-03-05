@@ -133,7 +133,7 @@ documents.push({ content: chunk.content, metadata: { summary } });
 
 | 当前实现 | 可演进方向 |
 |----------|------------|
-| `splitMarkdown` 分块 | 保持，可加 `ParentDocumentRetriever` 的 child/parent 切分 |
+| `splitMarkdown` 分块 | ✅ 已实现：标准 / 精细（父子）/ 语义边界 三种策略，UI 可选 |
 | `embed` 单路向量检索 | 加 `MultiQueryRetriever` 或 `EnsembleRetriever` |
 | `match_documents` + space_id | 用 `MetadataFilter` 封装，后续接入 `SelfQueryRetriever` |
 | 无摘要 | ✅ 已实现：`ENABLE_SUMMARY_INDEX=true` 时对 chunk 生成摘要并 embedding，存 `metadata.summary` |

@@ -22,6 +22,165 @@ interface ChunkItem {
   created_at: string;
 }
 
+const MAX_CHUNK_LEVEL = 6;
+
+interface ChunkTreeNode {
+  key: string;
+  label: string;
+  level: number;
+  children: ChunkTreeNode[];
+  chunks: ChunkItem[];
+}
+
+function buildChunkTree(chunks: ChunkItem[], maxLevel = MAX_CHUNK_LEVEL): ChunkTreeNode {
+  const root: ChunkTreeNode = { key: "", label: "", level: 0, children: [], chunks: [] };
+
+  for (const chunk of chunks) {
+    const section = chunk.metadata?.section;
+    const parts =
+      typeof section === "string"
+        ? section
+            .split(" > ")
+            .map((p) => p.trim())
+            .filter(Boolean)
+            .slice(0, maxLevel)
+        : [];
+
+    if (parts.length === 0) {
+      root.chunks.push(chunk);
+    } else {
+      let current = root;
+      for (let i = 0; i < parts.length; i++) {
+        const label = parts[i];
+        const key = parts.slice(0, i + 1).join(" > ");
+        let child = current.children.find((c) => c.key === key);
+        if (!child) {
+          child = { key, label, level: i + 1, children: [], chunks: [] };
+          current.children.push(child);
+        }
+        current = child;
+        if (i === parts.length - 1) {
+          current.chunks.push(chunk);
+        }
+      }
+    }
+  }
+
+  return root;
+}
+
+function ChunkCard({
+  chunk,
+  index,
+  format,
+}: {
+  chunk: ChunkItem;
+  index: number;
+  format: string;
+}) {
+  const summary =
+    typeof chunk.metadata?.summary === "string" ? chunk.metadata.summary : undefined;
+  const meta = FORMAT_META[format] ?? FORMAT_META.txt;
+  return (
+    <div
+      key={chunk.id}
+      className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-200 transition-colors"
+    >
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-50/80 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <span
+            className={`w-5 h-5 rounded-md bg-gradient-to-br ${meta.gradient} flex items-center justify-center text-[9px] font-bold text-white`}
+          >
+            {index + 1}
+          </span>
+          <span className="text-xs font-medium text-slate-500">Chunk #{index + 1}</span>
+        </div>
+        <span className="text-[11px] text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded">
+          {chunk.content.length} 字
+        </span>
+      </div>
+      {summary && (
+        <div className="px-4 py-2 bg-indigo-50/50 border-b border-indigo-100/50">
+          <p className="text-[11px] text-indigo-700 leading-relaxed">
+            <span className="font-medium text-indigo-600">摘要：</span>
+            {summary}
+          </p>
+        </div>
+      )}
+      <div className="px-4 py-3 prose prose-sm prose-slate max-w-none prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          allowedElements={MARKDOWN_ALLOWED_ELEMENTS}
+          unwrapDisallowed
+          components={MARKDOWN_COMPONENTS}
+        >
+          {normalizeMarkdownHighlights(chunk.content)}
+        </ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
+function ChunkTreeItem({
+  node,
+  format,
+  chunkIndexRef,
+}: {
+  node: ChunkTreeNode;
+  format: string;
+  chunkIndexRef: React.MutableRefObject<number>;
+}) {
+  const indentPx = Math.min(node.level * 16, MAX_CHUNK_LEVEL * 16);
+  return (
+    <div className="space-y-2">
+      {node.label ? (
+        <div
+          className="text-xs font-semibold text-slate-600 py-1.5 border-l-2 border-indigo-200 pl-3 bg-slate-50/50 rounded-r"
+          style={{ marginLeft: indentPx }}
+        >
+          {node.label}
+        </div>
+      ) : null}
+      {node.chunks.map((chunk) => {
+        const i = chunkIndexRef.current++;
+        return <ChunkCard key={chunk.id} chunk={chunk} index={i} format={format} />;
+      })}
+      {node.children.map((child) => (
+        <ChunkTreeItem
+          key={child.key}
+          node={child}
+          format={format}
+          chunkIndexRef={chunkIndexRef}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ChunkTreeView({ chunks, format }: { chunks: ChunkItem[]; format: string }) {
+  const chunkIndexRef = useRef(0);
+  const tree = useMemo(() => buildChunkTree(chunks), [chunks]);
+  chunkIndexRef.current = 0;
+
+  return (
+    <div className="space-y-3">
+      {tree.chunks.map((chunk) => {
+        const i = chunkIndexRef.current++;
+        return <ChunkCard key={chunk.id} chunk={chunk} index={i} format={format} />;
+      })}
+      {tree.children.map((child) => (
+        <ChunkTreeItem
+          key={child.key}
+          node={child}
+          format={format}
+          chunkIndexRef={chunkIndexRef}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface DataTableItem {
   id: string;
   table_name: string;
@@ -103,6 +262,13 @@ const PARSE_MODE_OPTIONS: Array<{ value: ParseModeOption; label: string }> = [
   { value: "local", label: "本地解析" },
   { value: "smart", label: "智能解析" },
   { value: "cloud", label: "云端解析" },
+];
+
+type ChunkStrategyOption = "standard" | "parentChild" | "semantic";
+const CHUNK_STRATEGY_OPTIONS: Array<{ value: ChunkStrategyOption; label: string }> = [
+  { value: "standard", label: "标准切分" },
+  { value: "parentChild", label: "精细切分（父子）" },
+  { value: "semantic", label: "语义边界" },
 ];
 
 const MARKDOWN_ALLOWED_ELEMENTS = [
@@ -1234,6 +1400,37 @@ function SpaceDocuments({
   const [activeTab, setActiveTab] = useState<"docs" | "data">("docs");
   const [llamaParseTier, setLlamaParseTier] = useState<LlamaParseTierOption>("cost_effective");
   const [parseMode, setParseMode] = useState<ParseModeOption>("smart");
+  const [chunkStrategy, setChunkStrategy] = useState<ChunkStrategyOption>("standard");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [parentChunkSizeStr, setParentChunkSizeStr] = useState("800");
+  const [parentOverlapStr, setParentOverlapStr] = useState("100");
+  const [childChunkSizeStr, setChildChunkSizeStr] = useState("300");
+  const [childOverlapStr, setChildOverlapStr] = useState("50");
+
+  const parseParentChunkSize = () =>
+    Math.min(1200, Math.max(400, parseInt(parentChunkSizeStr, 10) || 800));
+  const parseParentOverlap = () =>
+    Math.min(parseParentChunkSize() - 50, Math.max(0, parseInt(parentOverlapStr, 10) || 0));
+  const parseChildChunkSize = () =>
+    Math.min(600, Math.max(100, parseInt(childChunkSizeStr, 10) || 300));
+  const parseChildOverlap = () =>
+    Math.min(parseChildChunkSize() - 20, Math.max(0, parseInt(childOverlapStr, 10) || 0));
+
+  useEffect(() => {
+    const pOverlap = parseInt(parentOverlapStr, 10);
+    if (!isNaN(pOverlap) && pOverlap >= parseParentChunkSize() - 50) {
+      setParentOverlapStr(String(Math.max(0, parseParentChunkSize() - 50)));
+    }
+  }, [parentChunkSizeStr]);
+
+  useEffect(() => {
+    if (chunkStrategy === "parentChild") {
+      const cOverlap = parseInt(childOverlapStr, 10);
+      if (!isNaN(cOverlap) && cOverlap >= parseChildChunkSize() - 20) {
+        setChildOverlapStr(String(Math.max(0, parseChildChunkSize() - 20)));
+      }
+    }
+  }, [chunkStrategy, childChunkSizeStr]);
 
   const canUpload =
     spaceRole === "admin" || spaceRole === "editor" || isAdmin;
@@ -1269,6 +1466,13 @@ function SpaceDocuments({
       form.append("spaceId", spaceId);
       form.append("llamaParseTier", llamaParseTier);
       form.append("parseMode", parseMode);
+      form.append("chunkStrategy", chunkStrategy);
+      form.append("parentChunkSize", String(parseParentChunkSize()));
+      form.append("parentOverlap", String(parseParentOverlap()));
+      if (chunkStrategy === "parentChild") {
+        form.append("childChunkSize", String(parseChildChunkSize()));
+        form.append("childOverlap", String(parseChildOverlap()));
+      }
       const res = await fetch("/api/documents", {
         method: "POST",
         body: form,
@@ -1517,28 +1721,56 @@ function SpaceDocuments({
           </div>
         )}
 
-        {/* Tabs: 知识文档 / 数据报表 */}
-        <div className="mt-5 flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-          <button
-            onClick={() => setActiveTab("docs")}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              activeTab === "docs"
-                ? "bg-white text-slate-800 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            知识文档
-          </button>
-          <button
-            onClick={() => setActiveTab("data")}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              activeTab === "data"
-                ? "bg-white text-slate-800 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            数据报表
-          </button>
+        {/* Tabs: 知识文档 / 数据报表 + 上传设置 */}
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab("docs")}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                activeTab === "docs"
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              知识文档
+            </button>
+            <button
+              onClick={() => setActiveTab("data")}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                activeTab === "data"
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              数据报表
+            </button>
+          </div>
+          {canUpload && activeTab === "docs" && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((o) => !o)}
+              className={`flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                settingsOpen
+                  ? "bg-indigo-100 text-indigo-700 shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600"
+              }`}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`transition-transform ${settingsOpen ? "rotate-90" : ""}`}
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              {settingsOpen ? "收起设置" : "上传设置"}
+            </button>
+          )}
         </div>
 
         {activeTab === "data" ? (
@@ -1551,40 +1783,167 @@ function SpaceDocuments({
         {/* Upload Card */}
         {canUpload && (
           <div className="pt-5">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row">
-              <label className="block">
-                <span className="text-xs font-medium text-slate-500 mb-1.5 block">
-                  解析方式
-                </span>
-                <select
-                  value={parseMode}
-                  onChange={(e) => setParseMode(e.target.value as ParseModeOption)}
-                  className="w-full sm:w-44 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                >
-                  {PARSE_MODE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-medium text-slate-500 mb-1.5 block">
-                  LlamaParse Tier
-                </span>
-                <select
-                  value={llamaParseTier}
-                  onChange={(e) => setLlamaParseTier(e.target.value as LlamaParseTierOption)}
-                  className="w-full sm:w-72 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                >
-                  {LLAMA_TIER_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            {settingsOpen && (
+              <div className="mb-4 overflow-hidden rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-cyan-50/50 p-4 shadow-md shadow-indigo-100/50">
+                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                  <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[180px]">
+                    <span className="text-xs font-medium text-indigo-700">解析方式</span>
+                    <div className="relative">
+                      <select
+                        value={parseMode}
+                        onChange={(e) => setParseMode(e.target.value as ParseModeOption)}
+                        className="w-full appearance-none rounded-lg border border-indigo-200 bg-white py-2.5 pl-4 pr-10 text-sm text-slate-700 shadow-sm outline-none transition-all hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                      >
+                        {PARSE_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </label>
+                  <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[240px]">
+                    <span className="text-xs font-medium text-indigo-700">LlamaParse Tier</span>
+                    <div className="relative">
+                      <select
+                        value={llamaParseTier}
+                        onChange={(e) => setLlamaParseTier(e.target.value as LlamaParseTierOption)}
+                        className="w-full appearance-none rounded-lg border border-indigo-200 bg-white py-2.5 pl-4 pr-10 text-sm text-slate-700 shadow-sm outline-none transition-all hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                      >
+                        {LLAMA_TIER_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </label>
+                  <label className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[180px]">
+                    <span className="text-xs font-medium text-indigo-700">切分策略</span>
+                    <div className="relative">
+                      <select
+                        value={chunkStrategy}
+                        onChange={(e) => setChunkStrategy(e.target.value as ChunkStrategyOption)}
+                        className="w-full appearance-none rounded-lg border border-indigo-200 bg-white py-2.5 pl-4 pr-10 text-sm text-slate-700 shadow-sm outline-none transition-all hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                      >
+                        {CHUNK_STRATEGY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </label>
+                </div>
+                {(chunkStrategy === "standard" || chunkStrategy === "parentChild" || chunkStrategy === "semantic") && (
+                  <div className="mt-4 space-y-4 rounded-lg border border-indigo-100 bg-white/70 p-4">
+                    <div>
+                      <p className="mb-3 text-xs font-medium text-indigo-700">父块：400–1200 字，重叠 &lt; 父块 - 50</p>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs text-slate-600">父块大小</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={parentChunkSizeStr}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, "");
+                              setParentChunkSizeStr(v || "");
+                            }}
+                            onBlur={() => {
+                              const n = parseInt(parentChunkSizeStr, 10);
+                              if (isNaN(n) || parentChunkSizeStr === "") setParentChunkSizeStr("800");
+                              else if (n < 400) setParentChunkSizeStr("400");
+                              else if (n > 1200) setParentChunkSizeStr("1200");
+                            }}
+                            placeholder="800"
+                            className="w-28 rounded-lg border border-indigo-200 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs text-slate-600">重叠区</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={parentOverlapStr}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, "");
+                              setParentOverlapStr(v || "");
+                            }}
+                            onBlur={() => {
+                              const maxO = parseParentChunkSize() - 50;
+                              const n = parseInt(parentOverlapStr, 10);
+                              if (isNaN(n) || parentOverlapStr === "") setParentOverlapStr("100");
+                              else if (n < 0) setParentOverlapStr("0");
+                              else if (n > maxO) setParentOverlapStr(String(maxO));
+                            }}
+                            placeholder="100"
+                            className="w-28 rounded-lg border border-indigo-200 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    {chunkStrategy === "parentChild" && (
+                      <div className="border-t border-indigo-100 pt-4">
+                        <p className="mb-3 text-xs font-medium text-indigo-700">子块：100–600 字，重叠 &lt; 子块 - 20</p>
+                        <div className="flex flex-wrap gap-4">
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-xs text-slate-600">子块大小</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={childChunkSizeStr}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\D/g, "");
+                                setChildChunkSizeStr(v || "");
+                              }}
+                              onBlur={() => {
+                                const n = parseInt(childChunkSizeStr, 10);
+                                if (isNaN(n) || childChunkSizeStr === "") setChildChunkSizeStr("300");
+                                else if (n < 100) setChildChunkSizeStr("100");
+                                else if (n > 600) setChildChunkSizeStr("600");
+                              }}
+                              placeholder="300"
+                              className="w-28 rounded-lg border border-indigo-200 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-xs text-slate-600">重叠区</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={childOverlapStr}
+                              onChange={(e) => {
+                                const v = e.target.value.replace(/\D/g, "");
+                                setChildOverlapStr(v || "");
+                              }}
+                              onBlur={() => {
+                                const maxO = parseChildChunkSize() - 20;
+                                const n = parseInt(childOverlapStr, 10);
+                                if (isNaN(n) || childOverlapStr === "") setChildOverlapStr("50");
+                                else if (n < 0) setChildOverlapStr("0");
+                                else if (n > maxO) setChildOverlapStr(String(maxO));
+                              }}
+                              placeholder="50"
+                              className="w-28 rounded-lg border border-indigo-200 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition-all placeholder:text-slate-400 hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/25"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div
               className={`relative rounded-2xl border-2 border-dashed bg-white transition-all cursor-pointer ${
                 dragOver
@@ -2060,59 +2419,7 @@ function SpaceDocuments({
                   </ReactMarkdown>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {chunks.map((chunk, i) => {
-                    const summary =
-                      typeof chunk.metadata?.summary === "string"
-                        ? chunk.metadata.summary
-                        : undefined;
-                    return (
-                    <div
-                      key={chunk.id}
-                      className="rounded-xl border border-slate-200 overflow-hidden hover:border-indigo-200 transition-colors"
-                    >
-                      <div className="flex items-center justify-between px-4 py-2 bg-slate-50/80 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`w-5 h-5 rounded-md bg-gradient-to-br ${
-                              (
-                                FORMAT_META[preview.format] ?? FORMAT_META.txt
-                              ).gradient
-                            } flex items-center justify-center text-[9px] font-bold text-white`}
-                          >
-                            {i + 1}
-                          </span>
-                          <span className="text-xs font-medium text-slate-500">
-                            Chunk #{i + 1}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded">
-                          {chunk.content.length} 字
-                        </span>
-                      </div>
-                      {summary && (
-                        <div className="px-4 py-2 bg-indigo-50/50 border-b border-indigo-100/50">
-                          <p className="text-[11px] text-indigo-700 leading-relaxed">
-                            <span className="font-medium text-indigo-600">摘要：</span>
-                            {summary}
-                          </p>
-                        </div>
-                      )}
-                      <div className="px-4 py-3 prose prose-sm prose-slate max-w-none prose-table:text-xs prose-th:bg-slate-50 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border-slate-200 prose-th:border-slate-200">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeRaw]}
-                          allowedElements={MARKDOWN_ALLOWED_ELEMENTS}
-                          unwrapDisallowed
-                          components={MARKDOWN_COMPONENTS}
-                        >
-                          {normalizeMarkdownHighlights(chunk.content)}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
+                <ChunkTreeView chunks={chunks} format={preview.format} />
               )}
             </div>
             {/* Modal Footer */}

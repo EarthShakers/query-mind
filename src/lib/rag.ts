@@ -1,6 +1,15 @@
 import { supabase } from "./supabase";
 import { generateChunkSummary } from "./summary";
+import {
+  getChunks,
+  type ChunkStrategy,
+  type ParentChildOptions,
+} from "./chunking";
+
+export type { ParentChildOptions };
 import type { UploadProgress } from "./parsers";
+
+export type { ChunkStrategy };
 
 const ENABLE_SUMMARY_INDEX =
   process.env.ENABLE_SUMMARY_INDEX === "true" || process.env.ENABLE_SUMMARY_INDEX === "1";
@@ -131,20 +140,38 @@ export async function searchDocuments(
     metaMap.set(r.id, (r.metadata as Record<string, unknown>) ?? {});
   }
 
-  return rows.map((row) => {
+  const results = rows.map((row) => {
     const meta = metaMap.get(row.id);
     const summary = typeof meta?.summary === "string" ? meta.summary : undefined;
+    const parentId = meta?.parent_id as string | undefined;
     return {
       title: row.title,
       content: row.content,
       similarity: row.similarity,
       ...(summary ? { summary } : {}),
+      ...(parentId ? { parentId } : {}),
     };
   });
+
+  if (results.some((r) => r.parentId)) {
+    const sorted = [...results].sort((a, b) => b.similarity - a.similarity);
+    const seen = new Set<string>();
+    return sorted
+      .filter((r) => {
+        const key = r.parentId ?? `single-${r.content.slice(0, 50)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(({ parentId: _, ...r }) => r);
+  }
+  return results.map(({ parentId: _, ...r }) => r);
 }
 
 /**
  * 将文档切片后写入向量库
+ * @param chunkStrategy 切分策略：standard | parentChild | semantic
+ * @param chunkOptions 切分参数：standard/语义 用父块参数；parentChild 用父块+子块参数
  */
 export async function ingestDocument(
   title: string,
@@ -153,18 +180,25 @@ export async function ingestDocument(
   spaceId?: string,
   tenantId?: string,
   onProgress?: (p: UploadProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  chunkStrategy: ChunkStrategy = "standard",
+  chunkOptions?: ParentChildOptions
 ): Promise<number> {
-  const chunks = splitMarkdown(content);
+  const chunksResolved = await getChunks(
+    chunkStrategy,
+    content,
+    chunkStrategy === "semantic" ? embed : undefined,
+    chunkOptions
+  );
 
-  onProgress?.({ stage: "chunking", total: chunks.length });
+  onProgress?.({ stage: "chunking", total: chunksResolved.length });
 
   const rows = [];
 
-  for (let i = 0; i < chunks.length; i++) {
+  for (let i = 0; i < chunksResolved.length; i++) {
     if (signal?.aborted) throw new Error("上传已取消");
 
-    const chunk = chunks[i];
+    const chunk = chunksResolved[i];
     const embeddingPrefix = chunk.headers.length
       ? chunk.headers.join(" > ") + "\n\n"
       : "";
@@ -172,28 +206,35 @@ export async function ingestDocument(
       ? `**${chunk.headers.join(" > ")}**\n\n`
       : "";
 
+    const isParentChild = "parentContent" in chunk && chunk.parentContent;
+    const contentToEmbed = chunk.content;
+    const contentToStore = isParentChild
+      ? chunk.parentContent!
+      : displayPrefix + chunk.content;
+
     let textForEmbedding: string;
     let chunkMeta: Record<string, unknown> = {
       ...metadata,
       ...(chunk.headers.length ? { section: chunk.headers.join(" > ") } : {}),
+      ...(chunk.parentId ? { parent_id: chunk.parentId } : {}),
     };
 
     if (ENABLE_SUMMARY_INDEX) {
-      onProgress?.({ stage: "summarizing", current: i + 1, total: chunks.length });
-      const summary = await generateChunkSummary(chunk.content);
-      textForEmbedding = embeddingPrefix + (summary || chunk.content);
+      onProgress?.({ stage: "summarizing", current: i + 1, total: chunksResolved.length });
+      const summary = await generateChunkSummary(contentToEmbed);
+      textForEmbedding = embeddingPrefix + (summary || contentToEmbed);
       chunkMeta = { ...chunkMeta, summary: summary || undefined };
     } else {
-      textForEmbedding = embeddingPrefix + chunk.content;
+      textForEmbedding = embeddingPrefix + contentToEmbed;
     }
 
     const embedding = await embed(textForEmbedding);
 
-    onProgress?.({ stage: "embedding", current: i + 1, total: chunks.length });
+    onProgress?.({ stage: "embedding", current: i + 1, total: chunksResolved.length });
 
     rows.push({
       title,
-      content: displayPrefix + chunk.content,
+      content: contentToStore,
       embedding,
       metadata: chunkMeta,
       ...(tenantId ? { tenant_id: tenantId } : {}),
@@ -211,125 +252,3 @@ export async function ingestDocument(
   return rows.length;
 }
 
-/* ─── Markdown Header Splitting ─── */
-
-interface ChunkWithHeaders {
-  content: string;
-  headers: string[]; // 标题层级，如 ["三、激励内容", "(一) 直销激励"]
-}
-
-const HEADER_RE = /^(#{1,4})\s+(.+)$/;
-const MAX_CHUNK_LEN = 800;
-const CHUNK_OVERLAP = 100;
-
-/**
- * 按 Markdown 标题切分文档
- * 1. 按 # ## ### #### 切出语义段落，每段携带标题层级上下文
- * 2. 超长段落按句子/段落递归切分，保留 overlap
- */
-function splitMarkdown(text: string): ChunkWithHeaders[] {
-  const lines = text.split("\n");
-  const sections: ChunkWithHeaders[] = [];
-
-  // 当前标题层级栈：index 0 = h1, 1 = h2, ...
-  const headerStack: string[] = [];
-  let currentContent = "";
-
-  function flushSection() {
-    const trimmed = currentContent.trim();
-    if (!trimmed) return;
-
-    const headers = headerStack.filter(Boolean);
-
-    // 如果内容在限制内，直接作为一个 chunk
-    if (trimmed.length <= MAX_CHUNK_LEN) {
-      sections.push({ content: trimmed, headers: [...headers] });
-    } else {
-      // 超长段落：按段落/句子递归切分
-      const subChunks = recursiveSplit(trimmed, MAX_CHUNK_LEN, CHUNK_OVERLAP);
-      for (const sub of subChunks) {
-        sections.push({ content: sub, headers: [...headers] });
-      }
-    }
-
-    currentContent = "";
-  }
-
-  for (const line of lines) {
-    const match = line.match(HEADER_RE);
-    if (match) {
-      // 遇到新标题，先把之前累积的内容存起来
-      flushSection();
-
-      const level = match[1].length; // 1-4
-      const title = match[2].trim();
-
-      // 更新标题栈：设置当前层级，清除更低层级
-      headerStack[level - 1] = title;
-      for (let i = level; i < headerStack.length; i++) {
-        headerStack[i] = "";
-      }
-    } else {
-      currentContent += (currentContent ? "\n" : "") + line;
-    }
-  }
-
-  // 最后一段
-  flushSection();
-
-  // 如果整个文档没有标题（纯文本），回退到按段落切
-  if (sections.length === 0 && text.trim()) {
-    const subChunks = recursiveSplit(text.trim(), MAX_CHUNK_LEN, CHUNK_OVERLAP);
-    return subChunks.map((c) => ({ content: c, headers: [] }));
-  }
-
-  return sections;
-}
-
-/**
- * 递归切分超长文本
- * 优先按段落切 → 按句子切 → 硬切
- */
-function recursiveSplit(
-  text: string,
-  maxLen: number,
-  overlap: number
-): string[] {
-  if (text.length <= maxLen) return [text];
-
-  // 分隔符优先级：段落 > 换行 > 中文句号 > 其他句末标点 > 空格
-  const separators = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " "];
-
-  for (const sep of separators) {
-    const parts = text.split(sep);
-    if (parts.length <= 1) continue;
-
-    const chunks: string[] = [];
-    let current = "";
-
-    for (const part of parts) {
-      const candidate = current ? current + sep + part : part;
-
-      if (candidate.length > maxLen && current) {
-        chunks.push(current.trim());
-        // overlap：保留上一段末尾
-        const tail = current.slice(-overlap);
-        current = tail + sep + part;
-      } else {
-        current = candidate;
-      }
-    }
-    if (current.trim()) {
-      chunks.push(current.trim());
-    }
-
-    if (chunks.length > 1) return chunks;
-  }
-
-  // 所有分隔符都切不动，硬切
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += maxLen - overlap) {
-    chunks.push(text.slice(i, i + maxLen));
-  }
-  return chunks;
-}

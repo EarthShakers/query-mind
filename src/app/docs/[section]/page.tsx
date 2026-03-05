@@ -811,13 +811,13 @@ AI 判断意图 → 知识性问题 → 调用 search_knowledge 工具
       <pre className="not-prose overflow-x-auto">
         <code>{`用户上传文件（.txt / .md / .pdf / .docx）
     ↓
-1. 解析：根据文件类型提取纯文本（pdf-parse / mammoth / 直接读取）
+1. 解析：根据文件类型提取纯文本（LlamaParse / pdf-parse / mammoth / 直接读取）
     ↓
-2. 切片：按段落分割，每片约 500 字，相邻 chunk 保留 ~100 字 Overlap
+2. 切片：可选三种策略——标准（Markdown 标题+递归）、精细（父子块）、语义边界（embedding 相似度）
     ↓
-3. 向量化：每个切片调用 embedding API 生成 1024 维向量
+3. 向量化：每个切片调用 embedding API 生成 1024 维向量（可选摘要索引增强）
     ↓
-4. 存储：向量 + 原文 + 元信息写入 Supabase documents 表
+4. 存储：向量 + 原文 + 元信息（section、parent_id 等）写入 Supabase documents 表
     ↓
 后续搜索时通过向量相似度匹配最相关的片段`}</code>
       </pre>
@@ -902,19 +902,28 @@ async function searchDocuments(query: string, topK = 5) {
             <tr>
               <td className="px-4 py-2.5">切片策略</td>
               <td className="px-4 py-2.5 font-mono text-indigo-600">
-                按段落 + 500 字 + Overlap
+                标准 / 精细(父子) / 语义边界
               </td>
               <td className="px-4 py-2.5 text-slate-500">
-                保持语义完整性，相邻 chunk 保留 ~100 字重叠区防止语义断裂
+                标准：Markdown 标题切分+Overlap；精细：父块存全文、子块 embed；语义：embedding 相似度找边界
               </td>
             </tr>
             <tr>
               <td className="px-4 py-2.5">切片实现</td>
               <td className="px-4 py-2.5 font-mono text-indigo-600">
-                手写 splitChunks + pdf-parse + mammoth
+                src/lib/chunking.ts
               </td>
               <td className="px-4 py-2.5 text-slate-500">
-                PDF/Word 文本提取用轻量库，切片逻辑手写 30 行保持透明可控
+                独立 chunking 模块，支持 parentChunkSize/Overlap、childChunkSize 等参数
+              </td>
+            </tr>
+            <tr>
+              <td className="px-4 py-2.5">分片展示</td>
+              <td className="px-4 py-2.5 font-mono text-indigo-600">
+                按 metadata.section 层级
+              </td>
+              <td className="px-4 py-2.5 text-slate-500">
+                知识库页面分片视图递归渲染，最多 6 层，层级标题带缩进
               </td>
             </tr>
           </tbody>
