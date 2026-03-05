@@ -2,7 +2,7 @@ import { streamText, type CoreMessage } from "ai";
 import { z } from "zod";
 import { queryUserData } from "@/lib/pg";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
-import { searchWithSelfQuery } from "@/lib/rag";
+import { searchDocuments } from "@/lib/rag";
 import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -336,18 +336,18 @@ export async function POST(req: Request) {
         },
         ...(enableKnowledge
           ? {
-              // 知识库检索 RAG（Self-Query：自动解析用户问题中的文档限定，如「产品手册里」「XX.pdf 中」）
+              // 知识库检索 RAG
               search_knowledge: {
                 description:
-                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics. Pass the user's full question for metadata-aware search.",
+                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics.",
                 parameters: z.object({
                   query: z
                     .string()
-                    .describe("The user's full question or search query in natural language"),
+                    .describe("The search query in natural language"),
                 }),
                 execute: async ({ query: q }) => {
                   try {
-                    const results = await searchWithSelfQuery(q, 5, searchSpaceIds);
+                    const results = await searchDocuments(q, 5, searchSpaceIds);
                     return { query: q, results };
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : String(e);

@@ -179,6 +179,7 @@ export async function searchDocuments(
 
 /**
  * Self-Query 检索：从用户问题解析 query + filter，再执行向量检索
+ * 若带 filter 无结果，则自动回退为无 filter 检索，避免误过滤
  */
 export async function searchWithSelfQuery(
   userMessage: string,
@@ -191,7 +192,12 @@ export async function searchWithSelfQuery(
   const filter: SearchFilter | undefined =
     filterTitle ? { filterTitle } : undefined;
 
-  return searchDocuments(query, topK, spaceIds, filter);
+  const results = await searchDocuments(query, topK, spaceIds, filter);
+  // 带 filter 无结果时，回退为无 filter 检索（避免误解析导致漏检）
+  if (filter && results.length === 0) {
+    return searchDocuments(query, topK, spaceIds);
+  }
+  return results;
 }
 
 /**

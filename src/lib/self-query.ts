@@ -9,22 +9,27 @@ export interface SelfQueryResult {
 }
 
 const SelfQuerySchema = z.object({
-  query: z.string().describe("用于向量检索的核心问题，去掉文档限定词"),
+  query: z.string().describe("用于向量检索的完整问题，保留所有语义"),
   filterTitle: z
     .string()
     .nullable()
     .optional()
-    .describe("用户明确指定的文档名/文件名，如「产品手册」「XX.pdf」；无则 null"),
+    .describe("仅当用户明确指定要查某份文档/文件时填写其标题或文件名；否则必须为 null"),
 });
 
 const SELF_QUERY_PROMPT = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一个检索解析器。根据用户的自然语言问题，解析出：
-1. query：用于向量检索的核心问题（去掉文档限定词，保留要查找的内容）
-2. filterTitle：仅当用户明确提到具体文档名、文件名、书名时填写；否则为 null
+    `你是检索解析器。从用户问题中解析出：
+1. query：用于向量检索的完整问题，保留用户要查找的所有语义（人物、主题、内容等）
+2. filterTitle：仅当用户明确说「在 XX 文档里」「根据 YY 文件」「查 ZZ.pdf」这类限定某份文档时，才填该文档/文件的标题；否则必须为 null
 
-规则：filterTitle 只填名称本身，不要扩展名外的多余词。`,
+【关键】filterTitle 只用于「文档/文件」限定，不能用于人物名、公司名、主题词：
+- 「李卓超的帅照」→ query="李卓超的帅照", filterTitle=null（李卓超是人名，不是文档名）
+- 「产品手册里的保修期」→ query="保修期", filterTitle="产品手册"
+- 「XX.pdf 中的安装步骤」→ query="安装步骤", filterTitle="XX.pdf"
+- 「华为的招聘政策」→ query="华为的招聘政策", filterTitle=null（华为是公司名）
+- 不确定时，filterTitle 一律填 null`,
   ],
   ["human", "{message}"],
 ]);
