@@ -2,7 +2,7 @@ import { streamText, type CoreMessage } from "ai";
 import { z } from "zod";
 import { queryUserData } from "@/lib/pg";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
-import { searchWithSelfQuery } from "@/lib/rag";
+import { searchWithRagEnhanced } from "@/lib/rag-enhanced";
 import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -347,7 +347,7 @@ export async function POST(req: Request) {
                 }),
                 execute: async ({ query: q }) => {
                   try {
-                    const results = await searchWithSelfQuery(lastMsg || q, 5, searchSpaceIds);
+                    const results = await searchWithRagEnhanced(lastMsg || q, searchSpaceIds);
                     return { query: lastMsg || q, results };
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : String(e);
