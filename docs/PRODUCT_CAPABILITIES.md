@@ -62,7 +62,8 @@ mindmap
       流式输出 ✅
       模型配置
       GraphRAG
-      混合检索 2.0
+      混合检索
+      Enrich
       AI 治理可解释性
       多 Agent 协作
       垂直领域定制
@@ -88,31 +89,32 @@ mindmap
 
 #### RAG 知识库 【P0】
 
-| 能力              | 重要度 | 是否已实现 | 说明                                         |
-| ----------------- | ------ | ---------- | -------------------------------------------- |
-| 格式支持          | ★★★★★  | ✅         | .txt/.md/.pdf/.docx，20MB                    |
-| PDF 解析          | ★★★★★  | ✅         | 本地 pdf-parse + LlamaParse 云               |
-| 多分块策略        | ★★★★★  | ✅         | standard/parentChild/semantic                |
-| 向量检索          | ★★★★★  | ✅         | pgvector + DashScope 1024 维                 |
-| Self-Query        | ★★★★★  | ✅         | 解析 query + filterTitle，「XX 文档里的 YY」 |
-| 空间隔离          | ★★★★★  | ✅         | 文档按 space_id 存储                         |
-| BM25 + 向量混合   | ★★★★★  | ❌         | tsvector + RRF 融合，提升关键词召回          |
-| DOCX 解析         | ★★★★☆  | ✅         | mammoth + LlamaParse                         |
-| 智能模式          | ★★★★☆  | ✅         | 本地优先，复杂版式回退云                     |
-| filter 回退       | ★★★★☆  | ✅         | filter 无结果时重试无 filter                 |
-| 置信度路由        | ★★★★☆  | ✅         | score_gap/std 决定 top10/rerank/multi-query  |
-| Rerank            | ★★★★☆  | ✅         | Cohere rerank（可选）                        |
-| Multi-Query       | ★★★★☆  | ✅         | 2–4 个 query 变体检索合并                    |
-| Parent-Child 去重 | ★★★★☆  | ✅         | 按父块去重，返回父块内容                     |
-| Query 扩展        | ★★★★☆  | ❌         | 多轮对话历史扩展 query                       |
-| 引用溯源          | ★★★★☆  | ❌         | chunk 高亮、可点击跳转                       |
-| 图片处理          | ★★★☆☆  | ✅         | LlamaParse 图片上传 Supabase                 |
-| title 匹配增强    | ★★★☆☆  | ✅         | title + metadata.filename，支持 base name    |
-| 高置信/摘要索引   | ★★★☆☆  | ✅         | 直接 top-10 / 嵌入摘要                       |
-| 同名覆盖          | ★★★☆☆  | ✅         | 同 space+title 覆盖                          |
-| LlamaParse 档位   | ★★☆☆☆  | ✅         | fast/cost_effective/agentic 按复杂度选择     |
+| 能力                  | 重要度 | 是否已实现 | 说明                                         |
+| --------------------- | ------ | ---------- | -------------------------------------------- |
+| 格式支持              | ★★★★★  | ✅         | .txt/.md/.pdf/.docx，20MB                    |
+| PDF 解析              | ★★★★★  | ✅         | 本地 pdf-parse + LlamaParse 云               |
+| 多分块策略            | ★★★★★  | ✅         | standard/parentChild/semantic                |
+| 向量检索              | ★★★★★  | ✅         | pgvector + DashScope 1024 维                 |
+| Self-Query            | ★★★★★  | ✅         | 解析 query + filterTitle，「XX 文档里的 YY」 |
+| 空间隔离              | ★★★★★  | ✅         | 文档按 space_id 存储                         |
+| BM25 + 向量混合       | ★★★★★  | ❌         | tsvector + RRF 融合，提升关键词召回          |
+| DOCX 解析             | ★★★★☆  | ✅         | mammoth + LlamaParse                         |
+| 智能模式              | ★★★★☆  | ✅         | 本地优先，复杂版式回退云                     |
+| filter 回退           | ★★★★☆  | ✅         | filter 无结果时重试无 filter                 |
+| 置信度路由            | ★★★★☆  | ✅         | score_gap/std 决定 top10/rerank/multi-query  |
+| Rerank                | ★★★★☆  | ✅         | Cohere rerank（可选）                        |
+| Multi-Query           | ★★★★☆  | ✅         | 2–4 个 query 变体检索合并                    |
+| Parent-Child 去重     | ★★★★☆  | ✅         | 按父块去重，返回父块内容                     |
+| Query 扩展            | ★★★★☆  | ❌         | 多轮对话历史扩展 query                       |
+| Enrich（意图+结构化） | ★★★★☆  | ❌         | 意图路由（是否检索）+ 结构化 filter 提取     |
+| 引用溯源              | ★★★★☆  | ❌         | chunk 高亮、可点击跳转                       |
+| 图片处理              | ★★★☆☆  | ✅         | LlamaParse 图片上传 Supabase                 |
+| title 匹配增强        | ★★★☆☆  | ✅         | title + metadata.filename，支持 base name    |
+| 高置信/摘要索引       | ★★★☆☆  | ✅         | 直接 top-10 / 嵌入摘要                       |
+| 同名覆盖              | ★★★☆☆  | ✅         | 同 space+title 覆盖                          |
+| LlamaParse 档位       | ★★☆☆☆  | ✅         | fast/cost_effective/agentic 按复杂度选择     |
 
-**下一步**：BM25 混合、Query 扩展、引用溯源。RAG 应用评估见下节，RAG Pipeline 详见第四章。
+**下一步**：BM25 混合、Query 扩展、Enrich（意图路由+结构化）、引用溯源。RAG 应用评估见下节，RAG Pipeline 详见第四章。
 
 ---
 
@@ -423,7 +425,8 @@ mindmap
 | 方向                        | 优先级 | 说明                                                                | 对应模块             |
 | --------------------------- | ------ | ------------------------------------------------------------------- | -------------------- |
 | **GraphRAG / 知识图谱增强** | P1     | 实体-关系-事件图结构，多跳推理、跨文档串联，解决复杂关联问题        | 跨模态检索、知识图谱 |
-| **混合检索 2.0**            | P1     | 向量 + BM25 + 元数据多路召回，RRF 融合，Cross-Encoder Rerank        | RAG Pipeline         |
+| **混合检索 **               | P1     | 向量 + BM25 + 元数据多路召回，RRF 融合，Cross-Encoder Rerank        | RAG Pipeline         |
+| **Enrich **                 | P1     | 意图路由（是否检索）+ 结构化 filter 提取，从「重写」到「意图提取」  | RAG 预检索           |
 | **AI 治理与可解释性**       | P1     | 机械可解释性研究、RAGAS 等评估体系，降低幻觉与黑盒风险              | RAG 评估、审计日志   |
 | **多 Agent 协作**           | P1     | 专家 Agent 集群（研究员、编程员、评审员）分工协作，提升复杂任务效率 | Agentic 工作流       |
 | **垂直领域深度定制**        | P1     | 金融、医疗、教育等场景的领域模型、术语、评估与合规适配              | 其他、商业化         |
@@ -457,7 +460,7 @@ mindmap
 | 分层索引          | ★★★★☆  | ❌   | 文档级 + 段落级 + 句子级          |
 | 增量更新          | ★★★☆☆  | ❌   | 文档变更时只重算受影响 chunk      |
 
-### 3.2 预检索
+### 3.2 预检索与 Enrich
 
 | 能力        | 重要度 | 状态 | 说明                         |
 | ----------- | ------ | ---- | ---------------------------- |
@@ -466,6 +469,18 @@ mindmap
 | Multi-Query | ★★★★☆  | ✅   | 2–4 个 query 变体检索合并    |
 | Query 扩展  | ★★★★☆  | ❌   | 多轮对话历史扩展 query       |
 | HyDE        | ★★★☆☆  | ❌   | 假设性回答再嵌入检索         |
+| **Enrich**  | ★★★★☆  | ❌   | 见下方说明                   |
+
+**Enrich 新形态（从「重写」到「意图提取」）**：
+
+| 形态                  | 说明                                                                             | 与 QueryMind 关联              |
+| --------------------- | -------------------------------------------------------------------------------- | ------------------------------ |
+| **意图路由式 Enrich** | LLM 判断「此问题是否依赖外部知识」，不依赖则跳过检索（如「谢谢」不触发搜索）     | 与 Agentic RAG 决策链路一致    |
+| **结构化 Enrich**     | 补全 query 的同时提取元数据 filter（如「那去年款的呢」→ Query + `{year: 2025}`） | 增强 Self-Query 的 filter 能力 |
+
+**商业化痛点**：未提取到答案 / 答案不完整 → 多因 query 不够饱满；提取上下文与答案无关 → 多因 query 带历史噪音。Enrich 即「检索词优化」，是 RAG 标配。
+
+**何时可省略 Enrich**：全量上下文 RAG（Long-Context RAG）且数据量不大时，可将多轮对话 + 全文塞入 Prompt，模型自行匹配。缺点：成本高、延迟大。
 
 ### 3.3 检索
 
