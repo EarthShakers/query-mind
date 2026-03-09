@@ -23,6 +23,20 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Check secrets
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then echo "SUPABASE_URL is NOT set"; else echo "SUPABASE_URL is set (length=${#SUPABASE_URL})"; fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then echo "SUPABASE_ANON_KEY is NOT set"; else echo "SUPABASE_ANON_KEY is set"; fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "SUPABASE_SERVICE_ROLE_KEY is NOT set"; else echo "SUPABASE_SERVICE_ROLE_KEY is set"; fi
+          if [ -z "$DASHSCOPE_API_KEY" ]; then echo "DASHSCOPE_API_KEY is NOT set"; else echo "DASHSCOPE_API_KEY is set"; fi
+          if [ -z "$DATABASE_URL" ]; then echo "DATABASE_URL is NOT set"; else echo "DATABASE_URL is set"; fi
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
       - name: Run RAG E2E Evaluation
         run: pnpm eval:cron
         env:
