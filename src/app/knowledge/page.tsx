@@ -361,6 +361,12 @@ function Nav() {
           >
             在线体验
           </Link>
+          <Link
+            href="/eval"
+            className="text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            评估看板
+          </Link>
           <NavAuth />
         </div>
       </div>

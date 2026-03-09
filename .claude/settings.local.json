@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npx tsx:*)",
       "Bash(ls:*)",
-      "mcp__plugin_claude-mem_mcp-search__save_memory"
+      "mcp__plugin_claude-mem_mcp-search__save_memory",
+      "Bash(chmod:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

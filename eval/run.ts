@@ -12,6 +12,7 @@
 import "dotenv/config";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
+import { createClient } from "@supabase/supabase-js";
 import type { EvalSample, EvalReport, MetricName } from "./types";
 import { evaluate } from "./evaluate";
 import { evaluateE2E } from "./e2e";
@@ -113,7 +114,7 @@ async function main() {
     });
 
     printSummary(report.summary);
-    saveReport(report);
+    saveReport(report, true);
   } else {
     console.log("模式: 标准评估");
     const dataset = loadDataset(datasetPath);
@@ -133,11 +134,11 @@ async function main() {
     });
 
     printSummary(report.summary);
-    saveReport(report);
+    saveReport(report, false);
   }
 }
 
-function saveReport(report: EvalReport) {
+function saveReport(report: EvalReport, isE2E = false) {
   const dir = resolve(__dirname, "reports");
   mkdirSync(dir, { recursive: true });
 
@@ -150,6 +151,36 @@ function saveReport(report: EvalReport) {
 
   console.log(`\nJSON 报告: ${jsonPath}`);
   console.log(`HTML 报告: ${htmlPath}`);
+
+  persistToSupabase(report, isE2E).catch((e) => {
+    console.warn("持久化到 Supabase 失败（不阻断）:", e);
+  });
+}
+
+async function persistToSupabase(report: EvalReport, isE2E: boolean) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    console.log("跳过 Supabase 持久化：缺少环境变量");
+    return;
+  }
+
+  const client = createClient(url, key);
+  const { summary, meta } = report;
+
+  const { error } = await client.from("eval_runs").insert({
+    run_mode: isE2E ? "e2e" : "standard",
+    faithfulness: summary.faithfulness,
+    answer_relevancy: summary.answer_relevancy,
+    context_precision: summary.context_precision,
+    context_recall: summary.context_recall,
+    sample_count: meta?.sampleCount ?? report.samples.length,
+    dataset_path: meta?.datasetPath ?? null,
+    meta: { metricsUsed: meta?.metricsUsed ?? [], timestamp: report.timestamp },
+  });
+
+  if (error) throw new Error(error.message);
+  console.log("评估结果已持久化到 Supabase eval_runs 表");
 }
 
 function buildHtml(report: EvalReport): string {
