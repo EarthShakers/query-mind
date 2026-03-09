@@ -13,7 +13,10 @@ import { join } from "path";
 
 // 加载 .env.local
 import { config } from "dotenv";
-config({ path: ".env.local" });
+config({ path: ".env" });
+
+const DEMO_SPACE_ID = "00000000-0000-0000-0000-000000000001";
+const DEMO_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 // 动态导入避免顶层 env 未就绪
 async function main() {
@@ -27,14 +30,21 @@ async function main() {
     return;
   }
 
-  console.log(`找到 ${files.length} 个文档，开始导入...\n`);
+  console.log(`找到 ${files.length} 个文档，开始导入...`);
+  console.log(`空间: ${DEMO_SPACE_ID}\n`);
 
   for (const file of files) {
     const title = file.replace(/\.md$/, "");
     const content = readFileSync(join(docsDir, file), "utf-8");
 
     try {
-      const chunks = await ingestDocument(title, content, { source: file });
+      const chunks = await ingestDocument(
+        title,
+        content,
+        { source: file, preset: true },
+        DEMO_SPACE_ID,
+        DEMO_TENANT_ID
+      );
       console.log(`  [OK] ${title} → ${chunks} 个片段`);
     } catch (err) {
       console.error(`  [ERR] ${title}:`, err);

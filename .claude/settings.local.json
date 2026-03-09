@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsx:*)",
+      "Bash(ls:*)",
+      "mcp__plugin_claude-mem_mcp-search__save_memory"
+    ]
+  }
+}
