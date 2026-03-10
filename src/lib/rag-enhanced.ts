@@ -7,7 +7,6 @@
  * 5. 统一过滤：相似度断崖截断 + 下限过滤，输出 3~10 个高质量 chunk
  */
 import { RunnableSequence, RunnableBranch } from "@langchain/core/runnables";
-import { Document } from "@langchain/core/documents";
 import { searchDocuments, type DocResult, type SearchFilter } from "./rag";
 import { parseSelfQuery } from "./self-query";
 import { getDashScopeLLM } from "./llm";
@@ -41,10 +40,7 @@ const SCORE_TOP1_MIN_RERANK = parseThreshold(
 );
 
 /** 相似度下限：低于此值的 chunk 直接丢弃 */
-const SIMILARITY_FLOOR = parseThreshold(
-  process.env.RAG_SIMILARITY_FLOOR,
-  0.35
-);
+const SIMILARITY_FLOOR = parseThreshold(process.env.RAG_SIMILARITY_FLOOR, 0.35);
 /** 相似度断崖比例：当 chunk 分数 < 前一个 * DROP_RATIO 时截断 */
 const DROP_RATIO = parseThreshold(process.env.RAG_DROP_RATIO, 0.7);
 /** 过滤后最少保留的结果数 */
@@ -126,58 +122,65 @@ function computeConfidence(results: DocResult[]): {
   };
 }
 
-/** DocResult → LangChain Document */
-function toLangChainDoc(d: DocResult): Document {
-  return new Document({
-    pageContent: `${d.title}\n\n${d.content}`,
-    metadata: { title: d.title, similarity: d.similarity, summary: d.summary },
-  });
-}
 
-/** LangChain Document → DocResult（保留 similarity） */
-function fromLangChainDoc(
-  doc: Document,
-  originalResults: DocResult[]
-): DocResult {
-  const meta = doc.metadata as Record<string, unknown>;
-  const title = (meta?.title as string) || "";
-  // 去掉 "title\n\n" 前缀
-  const content = doc.pageContent.replace(/^[^\n]*\n\n?/, "");
-  const orig = originalResults.find(
-    (r) =>
-      r.title === title && r.content.slice(0, 80) === content.slice(0, 80)
-  );
-  return {
-    title,
-    content,
-    similarity: (orig?.similarity ?? (meta?.similarity as number)) ?? 0,
-    ...(meta?.summary ? { summary: meta.summary as string } : {}),
-  };
-}
-
-/** Rerank：使用 Cohere（若配置）或保持原序 */
+/** Rerank：使用百炼 qwen3-rerank */
 async function rerankDocs(
   query: string,
   docs: DocResult[]
 ): Promise<DocResult[]> {
-  const hasCohere = !!process.env.COHERE_API_KEY;
-  if (!hasCohere || docs.length === 0) {
+  const apiKey = process.env.DASHSCOPE_API_KEY;
+  if (!apiKey || docs.length === 0) {
     return docs.slice(0, TOP_K_FINAL);
   }
 
-  try {
-    const { CohereRerank } = await import("@langchain/cohere");
-    const reranker = new CohereRerank({
-      model: "rerank-multilingual-v3.0",
-      topN: TOP_K_FINAL,
-    });
-    const lcDocs = docs.map(toLangChainDoc);
-    const reranked = await reranker.compressDocuments(lcDocs, query);
-    return reranked.map((d) => fromLangChainDoc(d, docs));
-  } catch (e) {
-    console.warn("[RAG-Enhanced] Cohere rerank failed, fallback to top-K:", e);
-    return docs.slice(0, TOP_K_FINAL);
+  const documents = docs.map((d) => `${d.title}\n\n${d.content}`);
+
+  console.log(
+    `[RAG-Enhanced] DashScope rerank 开始: query="${query}", ${documents.length} docs`
+  );
+
+  const resp = await fetch(
+    "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "qwen3-rerank",
+        input: { query, documents },
+        parameters: { top_n: TOP_K_FINAL, return_documents: false },
+      }),
+    }
+  );
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`DashScope rerank failed: ${resp.status} ${body}`);
   }
+
+  const data = (await resp.json()) as {
+    output: { results: { index: number; relevance_score: number }[] };
+  };
+
+  const results = data.output.results;
+  const reranked = results
+    .sort((a, b) => b.relevance_score - a.relevance_score)
+    .slice(0, TOP_K_FINAL)
+    .map((r) => ({
+      ...docs[r.index],
+      similarity: r.relevance_score,
+    }));
+
+  console.log(`[RAG-Enhanced] DashScope rerank 完成: ${reranked.length} docs`);
+  reranked.forEach((r, i) => {
+    console.log(
+      `  [${i + 1}] ${r.title.slice(0, 40)} (sim=${r.similarity.toFixed(3)})`
+    );
+  });
+
+  return reranked;
 }
 
 const MultiQuerySchema = z.object({
@@ -207,9 +210,9 @@ async function multiQueryRetrieve(
 
   let queries: string[];
   try {
-    const result = (await prompt.pipe(structuredLlm).invoke({ query })) as z.infer<
-      typeof MultiQuerySchema
-    >;
+    const result = (await prompt
+      .pipe(structuredLlm)
+      .invoke({ query })) as z.infer<typeof MultiQuerySchema>;
     queries = result?.queries?.filter((q) => q?.trim()) || [query];
     if (queries.length === 0) queries = [query];
   } catch {
@@ -290,12 +293,7 @@ function buildRagEnhancedChain() {
     const filter: SearchFilter | undefined = filterTitle
       ? { filterTitle }
       : undefined;
-    let results = await searchDocuments(
-      query,
-      TOP_K_INITIAL,
-      spaceIds,
-      filter
-    );
+    let results = await searchDocuments(query, TOP_K_INITIAL, spaceIds, filter);
     if (filter && results.length === 0) {
       results = await searchDocuments(query, TOP_K_INITIAL, spaceIds);
     }
@@ -327,8 +325,19 @@ function buildRagEnhancedChain() {
   const useTop10 = (state: RagEnhancedState): DocResult[] =>
     state.results.slice(0, TOP_K_FINAL);
 
-  const doRerank = async (state: RagEnhancedState): Promise<DocResult[]> =>
-    rerankDocs(state.query, state.results);
+  const doRerank = async (state: RagEnhancedState): Promise<DocResult[]> => {
+    const hasDashScope = !!process.env.DASHSCOPE_API_KEY;
+    if (!hasDashScope) {
+      console.log("[RAG-Enhanced] DashScope 未配置，rerank 回退到 multi-query");
+      return multiQueryRetrieve(state.query, state.spaceIds, state.filter);
+    }
+    try {
+      return await rerankDocs(state.query, state.results);
+    } catch (e) {
+      console.warn("[RAG-Enhanced] rerank 失败，回退到 multi-query:", e);
+      return multiQueryRetrieve(state.query, state.spaceIds, state.filter);
+    }
+  };
 
   const doMultiQuery = async (state: RagEnhancedState): Promise<DocResult[]> =>
     multiQueryRetrieve(state.query, state.spaceIds, state.filter);
@@ -349,7 +358,9 @@ function buildRagEnhancedChain() {
       console.log(
         `[RAG-Enhanced] 过滤: ${docs.length} → ${filtered.length} chunks` +
           (filtered.length > 0
-            ? ` (similarity ${filtered[0].similarity.toFixed(3)}~${filtered[filtered.length - 1].similarity.toFixed(3)})`
+            ? ` (similarity ${filtered[0].similarity.toFixed(3)}~${filtered[
+                filtered.length - 1
+              ].similarity.toFixed(3)})`
             : "")
       );
       return filtered;

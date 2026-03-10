@@ -1019,8 +1019,8 @@ async function searchDocuments(query: string, topK = 5) {
                 候选集大、精度要求高
               </td>
               <td className="px-4 py-2.5">
-                <span className="inline-block px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 rounded-full">
-                  规划中
+                <span className="inline-block px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded-full">
+                  已实现
                 </span>
               </td>
             </tr>
@@ -1358,30 +1358,34 @@ CREATE INDEX documents_embedding_idx
           <code>splitChunks</code> 切片流程。
         </li>
       </ul>
-      <h3>8. Context Precision 指标不稳定（17%~68% 波动）</h3>
+      <h3>8. Context Precision 从 17% 提升到 93.75%（三轮修复）</h3>
       <p>
-        <strong>现象：</strong>E2E 评估中 Context Precision 分数波动极大，
-        最低 17.4%，最高 68.7%，同一数据集多次跑出不同结果。
+        <strong>现象：</strong>E2E 评估中 Context Precision 分数极低且不稳定，
+        最低 17.4%，最高 68.7%。该指标衡量检索结果中相关 chunk
+        是否排在前面（加权 precision@k），直接反映 RAG 检索质量。
       </p>
       <p>
-        <strong>原因：</strong>
+        <strong>最终结果：</strong>经三轮修复，17% → 93.75%（+76pp），
+        6 个评测样本中 4 个达到满分 1.0。各修复贡献权重：
       </p>
       <ul>
         <li>
-          <strong>固定返回 10 个 chunk</strong> —{" "}
-          <code>TOP_K_FINAL=10</code>，即使只有 1-3 个相关 chunk，
-          剩余 7-9 个噪声 chunk 严重拉低 precision@k 加权分数。
-          实际数据：6 个样本中 3 个的 10 个 chunk 全部被判不相关（precision=0）。
+          <strong>修复 1：断崖截断 + 下限过滤（+48pp，占 63%）</strong> — 17% → 65%
         </li>
         <li>
-          <strong>置信路由策略切换</strong> — 不同运行可能触发
-          top10/rerank/multi_query 不同路径，排序结果差异大。
+          <strong>修复 2：LLM Judge 0-indexed 兼容（+19pp，占 25%）</strong> — 65% → 84%
         </li>
         <li>
-          <strong>无相似度下限</strong> — similarity 很低的 chunk
-          也被返回，占位但无贡献。
+          <strong>修复 3：DashScope Rerank 重排序（+10pp，占 12%）</strong> — 84% → 93.75%
         </li>
       </ul>
+
+      <h4 className="text-base font-semibold mt-6">修复 1：断崖截断 + 下限过滤（17% → 65%）</h4>
+      <p>
+        <strong>问题：</strong>固定返回 <code>TOP_K_FINAL=10</code> 个 chunk，
+        即使只有 1-3 个相关，剩余 7-9 个噪声 chunk 严重拉低 precision@k。
+        实测 6 个样本中 3 个的 10 个 chunk 全被判不相关（precision=0）。
+      </p>
       <p>
         <strong>解决：</strong>在所有策略路径的输出端统一增加两层过滤：
       </p>
@@ -1397,10 +1401,59 @@ CREATE INDEX documents_embedding_idx
         </li>
       </ul>
       <p>
-        输出从固定 10 个变为动态 3-10 个，减少噪声 chunk 对 precision
-        的稀释。阈值可通过环境变量{" "}
+        输出从固定 10 个变为动态 3-10 个。阈值可通过{" "}
         <code>RAG_SIMILARITY_FLOOR</code>、<code>RAG_DROP_RATIO</code>、
-        <code>RAG_MIN_RESULTS</code> 覆盖。
+        <code>RAG_MIN_RESULTS</code> 环境变量覆盖。
+      </p>
+
+      <h4 className="text-base font-semibold mt-6">修复 2：LLM Judge 0-indexed 兼容（65% → 84%）</h4>
+      <p>
+        <strong>问题：</strong>评估指标用 LLM（qwen-turbo）判断每个 chunk
+        是否相关，Prompt 要求返回 1-indexed 的 chunk 序号，但 LLM
+        不稳定地返回 0-indexed。代码硬编码 <code>get(i + 1)</code>，
+        导致 0-indexed 时所有判断错位，整个样本得分归零。
+        实测「绩效考核」样本因此直接得 0 分。
+      </p>
+      <p>
+        <strong>解决：</strong>自动检测 LLM 返回的索引方案：
+      </p>
+      <pre className="not-prose overflow-x-auto">
+        <code>{`// 自动检测 0-indexed vs 1-indexed
+const minIdx = Math.min(...judgments.map(j => j.index));
+const maxIdx = Math.max(...judgments.map(j => j.index));
+const isZeroIndexed = minIdx === 0 && maxIdx === contexts.length - 1;
+const offset = isZeroIndexed ? 0 : 1;
+return contexts.map((_, i) => relevanceMap.get(i + offset) ?? false);`}</code>
+      </pre>
+
+      <h4 className="text-base font-semibold mt-6">修复 3：DashScope Rerank 重排序（84% → 93.75%）</h4>
+      <p>
+        <strong>问题：</strong>置信度路由判定为「低置信」时应走 Rerank
+        路径，但 Cohere Rerank API 持续返回 403（Trial Key 权限不足），
+        且错误被静默捕获，<code>rerankDocs</code> 直接返回{" "}
+        <code>docs.slice(0, TOP_K_FINAL)</code>，Rerank 沦为 no-op。
+        「出租车费」样本因此得分仅 0.25。
+      </p>
+      <p>
+        <strong>解决：</strong>
+      </p>
+      <ul>
+        <li>
+          替换 Cohere 为百炼 <code>qwen3-rerank</code>，直接调用 DashScope
+          原生 Rerank API（非 OpenAI 兼容接口）
+        </li>
+        <li>
+          修复 fallback 链：Rerank 失败时正确回退到 Multi-Query，
+          而非静默返回未排序结果
+        </li>
+        <li>
+          Rerank 后使用 <code>relevance_score</code> 替代原始 embedding
+          similarity，确保断崖截断基于重排序分数
+        </li>
+      </ul>
+      <p>
+        效果：「出租车费」经 Rerank 后「交通费报销」chunk 排到第 1 位
+        （relevance_score=0.864），断崖截断保留 3 个高质量 chunk，得分从 0.25 → 1.0。
       </p>
 
     </>

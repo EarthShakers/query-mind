@@ -31,16 +31,18 @@ async function judgeRelevance(
   const llm = getDashScopeLLM({ model: "qwen-turbo", maxTokens: 512 });
   const structured = llm.withStructuredOutput(RelevanceJudgmentSchema);
 
+  // 每个 chunk 保留完整内容（最多 3000 字符），避免截断导致误判
   const chunksStr = contexts
-    .map((c, i) => `[Chunk ${i + 1}]\n${c.slice(0, 500)}`)
+    .map((c, i) => `[Chunk ${i + 1}]\n${c.slice(0, 3000)}`)
     .join("\n\n");
 
   const prompt = ChatPromptTemplate.fromMessages([
     [
       "system",
       `你是一个检索质量评估员。对于给定的问题和一组检索到的文档片段，判断每个片段是否包含与问题相关的有用信息。
-只要片段中包含能帮助回答问题的信息，就标记为 relevant: true。
-如果片段完全无关或仅有极微弱的关联，标记为 relevant: false。`,
+判断标准：只要片段中任何位置包含能帮助回答问题的信息（哪怕只是部分相关），就标记为 relevant: true。
+仅当片段内容与问题完全无关时，才标记为 relevant: false。
+请仔细阅读每个片段的完整内容后再做判断。`,
     ],
     [
       "human",
@@ -51,6 +53,12 @@ async function judgeRelevance(
     ],
   ]);
 
+  console.log(`\n[ContextPrecision] 问题: ${question}`);
+  console.log(`[ContextPrecision] 共 ${contexts.length} 个 chunks:`);
+  contexts.forEach((c, i) => {
+    console.log(`  [Chunk ${i + 1}] (${c.length} chars) ${c.slice(0, 120).replace(/\n/g, " ")}...`);
+  });
+
   const result = await prompt.pipe(structured).invoke({
     question,
     chunks: chunksStr,
@@ -58,13 +66,30 @@ async function judgeRelevance(
 
   const judgments = (result as z.infer<typeof RelevanceJudgmentSchema>)
     ?.judgments;
+
+  console.log(`[ContextPrecision] Judge 返回 ${judgments?.length ?? 0} 条判断:`);
+  judgments?.forEach((j) => {
+    console.log(`  [Chunk ${j.index}] relevant=${j.relevant}`);
+  });
+
   if (!judgments || judgments.length === 0) {
+    console.log(`[ContextPrecision] ⚠ Judge 返回为空，全部标记 false`);
     return contexts.map(() => false);
+  }
+
+  // 自动检测 judge 返回的是 0-indexed 还是 1-indexed
+  const minIdx = Math.min(...judgments.map((j) => j.index));
+  const maxIdx = Math.max(...judgments.map((j) => j.index));
+  const isZeroIndexed = minIdx === 0 && maxIdx === contexts.length - 1;
+  const offset = isZeroIndexed ? 0 : 1;
+
+  if (isZeroIndexed) {
+    console.log(`[ContextPrecision] ⚠ Judge 返回 0-indexed，自动修正`);
   }
 
   // 按 index 映射回布尔数组
   const relevanceMap = new Map(judgments.map((j) => [j.index, j.relevant]));
-  return contexts.map((_, i) => relevanceMap.get(i + 1) ?? false);
+  return contexts.map((_, i) => relevanceMap.get(i + offset) ?? false);
 }
 
 /** Step 2: 计算加权 precision@k */

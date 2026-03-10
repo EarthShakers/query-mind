@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAG Eval Report — 2026-03-10T05:48:27.210Z</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#e2e8f0;padding:2rem;max-width:960px;margin:auto}
+  h1{font-size:1.5rem;margin-bottom:.25rem}
+  .meta{color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem}
+  table{width:100%;border-collapse:collapse;margin-bottom:2rem}
+  th,td{padding:.6rem 1rem;text-align:left;border-bottom:1px solid #1e293b}
+  th{color:#94a3b8;font-weight:500}
+  .card{background:#1e293b;border-radius:.5rem;padding:1.25rem;margin-bottom:1rem}
+  .card h3{font-size:1rem;margin-bottom:.5rem}
+  .answer{color:#94a3b8;font-size:.9rem;margin-bottom:.75rem}
+  .badges{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.75rem}
+  .badge{color:#fff;padding:.15rem .5rem;border-radius:.25rem;font-size:.75rem}
+  details{margin-top:.5rem}
+  summary{cursor:pointer;color:#60a5fa;font-size:.85rem}
+  pre{background:#0f172a;padding:.75rem;border-radius:.25rem;font-size:.8rem;overflow-x:auto;margin-top:.5rem;color:#cbd5e1}
+</style>
+</head>
+<body>
+  <h1>RAG 评估报告</h1>
+  <p class="meta">2026-03-10T05:48:27.210Z · 6 条样本 · 指标: faithfulness, answer_relevancy, context_precision, context_recall</p>
+
+  <h2 style="font-size:1.1rem;margin-bottom:.5rem">汇总</h2>
+  <table>
+    <tr><th>指标</th><th>得分</th></tr>
+    <tr><td>faithfulness</td><td style="color:#22c55e;font-weight:700">0.9167</td></tr><tr><td>answer_relevancy</td><td style="color:#eab308;font-weight:700">0.7797</td></tr><tr><td>context_precision</td><td style="color:#eab308;font-weight:700">0.8403</td></tr><tr><td>context_recall</td><td style="color:#22c55e;font-weight:700">1.0000</td></tr>
+  </table>
+
+  <h2 style="font-size:1.1rem;margin-bottom:.75rem">样本详情</h2>
+  
+      <div class="card">
+        <h3>#1 出差住宿费的报销标准是多少？</h3>
+        <p class="answer">根据公司报销制度，出差住宿费的报销标准如下：
+
+- 一线城市（北上广深）：每晚不超过 500 元
+- 二线城市：每晚不超过 350 元
+- 其他城市：每晚不超过 250 元
+
+如果住宿费用超过上述标准，需提前申请，并经总监审批。</p>
+        <div class="badges"><span class="badge" style="background:#eab308">faithfulness: 0.83</span> <span class="badge" style="background:#eab308">answer_relevancy: 0.77</span> <span class="badge" style="background:#ef4444">context_precision: 0.50</span> <span class="badge" style="background:#22c55e">context_recall: 1.00</span></div>
+        
+        <details>
+          <summary>faithfulness = 0.8333</summary>
+          <pre>{
+  "claims": [
+    "根据公司报销制度，出差住宿费的报销标准分为三个等级。",
+    "一线城市（北上广深）的住宿费报销标准为每晚不超过500元。",
+    "二线城市的住宿费报销标准为每晚不超过350元。",
+    "其他城市的住宿费报销标准为每晚不超过250元。",
+    "如果住宿费用超过上述标准，需要提前申请。",
+    "超过标准的住宿费需经总监审批。"
+  ],
+  "verifications": [
+    {
+      "claim": "根据公司报销制度，出差住宿费的报销标准分为三个等级。",
+      "supported": false
+    },
+    {
+      "claim": "一线城市（北上广深）的住宿费报销标准为每晚不超过500元。",
+      "supported": true
+    },
+    {
+      "claim": "二线城市的住宿费报销标准为每晚不超过350元。",
+      "supported": true
+    },
+    {
+      "claim": "其他城市的住宿费报销标准为每晚不超过250元。",
+      "supported": true
+    },
+    {
+      "claim": "如果住宿费用超过上述标准，需要提前申请。",
+      "supported": true
+    },
+    {
+      "claim": "超过标准的住宿费需经总监审批。",
+      "supported": true
+    }
+  ],
+  "supported_count": 5,
+  "total_count": 6
+}</pre>
+        </details>
+        <details>
+          <summary>answer_relevancy = 0.7739</summary>
+          <pre>{
+  "generated_questions": [
+    "出差期间的住宿费用报销标准是什么？",
+    "如果住宿费超过规定标准，应该如何处理？",
+    "不同城市的住宿费报销上限有什么区别？"
+  ],
+  "similarities": [
+    0.876606172867887,
+    0.6827673897244374,
+    0.7622844534611609
+  ]
+}</pre>
+        </details>
+        <details>
+          <summary>context_precision = 0.5000</summary>
+          <pre>{
+  "relevance_judgments": [
+    {
+      "chunk_index": 0,
+      "relevant": false
+    },
+    {
+      "chunk_index": 1,
+      "relevant": true
+    },
+    {
+      "chunk_index": 2,
+      "relevant": false
+    },
+    {
+      "chunk_index": 3,
+      "relevant": false
+    },
+    {
+      "chunk_index": 4,
+      "relevant": false
+    },
+    {
+      "chunk_index": 5,
+      "relevant": false
+    },
+    {
+      "chunk_index": 6,
+      "relevant": false
+    },
+    {
+      "chunk_index": 7,
+      "relevant": false
+    },
+    {
+      "chunk_index": 8,
+      "relevant": false
+    },
+    {
+      "chunk_index": 9,
+      "relevant": false
+    }
+  ],
+  "total_relevant": 1,
+  "total_chunks": 10
+}</pre>
+        </details>
+        <details>
+          <summary>context_recall = 1.0000</summary>
+          <pre>{
+  "ground_truth_claims": [
+    "一线城市每晚住宿费用不超过500元。",
+    "二线城市每晚住宿费用不超过350元。",
+    "其他城市每晚住宿费用不超过250元。",
+    "如果住宿费用超过上述标准，需要提前申请。",
+    "超标申请需要经过总监审批。"
+  ],
+  "coverage": [
+    {
+      "claim": "一线城市每晚住宿费用不超过500元。",
+      "covered": true
+    },
+    {
+      "claim": "二线城市每晚住宿费用不超过350元。",
+      "covered": true
+    },
+    {
+      "claim": "其他城市每晚住宿费用不超过250元。",
+      "covered": true
+    },
+    {
+      "claim": "如果住宿费用超过上述标准，需要提前申请。",
+      "covered": true
+    },
+    {
+      "claim": "超标申请需要经过总监审批。",
+      "covered": true
+    }
+  ],
+  "covered_count": 5,
+  "total_count": 5
+}</pre>
+        </details>
+      </div>
+      <div class="card">
+        <h3>#2 公司的报销流程是怎样的？</h3>
+        <p class="answer">公司的报销流程如下：
+
+1. 员工在 OA 系统提交报销申请。
+2. 附上发票照片和费用说明。
+3. 直属上级审批（3 个工作日内）。
+4. 财务复核（2 个工作日内）。
+5. 打款至工资卡（每月 15 日和 30 日统一打款）。</p>
+        <div class="badges"><span class="badge" style="background:#22c55e">faithfulness: 1.00</span> <span class="badge" style="background:#eab308">answer_relevancy: 0.77</span> <span class="badge" style="background:#22c55e">context_precision: 1.00</span> <span class="badge" style="background:#22c55e">context_recall: 1.00</span></div>
+        
+        <details>
+          <summary>faithfulness = 1.0000</summary>
+          <pre>{
+  "claims": [
+    "员工在 OA 系统提交报销申请。",
+    "员工需要附上发票照片和费用说明。",
+    "直属上级需要在 3 个工作日内完成审批。",
+    "财务部门需要在 2 个工作日内完成复核。",
+    "报销款项会在每月 15 日和 30 日统一打款至工资卡。"
+  ],
+  "verifications": [
+    {
+      "claim": "员工在 OA 系统提交报销申请。",
+      "supported": true
+    },
+    {
+      "claim": "员工需要附上发票照片和费用说明。",
+      "supported": true
+    },
+    {
+      "claim": "直属上级需要在 3 个工作日内完成审批。",
+      "supported": true
+    },
+    {
+      "claim": "财务部门需要在 2 个工作日内完成复核。",
+      "supported": true
+    },
+    {
+      "claim": "报销款项会在每月 15 日和 30 日统一打款至工资卡。",
+      "supported": true
+    }
+  ],
+  "supported_count": 5,
+  "total_count": 5
+}</pre>
+        </details>
+        <details>
+          <summary>answer_relevancy = 0.7744</summary>
+          <pre>{
+  "generated_questions": [
+    "员工如何提交报销申请？",
+    "报销流程需要哪些步骤？",
+    "公司是如何处理员工的报销款项的？"
+  ],
+  "similarities": [
+    0.7592116651561143,
+    0.7679604367723342,
+    0.7959313946522879
+  ]
+}</pre>
+        </details>
+        <details>
+          <summary>context_precision = 1.0000</summary>
+          <pre>{
+  "relevance_judgments": [
+    {
+      "chunk_index": 0,
+      "relevant": true
+    },
+    {
+      "chunk_index": 1,
+      "relevant": true
+    },
+    {
+      "chunk_index": 2,
+      "relevant": true
+    },
+    {
+      "chunk_index": 3,
+      "relevant": true
+    },
+    {
+      "chunk_index": 4,
+      "relevant": true
+    },
+    {
+      "chunk_index": 5,
+      "relevant": true
+    },
+    {
+      "chunk_index": 6,
+      "relevant": false
+    },
+    {
+      "chunk_index": 7,
+      "relevant": false
+    },
+    {
+      "chunk_index": 8,
+      "relevant": false
+    },
+    {
+      "chunk_index": 9,
+      "relevant": false
+    }
+  ],
+  "total_relevant": 6,
+  "total_chunks": 10
+}</pre>
+        </details>
+        <details>
+          <summary>context_recall = 1.0000</summary>
+          <pre>{
+  "ground_truth_claims": [
+    "员工在 OA 系统提交报销申请。",
+    "员工在提交报销申请时需附上发票照片。",
+    "员工在提交报销申请时需附上费用说明。",
+    "直属上级需在 3 个工作日内完成审批。",
+    "财务部门需在 2 个工作日内完成复核。",
+    "每月 15 日和 30 日统一将报销款项打款至工资卡。",
+    "报销申请需在费用发生后 30 天内提交。"
+  ],
+  "coverage": [
+    {
+      "claim": "员工在 OA 系统提交报销申请。",
+      "covered": true
+    },
+    {
+      "claim": "员工在提交报销申请时需附上发票照片。",
+      "covered": true
+    },
+    {
+      "claim": "员工在提交报销申请时需附上费用说明。",
+      "covered": true
+    },
+    {
+      "claim": "直属上级需在 3 个工作日内完成审批。",
+      "covered": true
+    },
+    {
+      "claim": "财务部门需在 2 个工作日内完成复核。",
+      "covered": true
+    },
+    {
+      "claim": "每月 15 日和 30 日统一将报销款项打款至工资卡。",
+      "covered": true
+    },
+    {
+      "claim": "报销申请需在费用发生后 30 天内提交。",
+      "covered": true
+    }
+  ],
+  "covered_count": 7,
+  "total_count": 7
+}</pre>
+        </details>
+      </div>
+      <div class="card">
+        <h3>#3 员工年假有多少天？</h3>
+        <p class="answer">根据员工手册中的规定，员工的年假天数根据工作年限不同而有所区别：
+
+- 入职满 1 年：5 天  
+- 满 5 年：10 天  
+- 满 10 年：15 天  
+
+具体天数需根据员工的实际工作年限来确定。</p>
+        <div class="badges"><span class="badge" style="background:#22c55e">faithfulness: 1.00</span> <span class="badge" style="background:#eab308">answer_relevancy: 0.87</span> <span class="badge" style="background:#22c55e">context_precision: 1.00</span> <span class="badge" style="background:#22c55e">context_recall: 1.00</span></div>
+        
+        <details>
+          <summary>faithfulness = 1.0000</summary>
+          <pre>{
+  "claims": [
+    "根据员工手册的规定，员工的年假天数根据工作年限不同而有所区别。",
+    "入职满1年的员工享有5天年假。",
+    "入职满5年的员工享有10天年假。",
+    "入职满10年的员工享有15天年假。",
+    "员工的实际工作年限用于确定具体的年假天数。"
+  ],
+  "verifications": [
+    {
+      "claim": "根据员工手册的规定，员工的年假天数根据工作年限不同而有所区别。",
+      "supported": true
+    },
+    {
+      "claim": "入职满1年的员工享有5天年假。",
+      "supported": true
+    },
+    {
+      "claim": "入职满5年的员工享有10天年假。",
+      "supported": true
+    },
+    {
+      "claim": "入职满10年的员工享有15天年假。",
+      "supported": true
+    },
+    {
+      "claim": "员工的实际工作年限用于确定具体的年假天数。",
+      "supported": true
+    }
+  ],
+  "supported_count": 5,
+  "total_count": 5
+}</pre>
+        </details>
+        <details>
+          <summary>answer_relevancy = 0.8731</summary>
+          <pre>{
+  "generated_questions": [
+    "员工的年假天数是如何确定的？",
+    "工作年限满 1 年的员工有多少天年假？",
+    "员工的工作年限与年假天数之间有什么关系？"
+  ],
+  "similarities": [
+    0.8772816653523232,
+    0.885001459251166,
+    0.8571227296876572
+  ]
+}</pre>
+        </details>
+        <details>
+          <summary>context_precision = 1.0000</summary>
+          <pre>{
+  "relevance_judgments": [
+    {
+      "chunk_index": 0,
+      "relevant": true
+    },
+    {
+      "chunk_index": 1,
+      "relevant": false
+    },
+    {
+      "chunk_index": 2,
+      "relevant": false
+    },
+    {
+      "chunk_index": 3,
+      "relevant": false
+    },
+    {
+      "chunk_index": 4,
+      "relevant": false
+    },
+    {
+      "chunk_index": 5,
+      "relevant": false
+    },
+    {
+      "chunk_index": 6,
+      "relevant": false
+    },
+    {
+      "chunk_index": 7,
+      "relevant": false
+    },
+    {
+      "chunk_index": 8,
+      "relevant": false
+    },
+    {
+      "chunk_index": 9,
+      "relevant": false
+    }
+  ],
+  "total_relevant": 1,
+  "total_chunks": 10
+}</pre>
+        </details>
+        <details>
+          <summary>context_recall = 1.0000</summary>
+          <pre>{
+  "ground_truth_claims": [
+    "入职满1年可享受5天年假。",
+    "入职满5年可享受10天年假。",
+    "入职满10年可享受15天年假。",
+    "年假可以分次使用。",
+    "年假的最小使用单位为半天。",
+    "当年未使用的年假可以结转至次年。",
+    "结转的年假需在次年3月31日前使用。"
+  ],
+  "coverage": [
+    {
+      "claim": "入职满1年可享受5天年假。",
+      "covered": true
+    },
+    {
+      "claim": "入职满5年可享受10天年假。",
+      "covered": true
+    },
+    {
+      "claim": "入职满10年可享受15天年假。",
+      "covered": true
+    },
+    {
+      "claim": "年假可以分次使用。",
+      "covered": true
+    },
+    {
+      "claim": "年假的最小使用单位为半天。",
+      "covered": true
+    },
+    {
+      "claim": "当年未使用的年假可以结转至次年。",
+      "covered": true
+    },
+    {
+      "claim": "结转的年假需在次年3月31日前使用。",
+      "covered": true
+    }
+  ],
+  "covered_count": 7,
+  "total_count": 7
+}</pre>
+        </details>
+      </div>
+      <div class="card">
+        <h3>#4 迟到了怎么处理？</h3>
+        <p class="answer">根据员工手册中的考勤制度：
+
+- 每月允许 3 次迟到（30 分钟以内）。
+- 如果超过 3 次，每次迟到将扣 50 元。
+- 如果迟到 30 分钟以上 2 小时以内，算作半天事假。
+- 如果超过 2 小时未打卡且未请假，算作旷工。</p>
+        <div class="badges"><span class="badge" style="background:#22c55e">faithfulness: 1.00</span> <span class="badge" style="background:#ef4444">answer_relevancy: 0.64</span> <span class="badge" style="background:#eab308">context_precision: 0.79</span> <span class="badge" style="background:#22c55e">context_recall: 1.00</span></div>
+        
+        <details>
+          <summary>faithfulness = 1.0000</summary>
+          <pre>{
+  "claims": [
+    "每月允许3次迟到（30分钟以内）。",
+    "超过3次迟到，每次将扣50元。",
+    "迟到30分钟以上2小时以内，算作半天事假。",
+    "超过2小时未打卡且未请假，算作旷工。"
+  ],
+  "verifications": [
+    {
+      "claim": "每月允许3次迟到（30分钟以内）。",
+      "supported": true
+    },
+    {
+      "claim": "超过3次迟到，每次将扣50元。",
+      "supported": true
+    },
+    {
+      "claim": "迟到30分钟以上2小时以内，算作半天事假。",
+      "supported": true
+    },
+    {
+      "claim": "超过2小时未打卡且未请假，算作旷工。",
+      "supported": true
+    }
+  ],
+  "supported_count": 4,
+  "total_count": 4
+}</pre>
+        </details>
+        <details>
+          <summary>answer_relevancy = 0.6430</summary>
+          <pre>{
+  "generated_questions": [
+    "员工每月可以迟到几次？",
+    "如果员工迟到超过三次，会有什么处罚？",
+    "迟到超过两小时未打卡且没有请假会怎样处理？"
+  ],
+  "similarities": [
+    0.6062934975801633,
+    0.639761886026173,
+    0.682870875168546
+  ]
+}</pre>
+        </details>
+        <details>
+          <summary>context_precision = 0.7917</summary>
+          <pre>{
+  "relevance_judgments": [
+    {
+      "chunk_index": 0,
+      "relevant": true
+    },
+    {
+      "chunk_index": 1,
+      "relevant": true
+    },
+    {
+      "chunk_index": 2,
+      "relevant": false
+    },
+    {
+      "chunk_index": 3,
+      "relevant": false
+    },
+    {
+      "chunk_index": 4,
+      "relevant": false
+    },
+    {
+      "chunk_index": 5,
+      "relevant": false
+    },
+    {
+      "chunk_index": 6,
+      "relevant": false
+    },
+    {
+      "chunk_index": 7,
+      "relevant": true
+    }
+  ],
+  "total_relevant": 3,
+  "total_chunks": 8
+}</pre>
+        </details>
+        <details>
+          <summary>context_recall = 1.0000</summary>
+          <pre>{
+  "ground_truth_claims": [
+    "迟到 30 分钟以内会被记录一次迟到。",
+    "每月允许有 3 次迟到记录。",
+    "超过 3 次迟到，每次将被扣除 50 元。",
+    "迟到 30 分钟以上但不超过 2 小时，视为半天事假。",
+    "迟到超过 2 小时且未打卡也未请假，视为旷工。",
+    "每月累计旷工 3 天以上将被视为严重违纪。"
+  ],
+  "coverage": [
+    {
+      "claim": "迟到 30 分钟以内会被记录一次迟到。",
+      "covered": true
+    },
+    {
+      "claim": "每月允许有 3 次迟到记录。",
+      "covered": true
+    },
+    {
+      "claim": "超过 3 次迟到，每次将被扣除 50 元。",
+      "covered": true
+    },
+    {
+      "claim": "迟到 30 分钟以上但不超过 2 小时，视为半天事假。",
+      "covered": true
+    },
+    {
+      "claim": "迟到超过 2 小时且未打卡也未请假，视为旷工。",
+      "covered": true
+    },
+    {
+      "claim": "每月累计旷工 3 天以上将被视为严重违纪。",
+      "covered": true
+    }
+  ],
+  "covered_count": 6,
+  "total_count": 6
+}</pre>
+        </details>
+      </div>
+      <div class="card">
+        <h3>#5 绩效考核等级有哪些？对应的奖金是多少？</h3>
+        <p class="answer">绩效考核等级及对应的奖金如下：
+
+- **S（卓越）**：绩效奖金 200%
+- **A（优秀）**：绩效奖金 150%
+- **B（良好）**：绩效奖金 100%
+- **C（待改进）**：绩效奖金 50%
+- **D（不合格）**：无绩效奖金</p>
+        <div class="badges"><span class="badge" style="background:#22c55e">faithfulness: 1.00</span> <span class="badge" style="background:#eab308">answer_relevancy: 0.86</span> <span class="badge" style="background:#22c55e">context_precision: 1.00</span> <span class="badge" style="background:#22c55e">context_recall: 1.00</span></div>
+        
+        <details>
+          <summary>faithfulness = 1.0000</summary>
+          <pre>{
+  "claims": [
+    "绩效考核等级包括S（卓越）。",
+    "绩效考核等级包括A（优秀）。",
+    "绩效考核等级包括B（良好）。",
+    "绩效考核等级包括C（待改进）。",
+    "绩效考核等级包括D（不合格）。",
+    "S（卓越）对应的绩效奖金为200%。",
+    "A（优秀）对应的绩效奖金为150%。",
+    "B（良好）对应的绩效奖金为100%。",
+    "C（待改进）对应的绩效奖金为50%。",
+    "D（不合格）对应的绩效奖金为0%。"
+  ],
+  "verifications": [
+    {
+      "claim": "绩效考核等级包括S（卓越）。",
+      "supported": true
+    },
+    {
+      "claim": "绩效考核等级包括A（优秀）。",
+      "supported": true
+    },
+    {
+      "claim": "绩效考核等级包括B（良好）。",
+      "supported": true
+    },
+    {
+      "claim": "绩效考核等级包括C（待改进）。",
+      "supported": true
+    },
+    {
+      "claim": "绩效考核等级包括D（不合格）。",
+      "supported": true
+    },
+    {
+      "claim": "S（卓越）对应的绩效奖金为200%。",
+      "supported": true
+    },
+    {
+      "claim": "A（优秀）对应的绩效奖金为150%。",
+      "supported": true
+    },
+    {
+      "claim": "B（良好）对应的绩效奖金为100%。",
+      "supported": true
+    },
+    {
+      "claim": "C（待改进）对应的绩效奖金为50%。",
+      "supported": true
+    },
+    {
+      "claim": "D（不合格）对应的绩效奖金为0%。",
+      "supported": true
+    }
+  ],
+  "supported_count": 10,
+  "total_count": 10
+}</pre>
+        </details>
+        <details>
+          <summary>answer_relevancy = 0.8565</summary>
+          <pre>{
+  "generated_questions": [
+    "绩效考核等级S对应的奖金比例是多少？",
+    "如果员工被评为B级，他们能获得多少绩效奖金？",
+    "哪些绩效考核等级会没有绩效奖金？"
+  ],
+  "similarities": [
+    0.9049456284063693,
+    0.7951799466584304,
+    0.8692546859405469
+  ]
+}</pre>
+        </details>
+        <details>
+          <summary>context_precision = 1.0000</summary>
+          <pre>{
+  "relevance_judgments": [
+    {
+      "chunk_index": 0,
+      "relevant": true
+    },
+    {
+      "chunk_index": 1,
+      "relevant": false
+    },
+    {
+      "chunk_index": 2,
+      "relevant": false
+    },
+    {
+      "chunk_index": 3,
+      "relevant": false
+    },
+    {
+      "chunk_index": 4,
+      "relevant": false
+    },
+    {
+      "chunk_index": 5,
+      "relevant": false
+    },
+    {
+      "chunk_index": 6,
+      "relevant": false
+    },
+    {
+      "chunk_index": 7,
+      "relevant": false
+    },
+    {
+      "chunk_index": 8,
+      "relevant": false
+    },
+    {
+      "chunk_index": 9,
+      "relevant": false
+    }
+  ],
+  "total_relevant": 1,
+  "total_chunks": 10
+}</pre>
+        </details>
+        <details>
+          <summary>context_recall = 1.0000</summary>
+          <pre>{
+  "ground_truth_claims": [
+    "考核等级分为 S（卓越）、A（优秀）、B（良好）、C（待改进）和 D（不合格）。",
+    "S（卓越）对应的绩效奖金为 200%。",
+    "A（优秀）对应的绩效奖金为 150%。",
+    "B（良好）对应的绩效奖金为 100%。",
+    "C（待改进）对应的绩效奖金为 50%。",
+    "C（待改进）需要制定改进计划。",
+    "D（不合格）没有绩效奖金。",
+    "D（不合格）需要进入 PIP（绩效改进计划）。",
+    "考核周期包括季度考核。",
+    "考核周期包括年度考核。"
+  ],
+  "coverage": [
+    {
+      "claim": "考核等级分为 S（卓越）、A（优秀）、B（良好）、C（待改进）和 D（不合格）。",
+      "covered": true
+    },
+    {
+      "claim": "S（卓越）对应的绩效奖金为 200%。",
+      "covered": true
+    },
+    {
+      "claim": "A（优秀）对应的绩效奖金为 150%。",
+      "covered": true
+    },
+    {
+      "claim": "B（良好）对应的绩效奖金为 100%。",
+      "covered": true
+    },
+    {
+      "claim": "C（待改进）对应的绩效奖金为 50%。",
+      "covered": true
+    },
+    {
+      "claim": "C（待改进）需要制定改进计划。",
+      "covered": true
+    },
+    {
+      "claim": "D（不合格）没有绩效奖金。",
+      "covered": true
+    },
+    {
+      "claim": "D（不合格）需要进入 PIP（绩效改进计划）。",
+      "covered": true
+    },
+    {
+      "claim": "考核周期包括季度考核。",
+      "covered": true
+    },
+    {
+      "claim": "考核周期包括年度考核。",
+      "covered": true
+    }
+  ],
+  "covered_count": 10,
+  "total_count": 10
+}</pre>
+        </details>
+      </div>
+      <div class="card">
+        <h3>#6 出租车费报销需要审批吗？</h3>
+        <p class="answer">根据公司报销制度中的规定，出租车/网约车费用的报销需要审批。具体来说：
+
+- 单次 100 元以内无需审批。
+- 超过 100 元需说明原因。</p>
+        <div class="badges"><span class="badge" style="background:#ef4444">faithfulness: 0.67</span> <span class="badge" style="background:#eab308">answer_relevancy: 0.76</span> <span class="badge" style="background:#eab308">context_precision: 0.75</span> <span class="badge" style="background:#22c55e">context_recall: 1.00</span></div>
+        
+        <details>
+          <summary>faithfulness = 0.6667</summary>
+          <pre>{
+  "claims": [
+    "根据公司报销制度，出租车/网约车费用的报销需要审批。",
+    "单次100元以内的出租车/网约车费用无需审批。",
+    "超过100元的出租车/网约车费用需要说明原因。"
+  ],
+  "verifications": [
+    {
+      "claim": "根据公司报销制度，出租车/网约车费用的报销需要审批。",
+      "supported": false
+    },
+    {
+      "claim": "单次100元以内的出租车/网约车费用无需审批。",
+      "supported": true
+    },
+    {
+      "claim": "超过100元的出租车/网约车费用需要说明原因。",
+      "supported": true
+    }
+  ],
+  "supported_count": 2,
+  "total_count": 3
+}</pre>
+        </details>
+        <details>
+          <summary>answer_relevancy = 0.7573</summary>
+          <pre>{
+  "generated_questions": [
+    "出租车或网约车费用在什么情况下需要审批？",
+    "如果单次打车费用超过100元，应该怎么做？",
+    "公司报销制度中对出租车费用的审批有什么具体规定？"
+  ],
+  "similarities": [
+    0.7762806529764718,
+    0.6448379203465986,
+    0.8506808543999386
+  ]
+}</pre>
+        </details>
+        <details>
+          <summary>context_precision = 0.7500</summary>
+          <pre>{
+  "relevance_judgments": [
+    {
+      "chunk_index": 0,
+      "relevant": true
+    },
+    {
+      "chunk_index": 1,
+      "relevant": false
+    },
+    {
+      "chunk_index": 2,
+      "relevant": false
+    },
+    {
+      "chunk_index": 3,
+      "relevant": true
+    },
+    {
+      "chunk_index": 4,
+      "relevant": false
+    },
+    {
+      "chunk_index": 5,
+      "relevant": false
+    },
+    {
+      "chunk_index": 6,
+      "relevant": false
+    },
+    {
+      "chunk_index": 7,
+      "relevant": false
+    },
+    {
+      "chunk_index": 8,
+      "relevant": false
+    },
+    {
+      "chunk_index": 9,
+      "relevant": false
+    }
+  ],
+  "total_relevant": 2,
+  "total_chunks": 10
+}</pre>
+        </details>
+        <details>
+          <summary>context_recall = 1.0000</summary>
+          <pre>{
+  "ground_truth_claims": [
+    "出租车或网约车单次费用在100元以内无需审批。",
+    "出租车或网约车单次费用超过100元需要说明原因。",
+    "100元是出租车或网约车费用是否需要审批的分界线。"
+  ],
+  "coverage": [
+    {
+      "claim": "出租车或网约车单次费用在100元以内无需审批。",
+      "covered": true
+    },
+    {
+      "claim": "出租车或网约车单次费用超过100元需要说明原因。",
+      "covered": true
+    },
+    {
+      "claim": "100元是出租车或网约车费用是否需要审批的分界线。",
+      "covered": true
+    }
+  ],
+  "covered_count": 3,
+  "total_count": 3
+}</pre>
+        </details>
+      </div>
+</body>
+</html>
