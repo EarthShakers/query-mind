@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.8.1 — Context Precision 优化 <sub>2026-03-10</sub>
+
+- **相似度断崖截断**：检测 chunk 相似度骤降点，在断崖处截断，避免无关 chunk 稀释 precision 分数
+- **相似度下限过滤**：similarity < 0.35 的 chunk 直接丢弃，输出从固定 10 个变为动态 3-10 个
+- **阈值可配**：`RAG_SIMILARITY_FLOOR`、`RAG_DROP_RATIO`、`RAG_MIN_RESULTS` 环境变量支持
+
 ## v1.8.0 — RAG 评估看板 & 自动化评估 <sub>2026-03-10</sub>
 
 - **评估看板页面**：新增 `/eval` 页面，展示最新评估分数卡片（颜色编码）、Recharts 趋势折线图、历史记录表格

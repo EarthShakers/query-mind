@@ -1358,6 +1358,51 @@ CREATE INDEX documents_embedding_idx
           <code>splitChunks</code> 切片流程。
         </li>
       </ul>
+      <h3>8. Context Precision 指标不稳定（17%~68% 波动）</h3>
+      <p>
+        <strong>现象：</strong>E2E 评估中 Context Precision 分数波动极大，
+        最低 17.4%，最高 68.7%，同一数据集多次跑出不同结果。
+      </p>
+      <p>
+        <strong>原因：</strong>
+      </p>
+      <ul>
+        <li>
+          <strong>固定返回 10 个 chunk</strong> —{" "}
+          <code>TOP_K_FINAL=10</code>，即使只有 1-3 个相关 chunk，
+          剩余 7-9 个噪声 chunk 严重拉低 precision@k 加权分数。
+          实际数据：6 个样本中 3 个的 10 个 chunk 全部被判不相关（precision=0）。
+        </li>
+        <li>
+          <strong>置信路由策略切换</strong> — 不同运行可能触发
+          top10/rerank/multi_query 不同路径，排序结果差异大。
+        </li>
+        <li>
+          <strong>无相似度下限</strong> — similarity 很低的 chunk
+          也被返回，占位但无贡献。
+        </li>
+      </ul>
+      <p>
+        <strong>解决：</strong>在所有策略路径的输出端统一增加两层过滤：
+      </p>
+      <ul>
+        <li>
+          <strong>断崖截断</strong> — 当某 chunk 的 similarity &lt;
+          前一个 × 0.7 时截断（如{" "}
+          <code>[0.82, 0.80, 0.78, 0.45, ...]</code> → 只保留前 3 个）
+        </li>
+        <li>
+          <strong>下限过滤</strong> — similarity &lt; 0.35 的 chunk
+          直接丢弃，至少保留 3 个结果
+        </li>
+      </ul>
+      <p>
+        输出从固定 10 个变为动态 3-10 个，减少噪声 chunk 对 precision
+        的稀释。阈值可通过环境变量{" "}
+        <code>RAG_SIMILARITY_FLOOR</code>、<code>RAG_DROP_RATIO</code>、
+        <code>RAG_MIN_RESULTS</code> 覆盖。
+      </p>
+
     </>
   );
 }

@@ -4,6 +4,7 @@
  * 2. 计算置信度（score_gap、score_std、score[0] 阈值）
  * 3. 高置信度 → 直接用 top-10
  * 4. 低置信度 → Rerank 或 Multi-Query
+ * 5. 统一过滤：相似度断崖截断 + 下限过滤，输出 3~10 个高质量 chunk
  */
 import { RunnableSequence, RunnableBranch } from "@langchain/core/runnables";
 import { Document } from "@langchain/core/documents";
@@ -38,6 +39,16 @@ const SCORE_TOP1_MIN_RERANK = parseThreshold(
   process.env.RAG_SCORE_TOP1_MIN_RERANK,
   0.4
 );
+
+/** 相似度下限：低于此值的 chunk 直接丢弃 */
+const SIMILARITY_FLOOR = parseThreshold(
+  process.env.RAG_SIMILARITY_FLOOR,
+  0.35
+);
+/** 相似度断崖比例：当 chunk 分数 < 前一个 * DROP_RATIO 时截断 */
+const DROP_RATIO = parseThreshold(process.env.RAG_DROP_RATIO, 0.7);
+/** 过滤后最少保留的结果数 */
+const MIN_RESULTS = parseInt(process.env.RAG_MIN_RESULTS ?? "3", 10);
 
 export interface RagEnhancedState {
   userMessage: string;
@@ -230,6 +241,33 @@ async function multiQueryRetrieve(
   return merged.slice(0, TOP_K_FINAL);
 }
 
+/**
+ * 相似度断崖截断 + 下限过滤
+ * 1. 检测相似度骤降点，在断崖处截断
+ * 2. 过滤掉 similarity < SIMILARITY_FLOOR 的 chunk
+ * 3. 保证至少返回 MIN_RESULTS 个结果
+ */
+function filterByRelevance(docs: DocResult[]): DocResult[] {
+  if (docs.length <= MIN_RESULTS) return docs;
+
+  // 断崖截断：当某 chunk 分数 < 前一个 * DROP_RATIO 时截断
+  let cliffIdx = docs.length;
+  for (let i = 1; i < docs.length; i++) {
+    if (docs[i].similarity < docs[i - 1].similarity * DROP_RATIO) {
+      cliffIdx = i;
+      break;
+    }
+  }
+
+  // 下限过滤：去掉低于 SIMILARITY_FLOOR 的
+  const floorIdx = docs.findIndex((d) => d.similarity < SIMILARITY_FLOOR);
+  const cutoff = floorIdx > 0 ? Math.min(cliffIdx, floorIdx) : cliffIdx;
+
+  // 保证至少 MIN_RESULTS 个
+  const finalCount = Math.max(Math.min(cutoff, docs.length), MIN_RESULTS);
+  return docs.slice(0, finalCount);
+}
+
 /** 构建 RAG 增强检索链 */
 function buildRagEnhancedChain() {
   const retrieveAndParse = async (input: {
@@ -304,7 +342,21 @@ function buildRagEnhancedChain() {
     doMultiQuery, // default
   ]);
 
-  return RunnableSequence.from([retrieveAndParse, branch]);
+  const branchThenFilter = RunnableSequence.from([
+    branch,
+    (docs: DocResult[]) => {
+      const filtered = filterByRelevance(docs);
+      console.log(
+        `[RAG-Enhanced] 过滤: ${docs.length} → ${filtered.length} chunks` +
+          (filtered.length > 0
+            ? ` (similarity ${filtered[0].similarity.toFixed(3)}~${filtered[filtered.length - 1].similarity.toFixed(3)})`
+            : "")
+      );
+      return filtered;
+    },
+  ]);
+
+  return RunnableSequence.from([retrieveAndParse, branchThenFilter]);
 }
 
 let chainInstance: ReturnType<typeof buildRagEnhancedChain> | null = null;
