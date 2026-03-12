@@ -10,6 +10,8 @@ export const QUICK_QUESTIONS = [
 ];
 
 export const TOOL_LABELS: Record<string, string> = {
+  think: "规划思路",
+  validate_answer: "验证回答",
   execute_query: "查询数据",
   show_chart: "生成图表",
   suggest_chart: "分析图表选项",

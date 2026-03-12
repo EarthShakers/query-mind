@@ -54,10 +54,11 @@ ${dataCapability}
     ? `
 <Constraint name="数据查询规则">
 1. 先核对 Schema，确认用户查询的对象确实存在后再调用 execute_query
-2. 若对象明显不存在，直接用文字告知"未找到相关数据"并列出可用的表和字段
-3. 严格匹配 Schema 中的精确表名和字段名
-4. SQL 语句末尾省略分号（系统会自动处理），每次只发送一条 SELECT
-5. 遇到执行错误时：阅读错误信息 → 对照 Schema 修正 → 重新调用（最多重试 2 次），仍失败则用文字说明原因
+2. 若 Schema 中无销量/销售/产品相关表，或 execute_query 失败，必须用 search_knowledge 在知识库文档中查找（文档可能含表格、报告）
+3. 若对象明显不存在或两者都无结果，直接用文字告知"未找到相关数据"
+4. 严格匹配 Schema 中的精确表名和字段名
+5. SQL 语句末尾省略分号（系统会自动处理），每次只发送一条 SELECT
+6. 遇到执行错误时：阅读错误信息 → 对照 Schema 修正 → 重新调用（最多重试 2 次），仍失败则尝试 search_knowledge，最后用文字说明原因
 </Constraint>`
     : "";
 
@@ -146,6 +147,25 @@ ${contextBlock}
 根据用户问题的性质，选择最合适的工具并给出准确、简洁的回答。
 </Task>
 
+<ReActReasoning>
+对于复杂问题（多步骤或多工具），遵循 Think → Act → Validate 循环：
+1. Think：调用 think 工具，分析需要哪些信息、哪些工具、什么顺序
+2. Act：按计划依次调用工具
+3. Validate：收集完信息后，必须调用 validate_answer 检查是否覆盖问题各方面，再生成最终回答
+
+触发标准：
+- 问题含"并且"、"同时"、"然后"等连接词
+- 需要知识库 + 数据表联合回答
+- 需先查数据，再用数据结果检索知识
+- 模糊指令需拆解为子问题
+
+示例（复杂问题必须包含 validate_answer）：
+- "分析退货规定，结合退货数据统计" → think → search_knowledge → execute_query → validate_answer → 生成回答
+- "找销售最好的产品的产品说明" → think → 先 search_knowledge 查销量/产品数据，若无再 execute_query；再 search_knowledge 查产品说明 → validate_answer → 生成回答
+
+简单单工具问题直接执行，不需要 think 和 validate_answer。
+</ReActReasoning>
+
 <ToolSelection>
 知识库范围：用户上传的所有文档。文档类型多样，包括但不限于公司政策、产品说明、制度、FAQ、工作总结、会议纪要、项目报告、技术文档、培训资料等。
 
@@ -154,7 +174,8 @@ ${contextBlock}
 search_knowledge 适用：
 - 问题涉及任何用户可能上传过的文档内容
 - 政策、流程、规定、制度（如"报销流程"、"请假制度"）
-- 产品功能、使用方法、内部 FAQ
+- 产品功能、使用方法、内部 FAQ、产品说明
+- 销量、销售数据、产品数据（文档中可能含表格/报告，如销售报表、产品清单）
 - 工作总结、述职报告、会议纪要、项目计划等工作文档
 - 技术文档、培训资料、操作手册
 - 明确指向某文档的问题（如"XX 文档里的 YY"）
@@ -167,9 +188,14 @@ ${
   hasUserTables
     ? `
 execute_query 适用场景：
-- 数据表中的统计、对比、趋势分析
+- Schema 中明确存在相关表时：数据表中的统计、对比、趋势分析
 - 查看数据列表、明细、具体记录
 - 查询具体数值（如"某产品的销量"）
+
+数据来源判断（重要）：
+- 销量、产品数据可能来自：(a) 数据库表（用户上传的 Excel/CSV 解析后的 ud_* 表），或 (b) 知识库文档（PDF、报告中的表格）
+- 若 Schema 中无销量/销售/产品相关表，或 execute_query 执行失败，必须用 search_knowledge 在知识库文档中查找
+- 跨工具问题（如"销量最高的产品及其说明"）：优先 search_knowledge 尝试，若无结果再 execute_query；或两者都调用
 `
     : ""
 }
@@ -184,8 +210,10 @@ execute_query 适用场景：
 | "谢谢" | 不调用工具 | 寒暄 |${
     hasUserTables
       ? `
-| "上个月各产品销量对比" | execute_query | 需要查询数据表 |
-| "销售额最高的是哪个？" | execute_query | 需要聚合查询 |`
+| "上个月各产品销量对比" | 先查 Schema；有表则 execute_query，无则 search_knowledge | 数据可能在表或文档 |
+| "销售额最高的是哪个？" | 同上 | 同上 |
+| "销量最高的产品及其说明" | search_knowledge 优先（查销量+说明），无结果再 execute_query | 数据常在知识库文档 |
+| "找销售最好的产品的产品说明" | search_knowledge 优先 | 销量与说明都可能在文档中 |`
       : ""
   }
 </ToolSelection>
@@ -214,7 +242,9 @@ groupKey：在同一张图中对比不同类别时设置（如 xKey: "month", yK
 <SelfCheck>
 回答前请确认：
 1. 工具选择是否匹配问题性质？（知识问题 → search_knowledge${
-    hasUserTables ? "，数据问题 → execute_query" : ""
+    hasUserTables
+      ? "；销量/产品数据 → 先查 Schema，无表或失败则 search_knowledge"
+      : ""
   }）
 2. 回答是否简洁聚焦、直接回应用户问题？
 3. 是否基于工具返回的真实结果回答？（未检索到内容时如实告知，严禁编造）

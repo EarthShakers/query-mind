@@ -66,6 +66,58 @@ export function ThinkingDetails({
             </div>
           );
         }
+        if (tool.toolName === "think") {
+          const r = tool.result as {
+            reasoning?: string;
+            planned_tools?: string[];
+            complexity?: string;
+          };
+          return (
+            <div key={tool.toolCallId} className="py-0.5 space-y-1">
+              <span className="text-slate-500 font-medium">
+                {TOOL_LABELS[tool.toolName]}
+              </span>
+              {r?.reasoning && (
+                <p className="text-slate-400 leading-relaxed">{r.reasoning}</p>
+              )}
+              {r?.planned_tools && r.planned_tools.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {r.planned_tools.map((t, i) => (
+                    <span
+                      key={i}
+                      className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px]"
+                    >
+                      {i + 1}. {TOOL_LABELS[t] || t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        }
+        if (tool.toolName === "validate_answer") {
+          const v = tool.result as {
+            complete?: boolean;
+            missing?: string[];
+          };
+          return (
+            <div key={tool.toolCallId} className="py-0.5">
+              <span className="text-slate-500">
+                {TOOL_LABELS[tool.toolName]}
+              </span>
+              <span className="ml-1">
+                {v?.complete ? (
+                  <span className="text-emerald-400">✅ 验证通过</span>
+                ) : (
+                  <span className="text-amber-500">
+                    ⚠️ 部分未解答
+                    {v?.missing?.length ? ` (${v.missing.join("、")})` : ""}
+                  </span>
+                )}
+              </span>
+            </div>
+          );
+        }
         if (tool.toolName === "search_knowledge") {
           const results = tool.result.results ?? [];
           return (
