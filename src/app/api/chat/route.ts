@@ -339,7 +339,7 @@ export async function POST(req: Request) {
               // 知识库检索 RAG（Self-Query：LangChain 解析 query + filter，便于 debug）
               search_knowledge: {
                 description:
-                  "Search the knowledge base for company policies, product docs, FAQs, and general information. Some chunks may include markdown images. Use when the question is NOT about querying database numbers or statistics. Pass the user's exact question.",
+                  "Search the knowledge base ONLY when the question likely relates to uploaded documents (policies, product docs, internal FAQs, etc.). Do NOT use for general knowledge (e.g. recipes, trivia) — answer those directly without calling this tool. Pass the user's exact question.",
                 parameters: z.object({
                   query: z
                     .string()
