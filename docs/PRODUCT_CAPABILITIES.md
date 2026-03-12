@@ -25,6 +25,7 @@
 | [引用溯源](#rag-知识库)       | 待实现    | chunk 高亮、可点击跳转，答案可追溯          |
 | [认证](#认证与权限)           | ✅ 已实现 | JWT、用户类型、空间角色、租户               |
 | [报告](#报告生成)             | ✅ 已实现 | 报告模式、章节、编辑流程、导出              |
+| [LangGraph Agent](#agentic-工作流) | ✅ 已实现 | 复杂问题 plan→execute→synthesize，规则路由、AgentProgress |
 | [跨模态检索](#跨模态检索)     | 待实现    | 知识库+数据联动、实时接入、知识图谱         |
 | [图表](#图表与可视化)         | ✅ 已实现 | bar/line/pie、show_chart、suggest_chart     |
 | [Text-to-SQL](#text-to-sql)   | ✅ 已实现 | Schema 注入、只读执行、自愈重试             |
@@ -119,15 +120,17 @@ mindmap
 
 #### Agentic 工作流 【P0】
 
-| 能力          | 重要度 | 是否已实现 | 说明                                    |
-| ------------- | ------ | ---------- | --------------------------------------- |
-| 多步推理      | ★★★★★  | ❌         | CoT/ToT，拆解模糊指令为可执行步骤       |
-| 自主规划      | ★★★★★  | ❌         | Planning-and-Solve、ReAct 模式          |
-| 工具链编排    | ★★★★★  | ❌         | 自主调用 SQL、RAG、图表等工具           |
-| 记忆管理      | ★★★★☆  | ❌         | 工作记忆 + 外部记忆（向量库、知识图谱） |
-| 多 Agent 协作 | ★★★☆☆  | ❌         | 专家 Agent 集群分工                     |
+| 能力          | 重要度 | 是否已实现 | 说明                                                                 |
+| ------------- | ------ | ---------- | -------------------------------------------------------------------- |
+| 多步推理      | ★★★★★  | ✅ 部分    | LangGraph plan → execute → synthesize，复杂问题拆解为子任务          |
+| 自主规划      | ★★★★★  | ✅ 部分    | planning 节点 LLM 拆解 + router 规则路由（Schema/search 显式编排）   |
+| 工具链编排    | ★★★★★  | ✅ 部分    | search_knowledge + execute_query 按依赖执行，depends_on 跨工具传参   |
+| 记忆管理      | ★★★★☆  | ❌         | 工作记忆 + 外部记忆（向量库、知识图谱）                             |
+| 多 Agent 协作 | ★★★☆☆  | ❌         | 专家 Agent 集群分工                                                 |
 
-**下一步**：ReAct 模式、工具链编排、记忆管理。
+**已实现**：复杂度分类（classify）→ 复杂问题走 LangGraph Agent；规则路由（router.ts）Schema 无相关表 → search_knowledge；execute 失败 fallback；AgentProgress 进度展示。详见 [Agent 图结构](AGENT_GRAPH.md)。
+
+**下一步**：记忆管理、多 Agent 协作。
 
 ---
 

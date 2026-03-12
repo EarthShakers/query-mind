@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.9.0 — LangGraph Agent & 规则路由 <sub>2026-03-04</sub>
+
+- **LangGraph Agent**：复杂问题走 plan → execute → synthesize → validate 流程，显式编排子任务
+- **复杂度分类**：classify 用轻量模型判断 simple/complex，complex 且非报告模式走 Agent 路径
+- **规则路由（router.ts）**：Schema 无销量/产品相关表 → 强制 search_knowledge；销量+说明类问题 → search 优先；execute_query 失败/无 sql → fallback 到 search_knowledge
+- **AgentProgress**：Chat 端展示 Agent 编排进度（分析问题 → 执行工具 → 综合分析 → 验证回答）
+- **文档**：新增 [Agent 图结构](docs/AGENT_GRAPH.md)，更新 PRODUCT_CAPABILITIES、README
+
 ## v1.8.1 — Context Precision 优化 <sub>2026-03-10</sub>
 
 - **相似度断崖截断**：检测 chunk 相似度骤降点，在断崖处截断，避免无关 chunk 稀释 precision 分数
