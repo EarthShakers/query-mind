@@ -26,6 +26,7 @@ QueryMind 将 **Text-to-SQL**、**RAG 知识库** 和 **报告生成** 整合在
 
 - **Text-to-SQL** — 自然语言转 SQL。只读执行，错误自动重试。支持 Excel/CSV 上传并自动建表。
 - **RAG 知识库** — 上传 PDF、DOCX、TXT、MD。pgvector 向量检索，Self-Query，可选 Rerank 与 Multi-Query。
+- **LangGraph Agent** — 复杂多步骤问题走 Agent 编排：plan → execute → synthesize。规则路由（Schema / search_knowledge）。AgentProgress 进度展示。
 - **结构化报告** — 生成含 markdown、图表、表格章节的报告。导出 PDF 或 Word。
 - **生成式 UI** — AI 根据问题自动选择表格或图表（柱状/折线/饼图）。
 - **空间与认证** — 多租户、空间、角色（admin/editor/viewer）。JWT + bcrypt。
@@ -90,6 +91,7 @@ docker run -p 3000:3000 -e DASHSCOPE_API_KEY=sk-xxx querymind
 ## 文档
 
 - [路线图](docs/PRODUCT_CAPABILITIES.md) — 完整路线图与模块说明
+- [Agent 图结构](docs/AGENT_GRAPH.md) — LangGraph Agent 编排与路由规则
 
 ## 开源协议
 

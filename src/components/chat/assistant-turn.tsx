@@ -7,6 +7,7 @@ import type { Components } from "react-markdown";
 import { ChartResult } from "@/components/chart-result";
 import { TOOL_LABELS, CHART_TYPE_LABELS } from "./constants";
 import { ThinkingDetails } from "./thinking-details";
+import { AgentProgress } from "./agent-progress";
 
 const CHAT_MD_COMPONENTS: Components = {
   p: ({ node, ...props }) => <div className="mb-1 last:mb-0" {...props} />,
@@ -205,6 +206,7 @@ export function AssistantTurn({
 
   const showThinking = isStreaming || hasThinkingContent;
   const isStillThinking = isStreaming;
+  const isAgentPath = allTools.length === 0;
 
   const toolNames = useMemo(
     () => [
@@ -229,9 +231,11 @@ export function AssistantTurn({
       <div className="flex justify-start">
         <div className="w-full md:max-w-[90%] px-4 py-3 rounded-2xl rounded-tl-sm bg-white border border-slate-200 shadow-sm">
           {/* Thinking section */}
-          {showThinking && (
+          {(showThinking || (isAgentPath && hasAnswer)) && (
             <div className={hasAnswer ? "mb-3" : ""}>
-              {isStillThinking ? (
+              {isAgentPath ? (
+                <AgentProgress isActive={isStillThinking} />
+              ) : isStillThinking ? (
                 <div className="flex items-center gap-2 py-1.5 text-xs">
                   <span className="relative flex h-4 w-4 shrink-0">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-40" />

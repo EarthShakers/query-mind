@@ -9,7 +9,9 @@
     "test:parsers": "tsx scripts/test-parsers-heuristic.ts",
     "eval:rag": "tsx eval/run.ts",
     "eval:rag:e2e": "tsx eval/run.ts eval/datasets/e2e.json --e2e --space 00000000-0000-0000-0000-000000000001",
-    "eval:cron": "tsx eval/run.ts eval/datasets/e2e.json --e2e --space 00000000-0000-0000-0000-000000000001"
+    "eval:cron": "tsx eval/run.ts eval/datasets/e2e.json --e2e --space 00000000-0000-0000-0000-000000000001",
+    "verify:agent": "tsx scripts/verify-agent.ts",
+    "verify:agent:full": "tsx scripts/verify-agent.ts --full --space 00000000-0000-0000-0000-000000000001"
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.72",

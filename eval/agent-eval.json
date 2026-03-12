@@ -1,0 +1,32 @@
+[
+  {
+    "question": "分析知识库中的退货规定，结合退货数据做统计",
+    "expected_tools": ["search_knowledge", "execute_query"],
+    "complexity": "complex"
+  },
+  {
+    "question": "找销量最高的产品，查知识库找该产品说明",
+    "expected_tools": ["execute_query", "search_knowledge"],
+    "complexity": "complex"
+  },
+  {
+    "question": "销量最高的产品及其说明",
+    "expected_tools": ["search_knowledge", "execute_query"],
+    "complexity": "complex"
+  },
+  {
+    "question": "公司报销流程",
+    "expected_tools": ["search_knowledge"],
+    "complexity": "simple"
+  },
+  {
+    "question": "年假有多少天？",
+    "expected_tools": ["search_knowledge"],
+    "complexity": "simple"
+  },
+  {
+    "question": "上个月各产品销量对比",
+    "expected_tools": ["execute_query"],
+    "complexity": "simple"
+  }
+]

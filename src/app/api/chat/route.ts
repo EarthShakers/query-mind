@@ -14,6 +14,8 @@ import {
   checkInputLength,
   recordTokenUsage,
 } from "@/lib/rate-limit/ratelimit";
+import { classifyComplexity } from "@/lib/agent/classify";
+import { createAgentStreamResponse } from "@/lib/agent/stream-adapter";
 
 /** useChat 发送的 messages 含 toolInvocations，streamText 无法解析，需要清洗 */
 function sanitizeMessages(
@@ -111,7 +113,30 @@ export async function POST(req: Request) {
 
   const isReportMode = reportId || isReportRequest;
 
-  // ── AI 流式调用 ──
+  // ── Phase 2: 复杂问题走 LangGraph Agent ──
+  if (!isReportMode && enableKnowledge) {
+    try {
+      const { complexity } = await classifyComplexity(lastMsg, {
+        hasKnowledge: enableKnowledge,
+        hasTables: !!userSchemaStr,
+      });
+      if (complexity === "complex") {
+        const agentResponse = await createAgentStreamResponse({
+          userMessage: lastMsg,
+          conversationHistory: sanitizeMessages(messages),
+          spaceIds: searchSpaceIds,
+          tableSchemas: userSchemaStr || "",
+          enableKnowledge,
+          enableQuery: !!userSchemaStr,
+        });
+        return agentResponse;
+      }
+    } catch {
+      // 分类失败默认走 streamText，不阻塞
+    }
+  }
+
+  // ── AI 流式调用（streamText）──
   const abortController = new AbortController();
   const timeout = setTimeout(
     () => abortController.abort(),

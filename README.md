@@ -26,6 +26,7 @@ Built with Next.js 15 and Vercel AI SDK. Works with OpenAI-compatible APIs (Dash
 
 - **Text-to-SQL** — Natural language → SQL. Read-only execution, self-healing on errors. Supports Excel/CSV upload with auto schema.
 - **RAG Knowledge Base** — Upload PDF, DOCX, TXT, MD. Vector search with pgvector, Self-Query, optional Rerank and Multi-Query.
+- **LangGraph Agent** — For complex multi-step questions: plan → execute → synthesize. Rule-based routing (Schema / search_knowledge). AgentProgress UI.
 - **Structured Reports** — Generate reports with markdown, chart, and table sections. Export to PDF or Word.
 - **Generative UI** — AI chooses table vs chart (bar/line/pie) based on the question.
 - **Spaces & Auth** — Multi-tenant, spaces, roles (admin/editor/viewer). JWT + bcrypt.
@@ -90,6 +91,7 @@ docker run -p 3000:3000 -e DASHSCOPE_API_KEY=sk-xxx querymind
 ## Documentation
 
 - [Roadmap](docs/PRODUCT_CAPABILITIES.md) — Full roadmap and module details
+- [Agent Graph](docs/AGENT_GRAPH.md) — LangGraph Agent structure and routing
 
 ## License
 

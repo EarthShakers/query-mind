@@ -227,10 +227,15 @@ return result.toDataStreamResponse();
 src/lib/agent/
 classify.ts — 复杂度分类
 state.ts — LangGraph 状态定义
-agent-graph.ts — 图构建（节点 + 边 + 条件路由）
-prompts.ts — plan / synthesize / sql-gen 提示词
-tools.ts — 包装现有工具供 agent 使用
-stream-adapter.ts — LangGraph → Vercel AI SDK 流式适配
+agent-graph.ts — 图构建（节点 + 边）
+router.ts — 数据来源路由（Schema 判断、forceSearchOnly、preferSearchFirst）
+prompts.ts — plan / synthesize 提示词
+tools.ts — agentSearchKnowledge、agentExecuteQuery
+stream-adapter.ts — Agent 输出 → useChat 流式响应
+
+2.9 路由规则（已实现）
+
+基于 prompt 规则显式编排：Schema 无相关表 → search_knowledge；销量+说明 → search 优先；execute 失败 → fallback。
 
 2.9 验证方法
 
