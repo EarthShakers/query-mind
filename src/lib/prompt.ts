@@ -1,6 +1,11 @@
 export function buildSystemPrompt(
   userSchemaStr?: string,
-  existingSections?: { section_id: string; sort_order: number; title?: string; content_type: string }[]
+  existingSections?: {
+    section_id: string;
+    sort_order: number;
+    title?: string;
+    content_type: string;
+  }[]
 ) {
   const hasUserTables = !!userSchemaStr;
 
@@ -63,8 +68,13 @@ ${dataCapability}
 <ExistingSections>
 当前报告已有以下章节：
 ${existingSections
-          .map((s) => `- section_id="${s.section_id}" sort_order=${s.sort_order} title="${s.title || "无标题"}" type=${s.content_type}`)
-          .join("\n")}
+  .map(
+    (s) =>
+      `- section_id="${s.section_id}" sort_order=${s.sort_order} title="${
+        s.title || "无标题"
+      }" type=${s.content_type}`
+  )
+  .join("\n")}
 修改某个章节时，使用相同的 section_id 调用 write_report_section，画布会自动替换。
 </ExistingSections>`
       : "";
@@ -93,17 +103,23 @@ ${dataConstraints}
 6. 报告中所有图表通过 write_report_section(content_type: "chart") 写入，请勿使用 suggest_chart / show_chart
 </Constraint>
 ${sectionContext}
-${hasUserTables ? `
+${
+  hasUserTables
+    ? `
 <Constraint name="报告图表要求">
 涉及数据分析的报告至少包含 1-2 个图表章节（content_type: "chart"），文字与图表交替出现。
 典型结构：摘要(markdown) → 数据概览(markdown) → 趋势图(chart) → 详细分析(markdown) → 对比图(chart) → 结论(markdown)
 图表参数：chart_sql、chart_type、chart_x_key、chart_y_key
 类型映射：趋势 → line，对比 → bar，占比 → pie
-</Constraint>` : ""}
+</Constraint>`
+    : ""
+}
 
 <Steps>
 1. 理解用户的报告需求
-2. 用 search_knowledge 检索相关知识${hasUserTables ? "，用 execute_query 查询数据" : ""}
+2. 用 search_knowledge 检索相关知识${
+      hasUserTables ? "，用 execute_query 查询数据" : ""
+    }
 3. 规划报告结构${hasUserTables ? "（数据类报告确保包含图表章节）" : ""}
 4. 逐章节调用 write_report_section 生成报告
 5. 在对话中简要说明报告内容
@@ -114,7 +130,9 @@ ${hasUserTables ? `
 1. 是否通过 write_report_section 工具写入了报告章节？（必须调用此工具，不能只用文字回复）
 2. 章节 sort_order 是否连续递增？
 3. content_markdown 中是否避免了重复标题？
-4. 报告内容是否覆盖了用户需求的各个方面？${hasUserTables ? "\n5. 数据分析类报告是否包含至少 1 个图表章节？" : ""}
+4. 报告内容是否覆盖了用户需求的各个方面？${
+      hasUserTables ? "\n5. 数据分析类报告是否包含至少 1 个图表章节？" : ""
+    }
 6. 所有内容是否基于检索/查询的真实结果？（未找到相关内容的部分如实说明）
 </SelfCheck>`;
   }
@@ -129,37 +147,54 @@ ${contextBlock}
 </Task>
 
 <ToolSelection>
-知识库范围：用户上传的文档（公司政策、产品说明、制度、FAQ 等）。仅当问题可能落在该范围内时才调用 search_knowledge。
+知识库范围：用户上传的所有文档。文档类型多样，包括但不限于公司政策、产品说明、制度、FAQ、工作总结、会议纪要、项目报告、技术文档、培训资料等。
 
-search_knowledge 适用：问题涉及知识库可能包含的内容
+核心原则：当不确定问题是否与知识库相关时，优先调用 search_knowledge 尝试搜索，由搜索结果判断是否有相关内容。宁可多搜一次，也不要遗漏用户上传的文档。
+
+search_knowledge 适用：
+- 问题涉及任何用户可能上传过的文档内容
 - 政策、流程、规定、制度（如"报销流程"、"请假制度"）
 - 产品功能、使用方法、内部 FAQ
-- 明确指向某文档/某制度的问题（如"XX 文档里的 YY"）
+- 工作总结、述职报告、会议纪要、项目计划等工作文档
+- 技术文档、培训资料、操作手册
+- 明确指向某文档的问题（如"XX 文档里的 YY"）
+- 任何你无法确定是通用常识还是知识库内容的问题
 
 search_knowledge 不适用：直接用大模型回答，不调用工具
-- 通用常识、生活常识（如咖啡配方、菜谱、健康养生）
-- 与知识库无关的领域知识
+- 明确的通用常识、生活常识（如咖啡配方、菜谱、健康养生）
 - 寒暄、闲聊、感谢等
-${hasUserTables ? `
+${
+  hasUserTables
+    ? `
 execute_query 适用场景：
 - 数据表中的统计、对比、趋势分析
 - 查看数据列表、明细、具体记录
 - 查询具体数值（如"某产品的销量"）
-` : ""}
+`
+    : ""
+}
 示例：
 | 用户输入 | 选择 | 原因 |
 |---------|------|------|
 | "公司报销流程是什么？" | search_knowledge | 制度类，知识库可能有 |
 | "年假有多少天？" | search_knowledge | 制度类，知识库可能有 |
-| "冰美式拿铁如何制作？" | 不调用工具 | 通用常识，知识库无此内容 |
-| "谢谢" | 不调用工具 | 寒暄 |${hasUserTables ? `
+| "半年工作总结的重点是什么？" | search_knowledge | 工作文档，知识库可能有 |
+| "项目进展如何？" | search_knowledge | 可能涉及上传的项目文档 |
+| "冰美式拿铁如何制作？" | 不调用工具 | 明确的通用常识 |
+| "谢谢" | 不调用工具 | 寒暄 |${
+    hasUserTables
+      ? `
 | "上个月各产品销量对比" | execute_query | 需要查询数据表 |
-| "销售额最高的是哪个？" | execute_query | 需要聚合查询 |` : ""}
+| "销售额最高的是哪个？" | execute_query | 需要聚合查询 |`
+      : ""
+  }
 </ToolSelection>
 
 ${knowledgeConstraint}
 ${dataConstraints}
-${hasUserTables ? `
+${
+  hasUserTables
+    ? `
 <Constraint name="图表规则">
 1. 默认用文字回答：execute_query 查询后用简洁文字总结
 2. 图表建议：查询结果含多行数据（趋势、对比、排名、占比）时，在文字回答后调用 suggest_chart
@@ -172,11 +207,15 @@ ${hasUserTables ? `
 - 占比、比例、分布 → chartType: "pie"
 
 groupKey：在同一张图中对比不同类别时设置（如 xKey: "month", yKey: "amount", groupKey: "product"）
-</Constraint>` : ""}
+</Constraint>`
+    : ""
+}
 
 <SelfCheck>
 回答前请确认：
-1. 工具选择是否匹配问题性质？（知识问题 → search_knowledge${hasUserTables ? "，数据问题 → execute_query" : ""}）
+1. 工具选择是否匹配问题性质？（知识问题 → search_knowledge${
+    hasUserTables ? "，数据问题 → execute_query" : ""
+  }）
 2. 回答是否简洁聚焦、直接回应用户问题？
 3. 是否基于工具返回的真实结果回答？（未检索到内容时如实告知，严禁编造）
 4. 若检索片段包含 Markdown 图片语法（![...](https://...)），必须在回答中原样输出该图片，放在相关文字说明之后

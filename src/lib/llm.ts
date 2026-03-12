@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { ChatOpenAI } from "@langchain/openai";
+import { MODEL_LIGHT } from "./models";
 
 const DASHSCOPE_CONFIG = {
   apiKey: process.env.DASHSCOPE_API_KEY,
@@ -19,7 +20,7 @@ export function getDashScopeLLM(options?: {
   maxTokens?: number;
 }) {
   return new ChatOpenAI({
-    modelName: options?.model ?? "qwen-turbo",
+    modelName: options?.model ?? MODEL_LIGHT,
     configuration: {
       baseURL: DASHSCOPE_CONFIG.baseURL,
       apiKey: DASHSCOPE_CONFIG.apiKey,

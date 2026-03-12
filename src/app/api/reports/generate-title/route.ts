@@ -1,5 +1,6 @@
 import { generateText } from "ai";
 import { dashscopeProvider } from "@/lib/llm";
+import { MODEL_LIGHT } from "@/lib/models";
 
 /** POST /api/reports/generate-title — generate a short noun-phrase title from user message */
 export async function POST(req: Request) {
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
 
   try {
     const { text } = await generateText({
-      model: dashscopeProvider("qwen-turbo"),
+      model: dashscopeProvider(MODEL_LIGHT),
       system:
         "你是一个标题生成器。根据用户的请求，生成一个简短的名词性报告标题（4-10个字），不要包含动词、标点符号或引号。直接输出标题文本，不要任何解释。",
       prompt: message,

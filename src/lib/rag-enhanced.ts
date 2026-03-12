@@ -10,6 +10,7 @@ import { RunnableSequence, RunnableBranch } from "@langchain/core/runnables";
 import { searchDocuments, type DocResult, type SearchFilter } from "./rag";
 import { parseSelfQuery } from "./self-query";
 import { getDashScopeLLM } from "./llm";
+import { MODEL_LIGHT, MODEL_RERANK } from "./models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 
@@ -148,7 +149,7 @@ async function rerankDocs(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "qwen3-rerank",
+        model: MODEL_RERANK,
         input: { query, documents },
         parameters: { top_n: TOP_K_FINAL, return_documents: false },
       }),
@@ -197,7 +198,7 @@ async function multiQueryRetrieve(
   spaceIds: string[],
   filter?: SearchFilter
 ): Promise<DocResult[]> {
-  const llm = getDashScopeLLM({ model: "qwen-turbo", maxTokens: 200 });
+  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 200 });
   const structuredLlm = llm.withStructuredOutput(MultiQuerySchema);
   const prompt = ChatPromptTemplate.fromMessages([
     [

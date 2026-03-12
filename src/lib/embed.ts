@@ -3,6 +3,8 @@
  * 独立模块，供 RAG 检索与评估脚本共用，避免评估脚本依赖 Supabase
  */
 
+import { MODEL_EMBEDDING, EMBEDDING_DIMENSIONS } from "./models";
+
 interface EmbeddingProviderError {
   error?: { message?: string; type?: string; code?: string };
   request_id?: string;
@@ -56,9 +58,9 @@ export async function embed(text: string): Promise<number[]> {
         Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "text-embedding-v4",
+        model: MODEL_EMBEDDING,
         input: text,
-        dimensions: 1024,
+        dimensions: EMBEDDING_DIMENSIONS,
       }),
     }
   );

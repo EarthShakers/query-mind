@@ -8,6 +8,7 @@
  * 奖励将相关文档排在前面的检索系统
  */
 import { getDashScopeLLM } from "../../src/lib/llm";
+import { MODEL_LIGHT } from "../../src/lib/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import type { EvalSample, MetricTrace } from "../types";
@@ -28,7 +29,7 @@ async function judgeRelevance(
   question: string,
   contexts: string[]
 ): Promise<boolean[]> {
-  const llm = getDashScopeLLM({ model: "qwen-turbo", maxTokens: 512 });
+  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 512 });
   const structured = llm.withStructuredOutput(RelevanceJudgmentSchema);
 
   // 每个 chunk 保留完整内容（最多 3000 字符），避免截断导致误判

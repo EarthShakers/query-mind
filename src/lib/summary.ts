@@ -1,5 +1,6 @@
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { getDashScopeLLM } from "./llm";
+import { MODEL_LIGHT } from "./models";
 
 const summaryPrompt = ChatPromptTemplate.fromMessages([
   [
@@ -16,7 +17,7 @@ const summaryPrompt = ChatPromptTemplate.fromMessages([
 export async function generateChunkSummary(content: string): Promise<string> {
   if (!content.trim()) return "";
 
-  const llm = getDashScopeLLM({ model: "qwen-turbo", temperature: 0.2, maxTokens: 512 });
+  const llm = getDashScopeLLM({ model: MODEL_LIGHT, temperature: 0.2, maxTokens: 512 });
 
   try {
     const chain = summaryPrompt.pipe(llm);

@@ -8,6 +8,7 @@
  * 需要 ground_truth，若缺失则返回 0
  */
 import { getDashScopeLLM } from "../../src/lib/llm";
+import { MODEL_LIGHT } from "../../src/lib/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import type { EvalSample, MetricTrace } from "../types";
@@ -33,7 +34,7 @@ const AttributionSchema = z.object({
 
 /** Step 1: 将 ground_truth 分解为原子声明 */
 async function decomposeGroundTruth(groundTruth: string): Promise<string[]> {
-  const llm = getDashScopeLLM({ model: "qwen-turbo", maxTokens: 512 });
+  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 512 });
   const structured = llm.withStructuredOutput(ClaimsSchema);
   const prompt = ChatPromptTemplate.fromMessages([
     [
@@ -56,7 +57,7 @@ async function checkCoverage(
   claims: string[],
   contexts: string[]
 ): Promise<{ claim: string; covered: boolean }[]> {
-  const llm = getDashScopeLLM({ model: "qwen-turbo", maxTokens: 1024 });
+  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 1024 });
   const structured = llm.withStructuredOutput(AttributionSchema);
   const contextStr = contexts.join("\n\n---\n\n").slice(0, 6000);
 

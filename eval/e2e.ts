@@ -3,6 +3,7 @@
  * 需要 Supabase 环境变量
  */
 import { getDashScopeLLM } from "../src/lib/llm";
+import { MODEL_LIGHT } from "../src/lib/models";
 import { searchWithRagEnhanced } from "../src/lib/rag-enhanced";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import type { EvalSample, MetricName } from "./types";
@@ -23,7 +24,7 @@ async function generateSample(
   const contexts = results.map((r) => `${r.title}\n\n${r.content}`);
 
   // 2. 生成
-  const llm = getDashScopeLLM({ model: "qwen-turbo", maxTokens: 1024 });
+  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 1024 });
   const contextStr = contexts.join("\n\n---\n\n").slice(0, 6000);
   const prompt = ChatPromptTemplate.fromMessages([
     [

@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "@/lib/prompt";
 import { getSpaceContext } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { dashscopeProvider } from "@/lib/llm";
+import { MODEL_CHAT } from "@/lib/models";
 import {
   checkRateLimit,
   checkDailyBudget,
@@ -119,7 +120,7 @@ export async function POST(req: Request) {
 
   try {
     const result = await streamText({
-      model: dashscopeProvider("deepseek-v3"),
+      model: dashscopeProvider(MODEL_CHAT),
       abortSignal: abortController.signal,
       maxSteps: isReportMode ? 10 : 5,
       system: buildSystemPrompt(userSchemaStr, existingSections),
@@ -343,11 +344,16 @@ export async function POST(req: Request) {
                 parameters: z.object({
                   query: z
                     .string()
-                    .describe("The user's exact question, verbatim from their message"),
+                    .describe(
+                      "The user's exact question, verbatim from their message"
+                    ),
                 }),
                 execute: async ({ query: q }) => {
                   try {
-                    const results = await searchWithRagEnhanced(lastMsg || q, searchSpaceIds);
+                    const results = await searchWithRagEnhanced(
+                      lastMsg || q,
+                      searchSpaceIds
+                    );
                     return { query: lastMsg || q, results };
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : String(e);
@@ -366,11 +372,17 @@ export async function POST(req: Request) {
     result.usage.then((u) => recordTokenUsage(u.totalTokens)).catch(() => {});
 
     return result.toDataStreamResponse();
-  } catch {
+  } catch (err) {
     clearTimeout(timeout);
-    return new Response(JSON.stringify({ error: "请求超时或失败，请重试" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.error("[chat] 请求失败:", err);
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
