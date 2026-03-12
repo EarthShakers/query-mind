@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { ingestDocument } from "@/lib/rag";
+import { ingestDocument } from "@/lib/rag/rag";
 
 const PRESET_DOCS = [
   "员工手册摘要.md",

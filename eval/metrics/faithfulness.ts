@@ -5,8 +5,8 @@
  * Step 2: LLM 逐条判断每个 claim 是否被 contexts 支持
  * Score = supported_claims / total_claims
  */
-import { getDashScopeLLM } from "../../src/lib/llm";
-import { MODEL_LIGHT } from "../../src/lib/models";
+import { getDashScopeLLM } from "../../src/lib/llm/llm";
+import { MODEL_LIGHT } from "../../src/lib/llm/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import type { EvalSample, MetricTrace } from "../types";
@@ -22,9 +22,7 @@ const VerificationSchema = z.object({
     .array(
       z.object({
         claim: z.string().describe("原子声明"),
-        supported: z
-          .boolean()
-          .describe("该声明是否能从上下文中推断或验证"),
+        supported: z.boolean().describe("该声明是否能从上下文中推断或验证"),
       })
     )
     .describe("每条声明的验证结果"),
@@ -45,9 +43,11 @@ async function decomposeClaims(answer: string): Promise<string[]> {
   ]);
 
   const result = await prompt.pipe(structured).invoke({ answer });
-  return (result as z.infer<typeof ClaimsSchema>)?.claims?.filter(
-    (c) => c?.trim()
-  ) ?? [answer];
+  return (
+    (result as z.infer<typeof ClaimsSchema>)?.claims?.filter((c) =>
+      c?.trim()
+    ) ?? [answer]
+  );
 }
 
 /** Step 2: 逐条验证声明是否被 contexts 支持 */

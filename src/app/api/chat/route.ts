@@ -1,19 +1,19 @@
 import { streamText, type CoreMessage } from "ai";
 import { z } from "zod";
-import { queryUserData } from "@/lib/pg";
-import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
-import { searchWithRagEnhanced } from "@/lib/rag-enhanced";
-import { buildSystemPrompt } from "@/lib/prompt";
-import { getSpaceContext } from "@/lib/auth";
+import { queryUserData } from "@/lib/data/pg";
+import { getUserTableSchemas, formatUserSchemas } from "@/lib/data/excel-parser";
+import { searchWithRagEnhanced } from "@/lib/rag/rag-enhanced";
+import { buildSystemPrompt } from "@/lib/llm/prompt";
+import { getSpaceContext } from "@/lib/auth/auth";
 import { supabase } from "@/lib/supabase";
-import { dashscopeProvider } from "@/lib/llm";
-import { MODEL_CHAT } from "@/lib/models";
+import { dashscopeProvider } from "@/lib/llm/llm";
+import { MODEL_CHAT } from "@/lib/llm/models";
 import {
   checkRateLimit,
   checkDailyBudget,
   checkInputLength,
   recordTokenUsage,
-} from "@/lib/ratelimit";
+} from "@/lib/rate-limit/ratelimit";
 
 /** useChat 发送的 messages 含 toolInvocations，streamText 无法解析，需要清洗 */
 function sanitizeMessages(

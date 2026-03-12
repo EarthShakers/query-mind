@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getTenantContext } from "@/lib/auth";
+import { getTenantContext } from "@/lib/auth/auth";
 
 export async function GET() {
   try {

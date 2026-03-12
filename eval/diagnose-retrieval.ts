@@ -3,8 +3,8 @@
  * 用法：npx tsx eval/diagnose-retrieval.ts
  */
 import "dotenv/config";
-import { searchWithRagEnhanced } from "../src/lib/rag-enhanced";
-import { searchDocuments } from "../src/lib/rag";
+import { searchWithRagEnhanced } from "../src/lib/rag/rag-enhanced";
+import { searchDocuments } from "../src/lib/rag/rag";
 
 const QUESTIONS = [
   "出差住宿费的报销标准是多少？",
@@ -27,7 +27,9 @@ async function main() {
     }
     for (const r of direct) {
       console.log(
-        `  [${r.similarity.toFixed(4)}] ${r.title} | ${r.content.slice(0, 80).replace(/\n/g, " ")}...`
+        `  [${r.similarity.toFixed(4)}] ${r.title} | ${r.content
+          .slice(0, 80)
+          .replace(/\n/g, " ")}...`
       );
     }
 
@@ -39,7 +41,9 @@ async function main() {
     }
     for (const r of enhanced.slice(0, 3)) {
       console.log(
-        `  [${r.similarity.toFixed(4)}] ${r.title} | ${r.content.slice(0, 80).replace(/\n/g, " ")}...`
+        `  [${r.similarity.toFixed(4)}] ${r.title} | ${r.content
+          .slice(0, 80)
+          .replace(/\n/g, " ")}...`
       );
     }
     console.log(`  共 ${enhanced.length} 条结果`);

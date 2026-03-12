@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getSpaceContext } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth/auth";
 
 export async function GET(req: Request) {
   try {

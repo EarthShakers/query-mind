@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabase } from "../supabase";
 import { embed } from "./embed";
 import { generateChunkSummary } from "./summary";
 import {

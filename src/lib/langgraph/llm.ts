@@ -1,5 +1,5 @@
-import { getDashScopeLLM } from "@/lib/llm";
-import { MODEL_AGENT } from "@/lib/models";
+import { getDashScopeLLM } from "@/lib/llm/llm";
+import { MODEL_AGENT } from "@/lib/llm/models";
 
 export function createDashScopeLLM() {
   return getDashScopeLLM({

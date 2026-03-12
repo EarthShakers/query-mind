@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { randomUUID } from "crypto";
-import { supabase } from "./supabase";
+import { supabase } from "../supabase";
 import { execSQL, batchInsert } from "./pg";
 
 // ─── Types ────────────────────────────────────────────────
@@ -29,15 +29,74 @@ export interface UploadResult {
 // ─── Column name sanitization ─────────────────────────────
 
 const RESERVED = new Set([
-  "select", "from", "where", "insert", "update", "delete", "create",
-  "drop", "table", "index", "order", "group", "by", "having", "join",
-  "left", "right", "inner", "outer", "on", "and", "or", "not", "null",
-  "true", "false", "as", "in", "is", "like", "between", "case", "when",
-  "then", "else", "end", "limit", "offset", "union", "all", "distinct",
-  "values", "set", "into", "primary", "key", "default", "constraint",
-  "references", "foreign", "check", "unique", "alter", "add", "column",
-  "date", "time", "timestamp", "integer", "text", "real", "boolean",
-  "varchar", "char", "float", "double", "decimal", "numeric",
+  "select",
+  "from",
+  "where",
+  "insert",
+  "update",
+  "delete",
+  "create",
+  "drop",
+  "table",
+  "index",
+  "order",
+  "group",
+  "by",
+  "having",
+  "join",
+  "left",
+  "right",
+  "inner",
+  "outer",
+  "on",
+  "and",
+  "or",
+  "not",
+  "null",
+  "true",
+  "false",
+  "as",
+  "in",
+  "is",
+  "like",
+  "between",
+  "case",
+  "when",
+  "then",
+  "else",
+  "end",
+  "limit",
+  "offset",
+  "union",
+  "all",
+  "distinct",
+  "values",
+  "set",
+  "into",
+  "primary",
+  "key",
+  "default",
+  "constraint",
+  "references",
+  "foreign",
+  "check",
+  "unique",
+  "alter",
+  "add",
+  "column",
+  "date",
+  "time",
+  "timestamp",
+  "integer",
+  "text",
+  "real",
+  "boolean",
+  "varchar",
+  "char",
+  "float",
+  "double",
+  "decimal",
+  "numeric",
 ]);
 
 /**
@@ -67,7 +126,10 @@ function sanitizeColumnName(name: string, index: number): string {
     return `col_${index + 1}`;
   }
 
-  clean = clean.toLowerCase().replace(/^_+|_+$/g, "").replace(/_+/g, "_");
+  clean = clean
+    .toLowerCase()
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
   if (!clean || /^\d/.test(clean)) clean = `col_${index + 1}`;
   if (RESERVED.has(clean)) clean = `${clean}_col`;
 
@@ -88,9 +150,7 @@ function deduplicateColumns(names: string[]): string[] {
 
 // ─── Type inference ───────────────────────────────────────
 
-function inferType(
-  values: unknown[]
-): "INTEGER" | "REAL" | "DATE" | "TEXT" {
+function inferType(values: unknown[]): "INTEGER" | "REAL" | "DATE" | "TEXT" {
   let intCount = 0;
   let realCount = 0;
   let dateCount = 0;
@@ -128,10 +188,7 @@ function inferType(
 
 // ─── Parse Excel/CSV buffer ───────────────────────────────
 
-export function parseFile(
-  buffer: Buffer,
-  fileName: string
-): ParsedSheet {
+export function parseFile(buffer: Buffer, fileName: string): ParsedSheet {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("文件中没有数据");
@@ -148,16 +205,20 @@ export function parseFile(
   }
 
   const headerRow = raw[0] as string[];
-  const dataRows = raw.slice(1).filter((row) =>
-    (row as unknown[]).some((cell) => cell != null && cell !== "")
-  );
+  const dataRows = raw
+    .slice(1)
+    .filter((row) =>
+      (row as unknown[]).some((cell) => cell != null && cell !== "")
+    );
 
   if (dataRows.length === 0) {
     throw new Error("文件中没有数据行");
   }
 
   // Sanitize and deduplicate column names
-  const sanitized = headerRow.map((h, i) => sanitizeColumnName(String(h ?? ""), i));
+  const sanitized = headerRow.map((h, i) =>
+    sanitizeColumnName(String(h ?? ""), i)
+  );
   const uniqueNames = deduplicateColumns(sanitized);
 
   // Infer types from first 100 rows
@@ -342,7 +403,8 @@ export function formatUserSchemas(schemas: UserTableSchema[]): string {
       const colStr = t.columns
         .map((c) => {
           const desc = c.description ? ` -- ${c.description}` : "";
-          const orig = c.displayName !== c.columnName ? ` (原名: ${c.displayName})` : "";
+          const orig =
+            c.displayName !== c.columnName ? ` (原名: ${c.displayName})` : "";
           return `  ${c.columnName} ${c.dataType}${orig}${desc}`;
         })
         .join("\n");

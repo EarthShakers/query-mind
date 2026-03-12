@@ -3,7 +3,7 @@
  * 独立模块，供 RAG 检索与评估脚本共用，避免评估脚本依赖 Supabase
  */
 
-import { MODEL_EMBEDDING, EMBEDDING_DIMENSIONS } from "./models";
+import { MODEL_EMBEDDING, EMBEDDING_DIMENSIONS } from "../llm/models";
 
 interface EmbeddingProviderError {
   error?: { message?: string; type?: string; code?: string };

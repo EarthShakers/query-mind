@@ -5,7 +5,7 @@ import {
   buildSessionCookie,
   DEMO_TENANT_ID,
   type SessionUser,
-} from "@/lib/auth";
+} from "@/lib/auth/auth";
 
 export async function GET(req: Request) {
   try {

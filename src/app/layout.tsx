@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { AuthProvider } from '@/lib/auth-context';
+import { AuthProvider } from '@/lib/auth/auth-context';
 
 export const metadata: Metadata = { title: 'QueryMind — AI 智能数据助手' };
 

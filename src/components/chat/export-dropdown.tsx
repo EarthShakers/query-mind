@@ -29,7 +29,7 @@ export function ExportDropdown({
     setExporting(true);
     setOpen(false);
     try {
-      const { exportToPdf } = await import("@/lib/export-pdf");
+      const { exportToPdf } = await import("@/lib/export/export-pdf");
       await exportToPdf(canvasRef.current, title);
     } finally {
       setExporting(false);
@@ -40,7 +40,7 @@ export function ExportDropdown({
     setExporting(true);
     setOpen(false);
     try {
-      const { exportToWord } = await import("@/lib/export-word");
+      const { exportToWord } = await import("@/lib/export/export-word");
       await exportToWord(title, sections);
     } finally {
       setExporting(false);

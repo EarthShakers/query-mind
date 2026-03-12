@@ -1,4 +1,4 @@
-import type { ReportSection } from "@/lib/report-types";
+import type { ReportSection } from "../report-types";
 import {
   Document,
   Packer,

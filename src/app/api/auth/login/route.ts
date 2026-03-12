@@ -6,7 +6,7 @@ import {
   DEMO_TENANT_ID,
   type SessionUser,
   type SpaceMembership,
-} from "@/lib/auth";
+} from "@/lib/auth/auth";
 
 export async function POST(req: Request) {
   try {

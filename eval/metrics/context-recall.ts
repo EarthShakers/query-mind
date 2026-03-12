@@ -7,16 +7,14 @@
  *
  * 需要 ground_truth，若缺失则返回 0
  */
-import { getDashScopeLLM } from "../../src/lib/llm";
-import { MODEL_LIGHT } from "../../src/lib/models";
+import { getDashScopeLLM } from "../../src/lib/llm/llm";
+import { MODEL_LIGHT } from "../../src/lib/llm/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import type { EvalSample, MetricTrace } from "../types";
 
 const ClaimsSchema = z.object({
-  claims: z
-    .array(z.string())
-    .describe("从参考答案中提取的原子声明列表"),
+  claims: z.array(z.string()).describe("从参考答案中提取的原子声明列表"),
 });
 
 const AttributionSchema = z.object({
@@ -24,9 +22,7 @@ const AttributionSchema = z.object({
     .array(
       z.object({
         claim: z.string().describe("原子声明"),
-        covered: z
-          .boolean()
-          .describe("该声明是否能在检索上下文中找到支持"),
+        covered: z.boolean().describe("该声明是否能在检索上下文中找到支持"),
       })
     )
     .describe("每条声明的覆盖情况"),
@@ -46,10 +42,14 @@ async function decomposeGroundTruth(groundTruth: string): Promise<string[]> {
     ["human", "参考答案：{ground_truth}"],
   ]);
 
-  const result = await prompt.pipe(structured).invoke({ ground_truth: groundTruth });
-  return (result as z.infer<typeof ClaimsSchema>)?.claims?.filter(
-    (c) => c?.trim()
-  ) ?? [groundTruth];
+  const result = await prompt
+    .pipe(structured)
+    .invoke({ ground_truth: groundTruth });
+  return (
+    (result as z.infer<typeof ClaimsSchema>)?.claims?.filter((c) =>
+      c?.trim()
+    ) ?? [groundTruth]
+  );
 }
 
 /** Step 2: 检查每个声明是否被 contexts 覆盖 */
@@ -92,9 +92,7 @@ async function checkCoverage(
 }
 
 /** 计算 Context Recall 指标 */
-export async function contextRecall(
-  sample: EvalSample
-): Promise<MetricTrace> {
+export async function contextRecall(sample: EvalSample): Promise<MetricTrace> {
   if (!sample.ground_truth) {
     return {
       metric: "context_recall",

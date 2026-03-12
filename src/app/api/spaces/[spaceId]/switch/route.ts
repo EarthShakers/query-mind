@@ -5,7 +5,7 @@ import {
   buildSessionCookie,
   type SessionUser,
   type SpaceMembership,
-} from "@/lib/auth";
+} from "@/lib/auth/auth";
 import { NextRequest } from "next/server";
 
 export async function POST(

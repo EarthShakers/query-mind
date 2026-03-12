@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getSpaceContext } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth/auth";
 
 /** PUT /api/reports/[id]/sections — bulk upsert sections */
 export async function PUT(

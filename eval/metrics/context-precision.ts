@@ -7,8 +7,8 @@
  *
  * 奖励将相关文档排在前面的检索系统
  */
-import { getDashScopeLLM } from "../../src/lib/llm";
-import { MODEL_LIGHT } from "../../src/lib/models";
+import { getDashScopeLLM } from "../../src/lib/llm/llm";
+import { MODEL_LIGHT } from "../../src/lib/llm/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import type { EvalSample, MetricTrace } from "../types";
@@ -57,7 +57,11 @@ async function judgeRelevance(
   console.log(`\n[ContextPrecision] 问题: ${question}`);
   console.log(`[ContextPrecision] 共 ${contexts.length} 个 chunks:`);
   contexts.forEach((c, i) => {
-    console.log(`  [Chunk ${i + 1}] (${c.length} chars) ${c.slice(0, 120).replace(/\n/g, " ")}...`);
+    console.log(
+      `  [Chunk ${i + 1}] (${c.length} chars) ${c
+        .slice(0, 120)
+        .replace(/\n/g, " ")}...`
+    );
   });
 
   const result = await prompt.pipe(structured).invoke({
@@ -68,7 +72,9 @@ async function judgeRelevance(
   const judgments = (result as z.infer<typeof RelevanceJudgmentSchema>)
     ?.judgments;
 
-  console.log(`[ContextPrecision] Judge 返回 ${judgments?.length ?? 0} 条判断:`);
+  console.log(
+    `[ContextPrecision] Judge 返回 ${judgments?.length ?? 0} 条判断:`
+  );
   judgments?.forEach((j) => {
     console.log(`  [Chunk ${j.index}] relevant=${j.relevant}`);
   });

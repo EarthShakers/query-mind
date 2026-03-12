@@ -1,8 +1,8 @@
 import { StateGraph, Annotation, END } from "@langchain/langgraph";
 import { createDashScopeLLM } from "./llm";
 import { PLAN_PROMPT, ANALYZE_PROMPT, WRITE_PROMPT, REFLECT_PROMPT } from "./edit-section-prompts";
-import { queryUserData } from "@/lib/pg";
-import type { ReportSection } from "@/lib/report-types";
+import { queryUserData } from "@/lib/data/pg";
+import type { ReportSection } from "../report-types";
 
 /* ─── State definition ─── */
 const EditSectionState = Annotation.Root({

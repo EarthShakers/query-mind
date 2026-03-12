@@ -5,7 +5,7 @@ import {
   buildSessionCookie,
   DEMO_TENANT_ID,
   type SessionUser,
-} from "@/lib/auth";
+} from "@/lib/auth/auth";
 import { seedSpaceWithDocs } from "@/lib/seed-space";
 
 export async function POST(req: Request) {

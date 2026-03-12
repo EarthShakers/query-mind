@@ -1,6 +1,6 @@
 "use client";
 
-import type { DocResult } from "@/lib/rag";
+import type { DocResult } from "@/lib/rag/rag";
 
 export function KnowledgeResult({
   query,

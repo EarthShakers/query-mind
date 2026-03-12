@@ -3,7 +3,7 @@ import {
   getSessionUser,
   DEMO_TENANT_ID,
   type SpaceMembership,
-} from "@/lib/auth";
+} from "@/lib/auth/auth";
 
 export async function GET() {
   const user = await getSessionUser();

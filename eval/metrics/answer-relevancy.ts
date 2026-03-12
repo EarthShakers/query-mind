@@ -6,8 +6,8 @@
  * Step 3: 计算每个生成问题与原始问题的余弦相似度
  * Score = mean(similarities)
  */
-import { getDashScopeLLM } from "../../src/lib/llm";
-import { MODEL_LIGHT } from "../../src/lib/models";
+import { getDashScopeLLM } from "../../src/lib/llm/llm";
+import { MODEL_LIGHT } from "../../src/lib/llm/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import { batchEmbed, cosineSimilarity, clamp01 } from "../utils";

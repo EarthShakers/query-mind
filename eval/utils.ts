@@ -1,7 +1,7 @@
 /**
  * 评估工具函数
  */
-import { embed } from "../src/lib/embed";
+import { embed } from "../src/lib/rag/embed";
 
 /** 余弦相似度 */
 export function cosineSimilarity(a: number[], b: number[]): number {

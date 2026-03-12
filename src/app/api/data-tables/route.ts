@@ -1,7 +1,7 @@
-import { getSpaceContext } from "@/lib/auth";
-import { checkFileLimit } from "@/lib/file-limits";
+import { getSpaceContext } from "@/lib/auth/auth";
+import { checkFileLimit } from "@/lib/rate-limit/file-limits";
 import { supabase } from "@/lib/supabase";
-import { parseFile, createAndPopulateTable } from "@/lib/excel-parser";
+import { parseFile, createAndPopulateTable } from "@/lib/data/excel-parser";
 
 const ALLOWED_EXTS = ["xlsx", "xls", "csv"];
 const MAX_SIZE = 20 * 1024 * 1024; // 20MB

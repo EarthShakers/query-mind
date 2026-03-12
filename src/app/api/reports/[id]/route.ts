@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getSpaceContext } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth/auth";
 
 /** GET /api/reports/[id] — get report with sections */
 export async function GET(

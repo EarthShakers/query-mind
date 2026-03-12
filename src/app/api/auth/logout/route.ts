@@ -1,4 +1,4 @@
-import { buildClearCookie } from "@/lib/auth";
+import { buildClearCookie } from "@/lib/auth/auth";
 
 export async function POST() {
   return Response.json(

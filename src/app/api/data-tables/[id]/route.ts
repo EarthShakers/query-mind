@@ -1,7 +1,7 @@
-import { getSpaceContext } from "@/lib/auth";
+import { getSpaceContext } from "@/lib/auth/auth";
 import { supabase } from "@/lib/supabase";
-import { dropUserTable } from "@/lib/excel-parser";
-import { queryUserData } from "@/lib/pg";
+import { dropUserTable } from "@/lib/data/excel-parser";
+import { queryUserData } from "@/lib/data/pg";
 
 export async function GET(
   req: Request,

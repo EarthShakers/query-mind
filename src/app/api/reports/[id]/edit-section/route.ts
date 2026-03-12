@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { buildEditSectionGraph } from "@/lib/langgraph/edit-section-graph";
-import { getUserTableSchemas, formatUserSchemas } from "@/lib/excel-parser";
+import { getUserTableSchemas, formatUserSchemas } from "@/lib/data/excel-parser";
 import type { ReportSection } from "@/lib/report-types";
 
 export const maxDuration = 120;

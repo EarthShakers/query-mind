@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth/auth-context";
 
 type LlamaParseTierOption = "fast" | "cost_effective" | "agentic" | "agentic_plus";
 type ParseModeOption = "local" | "smart" | "cloud";

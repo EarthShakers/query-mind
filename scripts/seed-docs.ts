@@ -20,7 +20,7 @@ const DEMO_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
 // 动态导入避免顶层 env 未就绪
 async function main() {
-  const { ingestDocument } = await import("../src/lib/rag");
+  const { ingestDocument } = await import("../src/lib/rag/rag");
 
   const docsDir = join(process.cwd(), "docs");
   const files = readdirSync(docsDir).filter((f) => f.endsWith(".md"));

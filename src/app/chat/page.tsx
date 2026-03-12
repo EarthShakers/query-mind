@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useChat } from "ai/react";
 import { NavAuth } from "@/components/nav-auth";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth/auth-context";
 import { useReport } from "@/hooks/use-report";
 import { useSectionEdit } from "@/hooks/use-section-edit";
 import { useVersionHistory } from "@/hooks/use-version-history";

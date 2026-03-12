@@ -1,6 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
-import { TIER_CONFIGS } from "@/lib/tier-config";
+import { TIER_CONFIGS } from "./tier-config";
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,

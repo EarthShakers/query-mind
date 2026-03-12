@@ -2,9 +2,9 @@
  * E2E 评估：question -> RAG pipeline -> LLM -> evaluate
  * 需要 Supabase 环境变量
  */
-import { getDashScopeLLM } from "../src/lib/llm";
-import { MODEL_LIGHT } from "../src/lib/models";
-import { searchWithRagEnhanced } from "../src/lib/rag-enhanced";
+import { getDashScopeLLM } from "../src/lib/llm/llm";
+import { MODEL_LIGHT } from "../src/lib/llm/models";
+import { searchWithRagEnhanced } from "../src/lib/rag/rag-enhanced";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import type { EvalSample, MetricName } from "./types";
 import { evaluate } from "./evaluate";

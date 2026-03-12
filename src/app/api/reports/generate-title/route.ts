@@ -1,6 +1,6 @@
 import { generateText } from "ai";
-import { dashscopeProvider } from "@/lib/llm";
-import { MODEL_LIGHT } from "@/lib/models";
+import { dashscopeProvider } from "@/lib/llm/llm";
+import { MODEL_LIGHT } from "@/lib/llm/models";
 
 /** POST /api/reports/generate-title — generate a short noun-phrase title from user message */
 export async function POST(req: Request) {

@@ -2,10 +2,17 @@ import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 import TurndownService from "turndown";
 import { LlamaCloud, toFile } from "@llamaindex/llama-cloud";
-import { supabaseAdmin } from "./supabase";
+import { supabaseAdmin } from "../supabase";
 
 export interface UploadProgress {
-  stage: "parsing" | "chunking" | "summarizing" | "embedding" | "storing" | "done" | "error";
+  stage:
+    | "parsing"
+    | "chunking"
+    | "summarizing"
+    | "embedding"
+    | "storing"
+    | "done"
+    | "error";
   message?: string;
   current?: number;
   total?: number;
@@ -290,10 +297,16 @@ async function fileToMarkdownViaLlamaParse(
     }
   );
 
-  onProgress?.({ stage: "parsing", message: "LlamaParse 解析完成，处理图片中..." });
+  onProgress?.({
+    stage: "parsing",
+    message: "LlamaParse 解析完成，处理图片中...",
+  });
 
   // ── 1. Build filename → Supabase public URL map ──
-  const images = (result.images_content_metadata?.images ?? []).slice(0, LLAMA_PARSE_MAX_IMAGES);
+  const images = (result.images_content_metadata?.images ?? []).slice(
+    0,
+    LLAMA_PARSE_MAX_IMAGES
+  );
   const urlMap = new Map<string, string>();
 
   for (const img of images) {
@@ -301,7 +314,7 @@ async function fileToMarkdownViaLlamaParse(
     const publicUrl = await uploadImageToStorage(
       { filename: img.filename, presigned_url: img.presigned_url },
       filename,
-      signal,
+      signal
     );
     if (publicUrl) urlMap.set(img.filename, publicUrl);
   }

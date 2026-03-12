@@ -9,8 +9,8 @@
 import { RunnableSequence, RunnableBranch } from "@langchain/core/runnables";
 import { searchDocuments, type DocResult, type SearchFilter } from "./rag";
 import { parseSelfQuery } from "./self-query";
-import { getDashScopeLLM } from "./llm";
-import { MODEL_LIGHT, MODEL_RERANK } from "./models";
+import { getDashScopeLLM } from "../llm/llm";
+import { MODEL_LIGHT, MODEL_RERANK } from "../llm/models";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 

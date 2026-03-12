@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { isLikelyComplexLayoutPdf } from "../src/lib/parsers";
+import { isLikelyComplexLayoutPdf } from "../src/lib/rag/parsers";
 
 type Case = {
   name: string;

@@ -1,6 +1,6 @@
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { getDashScopeLLM } from "./llm";
-import { MODEL_LIGHT } from "./models";
+import { getDashScopeLLM } from "../llm/llm";
+import { MODEL_LIGHT } from "../llm/models";
 
 const summaryPrompt = ChatPromptTemplate.fromMessages([
   [

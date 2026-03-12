@@ -1,6 +1,6 @@
-import { supabase } from "@/lib/supabase";
-import { getSpaceContext } from "@/lib/auth";
-import { getTierConfig } from "@/lib/tier-config";
+import { supabase } from "../supabase";
+import { getSpaceContext } from "../auth/auth";
+import { getTierConfig } from "./tier-config";
 
 /**
  * Check if the user has reached their file upload limit.

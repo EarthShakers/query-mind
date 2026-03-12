@@ -1,11 +1,11 @@
-import { ingestDocument, type ChunkStrategy, type ParentChildOptions } from "@/lib/rag";
-import { extractText } from "@/lib/parsers";
-import type { UploadProgress } from "@/lib/parsers";
-import type { ExtractTextOptions, LlamaParseTier, ParseMode } from "@/lib/parsers";
+import { ingestDocument, type ChunkStrategy, type ParentChildOptions } from "@/lib/rag/rag";
+import { extractText } from "@/lib/rag/parsers";
+import type { UploadProgress } from "@/lib/rag/parsers";
+import type { ExtractTextOptions, LlamaParseTier, ParseMode } from "@/lib/rag/parsers";
 import { supabase } from "@/lib/supabase";
-import { checkUploadRateLimit } from "@/lib/ratelimit";
-import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth";
-import { checkFileLimit } from "@/lib/file-limits";
+import { checkUploadRateLimit } from "@/lib/rate-limit/ratelimit";
+import { getSpaceContext, DEMO_SPACE_ID } from "@/lib/auth/auth";
+import { checkFileLimit } from "@/lib/rate-limit/file-limits";
 import { fileTypeFromBuffer } from "file-type";
 
 const ALLOWED_EXTS = ["txt", "md", "pdf", "docx"];
