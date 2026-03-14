@@ -139,6 +139,7 @@ export function AssistantTurn({
   spaceId,
   isStreaming,
   isAgentMode = false,
+  streamData,
   onScrollNeeded,
 }: {
   assistantMessages: any[];
@@ -148,6 +149,8 @@ export function AssistantTurn({
   isStreaming: boolean;
   /** 由父组件根据 deepThink 开关直接传入 */
   isAgentMode?: boolean;
+  /** useChat 的 data 流，用于实时 agent 进度 */
+  streamData?: any;
   onScrollNeeded: () => void;
 }) {
   const [acceptedChartIds, setAcceptedChartIds] = useState<Set<string>>(
@@ -164,6 +167,11 @@ export function AssistantTurn({
       const text = m.content?.trim() || "";
       if (!text) continue;
       const isLastMsg = i === assistantMessages.length - 1;
+      // Agent 模式：最后一个 message 的 content 是 streamText 流式输出的最终回答，不是 thinking
+      if (isAgentMode && isLastMsg) {
+        answer = text;
+        break;
+      }
       if (m.toolInvocations?.length > 0) {
         if (!seen.has(text)) {
           seen.add(text);
@@ -176,7 +184,7 @@ export function AssistantTurn({
       }
     }
     return { thinkingTexts: thinking, finalText: answer };
-  }, [assistantMessages, isStreaming]);
+  }, [assistantMessages, isStreaming, isAgentMode]);
 
   const directCharts = useMemo(() => {
     return allTools.filter(
@@ -235,6 +243,14 @@ export function AssistantTurn({
     [onScrollNeeded]
   );
 
+  // 从 useChat data 中提取 agent 进度事件
+  const agentProgressEvents = useMemo(() => {
+    if (!streamData || !Array.isArray(streamData)) return [];
+    return streamData.filter(
+      (d: any) => d && typeof d === "object" && d.type === "agent_progress"
+    );
+  }, [streamData]);
+
   if (!assistantMessages.length && !isStreaming) return null;
 
   return (
@@ -249,6 +265,7 @@ export function AssistantTurn({
                 <AgentProgress
                   userQuery={userContent}
                   isActive={isStillThinking}
+                  progressEvents={agentProgressEvents}
                   executionTools={allTools
                     .filter((t) => t.state === "result")
                     .map((t) => ({ toolName: t.toolName, result: t.result }))}

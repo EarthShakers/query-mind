@@ -85,6 +85,7 @@ export default function Page() {
     setInput,
     append,
     setMessages,
+    data: streamData,
   } = useChat({
     body: {
       spaceIds: [...selectedSpaceIds],
@@ -97,7 +98,14 @@ export default function Page() {
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
+  const lastStreamDataRef = useRef<any>(null);
   const turns = useMemo(() => groupTurns(messages), [messages]);
+
+  // 持久化 streamData，流结束后仍可展示 agent 进度
+  useEffect(() => {
+    if (isLoading) lastStreamDataRef.current = null; // 新请求开始时清空
+    if (streamData != null) lastStreamDataRef.current = streamData;
+  }, [streamData, isLoading]);
 
   // ── 记录哪些 turn 在 deepThink 开启时发送 ──
   useEffect(() => {
@@ -678,6 +686,7 @@ export default function Page() {
                       spaceId={[...selectedSpaceIds][0]}
                       isStreaming={isLastTurn && isLoading}
                       isAgentMode={deepThinkTurns.has(turn.id)}
+                      streamData={isLastTurn ? (streamData ?? lastStreamDataRef.current) : undefined}
                       onScrollNeeded={scrollToBottom}
                     />
                   </div>

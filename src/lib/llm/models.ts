@@ -7,7 +7,7 @@
 export const MODEL_CHAT = process.env.MODEL_CHAT || "deepseek-v3.1";
 
 /** 轻量任务模型（Self-Query 解析、Multi-Query 改写、摘要生成、标题生成） */
-export const MODEL_LIGHT = process.env.MODEL_LIGHT || "qwen-turbo";
+export const MODEL_LIGHT = process.env.MODEL_LIGHT || "qwen-max";
 
 /** LangGraph Agent 模型 */
 export const MODEL_AGENT = process.env.MODEL_AGENT || "deepseek-v3.1";
