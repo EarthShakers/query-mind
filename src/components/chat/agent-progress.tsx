@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import gsap from "gsap";
+import { SimilarityBadge } from "./similarity-badge";
 import styles from "./agent-progress.module.css";
 
 /** 后端推送的进度事件 */
@@ -601,24 +602,25 @@ export function AgentProgress({
                         <span>相关度较低，仅供参考</span>
                       </div>
                     )}
-                    {item.chunks.slice(0, 5).map((doc, j) => (
-                      <div
-                        key={j}
-                        className="p-2 rounded border border-white/10 bg-white/5 text-[11px]"
-                      >
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="font-medium text-indigo-300/90 truncate">
-                            {doc.title ?? doc.metadata?.title ?? "未知文件"}
-                          </span>
-                          <span className="text-slate-400 shrink-0">
-                            {Math.round((doc.similarity ?? 0) * 100)}%
-                          </span>
+                    {item.chunks.slice(0, 5).map((doc, j) => {
+                      const pct = Math.round((doc.similarity ?? 0) * 100);
+                      return (
+                        <div
+                          key={j}
+                          className="p-2 rounded border border-white/10 bg-white/5 text-[11px]"
+                        >
+                          <div className="flex items-center justify-between mb-0.5 gap-2">
+                            <span className="font-medium text-indigo-300/90 truncate min-w-0">
+                              {doc.title ?? doc.metadata?.title ?? "未知文件"}
+                            </span>
+                            <SimilarityBadge pct={pct} variant="dark" />
+                          </div>
+                          <p className="text-slate-400 leading-relaxed line-clamp-2">
+                            {doc.content}
+                          </p>
                         </div>
-                        <p className="text-slate-400 leading-relaxed line-clamp-2">
-                          {doc.content}
-                        </p>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {item.chunks.length > 5 && (
                       <span className="text-slate-500 text-[10px]">
                         … 共 {item.chunks.length} 个片段

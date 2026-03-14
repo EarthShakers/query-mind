@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { SqlResult } from "@/components/sql-result";
+import { SimilarityBadge } from "./similarity-badge";
 import { TOOL_LABELS } from "./constants";
 
 export function SmallSpinner() {
@@ -182,12 +183,13 @@ export function ThinkingDetails({
                         className="p-2 bg-slate-50 rounded border border-slate-100"
                       >
                         <div className="flex items-center justify-between mb-0.5 gap-2">
-                          <span className="font-medium text-slate-500 truncate" title={fileTitle}>
+                          <span className="font-medium text-slate-500 truncate min-w-0" title={fileTitle}>
                             📄 {fileTitle}
                           </span>
-                          <span className="text-[10px] text-slate-300 shrink-0">
-                            {Math.round(doc.similarity * 100)}%
-                          </span>
+                          <SimilarityBadge
+                            pct={Math.round((doc.similarity ?? 0) * 100)}
+                            variant="light"
+                          />
                         </div>
                         {doc.summary && (
                           <p className="text-[10px] text-indigo-600/80 leading-relaxed mb-1">
