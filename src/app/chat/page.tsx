@@ -100,6 +100,10 @@ export default function Page() {
   const userScrolledUp = useRef(false);
   const lastStreamDataRef = useRef<any>(null);
   const turns = useMemo(() => groupTurns(messages), [messages]);
+  const currentSession = useMemo(
+    () => chatHistory.sessions.find((s) => s.id === sessionId),
+    [chatHistory.sessions, sessionId]
+  );
 
   // 持久化 streamData，流结束后仍可展示 agent 进度
   useEffect(() => {
@@ -183,13 +187,22 @@ export default function Page() {
 
   const hasCanvas = report.sections.length > 0;
 
-  // ── Auto-save chat to history ──
+  // ── Auto-save chat to history（含 agent 模式 meta）──
   useEffect(() => {
     if (messages.length > 0 && !isLoading) {
-      chatHistory.saveSession(sessionId, messages);
+      const lastTurnId = turns[turns.length - 1]?.id;
+      const dataToSave = streamData ?? lastStreamDataRef.current;
+      const streamDataForLast =
+        lastTurnId && dataToSave != null
+          ? { [lastTurnId]: dataToSave }
+          : undefined;
+      chatHistory.saveSession(sessionId, messages, {
+        agentTurnIds: Array.from(deepThinkTurns),
+        streamDataByTurn: streamDataForLast,
+      });
       chatHistory.setActiveSessionId(sessionId);
     }
-  }, [messages, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, turns, deepThinkTurns, streamData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startNewChat = useCallback(() => {
     setMessages([]);
@@ -222,6 +235,8 @@ export default function Page() {
       // Load session
       setSessionId(session.id);
       setMessages(session.messages);
+      setDeepThinkTurns(new Set(session.agentTurnIds ?? []));
+      lastStreamDataRef.current = null; // 切换会话时清空
       chatHistory.setActiveSessionId(session.id);
       setSidebarOpen(false);
     },
@@ -686,7 +701,11 @@ export default function Page() {
                       spaceId={[...selectedSpaceIds][0]}
                       isStreaming={isLastTurn && isLoading}
                       isAgentMode={deepThinkTurns.has(turn.id)}
-                      streamData={isLastTurn ? (streamData ?? lastStreamDataRef.current) : undefined}
+                      streamData={
+                        isLastTurn
+                          ? streamData ?? lastStreamDataRef.current
+                          : currentSession?.streamDataByTurn?.[turn.id]
+                      }
                       onScrollNeeded={scrollToBottom}
                     />
                   </div>

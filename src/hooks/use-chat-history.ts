@@ -7,6 +7,10 @@ export interface ChatSession {
   title: string;
   createdAt: number;
   messages: any[];
+  /** Agent 模式 turn id 列表，用于历史展示 */
+  agentTurnIds?: string[];
+  /** 各 turn 的 streamData（agent_progress 事件），用于历史展示 */
+  streamDataByTurn?: Record<string, any[]>;
 }
 
 const STORAGE_KEY = "chat-history";
@@ -40,27 +44,41 @@ export function useChatHistory() {
   }, []);
 
   /** Save or update current session */
-  const saveSession = useCallback((sessionId: string, messages: any[]) => {
-    if (!initialized.current || messages.length === 0) return;
-    const firstUserMsg = messages.find((m: any) => m.role === "user");
-    const title = firstUserMsg?.content?.slice(0, 30) || "新对话";
+  const saveSession = useCallback(
+    (
+      sessionId: string,
+      messages: any[],
+      meta?: { agentTurnIds: string[]; streamDataByTurn?: Record<string, any[]> }
+    ) => {
+      if (!initialized.current || messages.length === 0) return;
+      const firstUserMsg = messages.find((m: any) => m.role === "user");
+      const title = firstUserMsg?.content?.slice(0, 30) || "新对话";
 
-    setSessions((prev) => {
-      const idx = prev.findIndex((s) => s.id === sessionId);
-      const session: ChatSession = {
-        id: sessionId,
-        title,
-        createdAt: idx >= 0 ? prev[idx].createdAt : Date.now(),
-        messages,
-      };
-      const next = idx >= 0
-        ? prev.map((s) => (s.id === sessionId ? session : s))
-        : [session, ...prev];
-      const trimmed = next.slice(0, MAX_SESSIONS);
-      saveSessions(trimmed);
-      return trimmed;
-    });
-  }, []);
+      setSessions((prev) => {
+        const idx = prev.findIndex((s) => s.id === sessionId);
+        const existing = idx >= 0 ? prev[idx] : null;
+        const mergedStreamData = meta?.streamDataByTurn
+          ? { ...(existing?.streamDataByTurn ?? {}), ...meta.streamDataByTurn }
+          : existing?.streamDataByTurn;
+        const session: ChatSession = {
+          id: sessionId,
+          title,
+          createdAt: idx >= 0 ? prev[idx].createdAt : Date.now(),
+          messages,
+          agentTurnIds: meta?.agentTurnIds ?? existing?.agentTurnIds,
+          streamDataByTurn: mergedStreamData ?? meta?.streamDataByTurn,
+        };
+        const next =
+          idx >= 0
+            ? prev.map((s) => (s.id === sessionId ? session : s))
+            : [session, ...prev];
+        const trimmed = next.slice(0, MAX_SESSIONS);
+        saveSessions(trimmed);
+        return trimmed;
+      });
+    },
+    []
+  );
 
   /** Delete a session */
   const deleteSession = useCallback((sessionId: string) => {

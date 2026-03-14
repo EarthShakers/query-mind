@@ -243,10 +243,11 @@ export function AssistantTurn({
     [onScrollNeeded]
   );
 
-  // 从 useChat data 中提取 agent 进度事件
+  // 从 useChat data 中提取 agent 进度事件（兼容嵌套数组格式）
   const agentProgressEvents = useMemo(() => {
-    if (!streamData || !Array.isArray(streamData)) return [];
-    return streamData.filter(
+    if (!streamData) return [];
+    const flat = Array.isArray(streamData) ? streamData.flat(2) : [streamData];
+    return flat.filter(
       (d: any) => d && typeof d === "object" && d.type === "agent_progress"
     );
   }, [streamData]);
