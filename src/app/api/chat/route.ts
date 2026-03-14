@@ -14,7 +14,6 @@ import {
   checkInputLength,
   recordTokenUsage,
 } from "@/lib/rate-limit/ratelimit";
-import { classifyComplexity } from "@/lib/agent/classify";
 import { createAgentStreamResponse } from "@/lib/agent/stream-adapter";
 
 /** useChat 发送的 messages 含 toolInvocations，streamText 无法解析，需要清洗 */
@@ -42,7 +41,7 @@ export async function POST(req: Request) {
   const blocked = (await checkRateLimit(req)) ?? (await checkDailyBudget());
   if (blocked) return blocked;
 
-  const { messages, spaceIds: clientSpaceIds, reportId } = await req.json();
+  const { messages, spaceIds: clientSpaceIds, reportId, deepThink } = await req.json();
 
   const lastMsg = messages[messages.length - 1]?.content ?? "";
   const inputBlocked = checkInputLength(lastMsg);
@@ -113,26 +112,20 @@ export async function POST(req: Request) {
 
   const isReportMode = reportId || isReportRequest;
 
-  // ── Phase 2: 复杂问题走 LangGraph Agent ──
-  if (!isReportMode && enableKnowledge) {
+  // ── Phase 2: 手动开启"深度思考"走 LangGraph Agent ──
+  if (deepThink && !isReportMode) {
     try {
-      const { complexity } = await classifyComplexity(lastMsg, {
-        hasKnowledge: enableKnowledge,
-        hasTables: !!userSchemaStr,
+      const agentResponse = await createAgentStreamResponse({
+        userMessage: lastMsg,
+        conversationHistory: sanitizeMessages(messages),
+        spaceIds: searchSpaceIds,
+        tableSchemas: userSchemaStr || "",
+        enableKnowledge,
+        enableQuery: !!userSchemaStr,
       });
-      if (complexity === "complex") {
-        const agentResponse = await createAgentStreamResponse({
-          userMessage: lastMsg,
-          conversationHistory: sanitizeMessages(messages),
-          spaceIds: searchSpaceIds,
-          tableSchemas: userSchemaStr || "",
-          enableKnowledge,
-          enableQuery: !!userSchemaStr,
-        });
-        return agentResponse;
-      }
-    } catch {
-      // 分类失败默认走 streamText，不阻塞
+      return agentResponse;
+    } catch (agentErr) {
+      console.error("[chat] Agent 失败，降级到 streamText:", agentErr);
     }
   }
 

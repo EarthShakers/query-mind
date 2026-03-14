@@ -18,14 +18,14 @@ const schema = z.object({
 const CLASSIFY_PROMPT = `你是一个问题复杂度分类器。根据用户问题判断是 simple 还是 complex。
 
 **simple**：单工具、单步骤即可回答
-- 单一知识问题（如"报销流程"、"年假多少天"）
+- 单一知识问题：流程、政策、FAQ、配方/做法（如"报销流程"、"年假多少天"、"生椰拿铁如何制作"、"XX产品说明书"）——仅需一次 search_knowledge
 - 单一数据查询（如"上个月销量"、"各产品销量对比"、"销售额最高的哪个"）——仅需一次 execute_query
 
 **complex**：需要多步骤或多工具
-- 含"并且"、"同时"、"结合"、"然后"等连接词
-- 需要知识库 + 数据表联合回答
-- 需先查数据，再用结果检索知识（如"销量最高的产品的说明"）
-- 模糊指令需拆解
+- 含"并且"、"同时"、"结合"、"然后"等连接词，明确要求多件事
+- 需要知识库 + 数据表联合回答（如"结合销量数据和产品说明分析"）
+- 需先查数据，再用结果检索知识（如"销量最高的产品是哪个，再找它的说明书"）
+- 模糊指令需拆解成多个子问题
 
 用户问题：{{userMessage}}
 
@@ -39,12 +39,11 @@ export interface ClassifyResult {
 
 export async function classifyComplexity(
   userMessage: string,
-  options?: {
+  _options?: {
     hasKnowledge?: boolean;
     hasTables?: boolean;
   }
 ): Promise<ClassifyResult> {
-  const { hasKnowledge = true, hasTables = false } = options ?? {};
   const prompt = CLASSIFY_PROMPT.replace("{{userMessage}}", userMessage);
 
   try {

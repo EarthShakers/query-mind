@@ -135,11 +135,19 @@ function ChartBubble({ tool, onReady }: { tool: any; onReady: () => void }) {
 /* ─── Single assistant turn ─── */
 export function AssistantTurn({
   assistantMessages,
+  userContent = "",
+  spaceId,
   isStreaming,
+  isAgentMode = false,
   onScrollNeeded,
 }: {
   assistantMessages: any[];
+  userContent?: string;
+  /** 当前空间 ID，用于知识库预览链接 */
+  spaceId?: string;
   isStreaming: boolean;
+  /** 由父组件根据 deepThink 开关直接传入 */
+  isAgentMode?: boolean;
   onScrollNeeded: () => void;
 }) {
   const [acceptedChartIds, setAcceptedChartIds] = useState<Set<string>>(
@@ -197,8 +205,13 @@ export function AssistantTurn({
     return allTools.filter((t) => t.state === "result" && t.result?.error);
   }, [allTools]);
   const allToolsFailed =
-    !isStreaming && !hasAnswer && toolErrors.length > 0 && allTools.every(
-      (t) => t.state === "result" && (t.result?.error || t.toolName === "suggest_chart")
+    !isStreaming &&
+    !hasAnswer &&
+    toolErrors.length > 0 &&
+    allTools.every(
+      (t) =>
+        t.state === "result" &&
+        (t.result?.error || t.toolName === "suggest_chart")
     );
   const lastErrorMsg = allToolsFailed
     ? toolErrors[toolErrors.length - 1]?.result?.error
@@ -206,7 +219,6 @@ export function AssistantTurn({
 
   const showThinking = isStreaming || hasThinkingContent;
   const isStillThinking = isStreaming;
-  const isAgentPath = allTools.length === 0;
 
   const toolNames = useMemo(
     () => [
@@ -231,10 +243,16 @@ export function AssistantTurn({
       <div className="flex justify-start">
         <div className="w-full md:max-w-[90%] px-4 py-3 rounded-2xl rounded-tl-sm bg-white border border-slate-200 shadow-sm">
           {/* Thinking section */}
-          {(showThinking || (isAgentPath && hasAnswer)) && (
+          {(isAgentMode || showThinking) && (
             <div className={hasAnswer ? "mb-3" : ""}>
-              {isAgentPath ? (
-                <AgentProgress isActive={isStillThinking} />
+              {isAgentMode ? (
+                <AgentProgress
+                  userQuery={userContent}
+                  isActive={isStillThinking}
+                  executionTools={allTools
+                    .filter((t) => t.state === "result")
+                    .map((t) => ({ toolName: t.toolName, result: t.result }))}
+                />
               ) : isStillThinking ? (
                 <div className="flex items-center gap-2 py-1.5 text-xs">
                   <span className="relative flex h-4 w-4 shrink-0">
@@ -269,7 +287,7 @@ export function AssistantTurn({
                   </span>
                 </div>
               )}
-              {hasThinkingContent && (
+              {hasThinkingContent && !isAgentMode && (
                 <details className="group" open>
                   <summary className="flex items-center gap-1 cursor-pointer select-none text-[11px] text-slate-300 hover:text-slate-400 transition-colors list-none [&::-webkit-details-marker]:hidden ml-6">
                     <svg
@@ -289,6 +307,7 @@ export function AssistantTurn({
                   <ThinkingDetails
                     allTools={allTools}
                     intermediateTexts={thinkingTexts}
+                    spaceId={spaceId}
                   />
                 </details>
               )}

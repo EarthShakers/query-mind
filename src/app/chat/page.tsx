@@ -23,6 +23,9 @@ import { ExportDropdown } from "@/components/chat/export-dropdown";
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [deepThink, setDeepThink] = useState(false);
+  const [deepThinkTurns, setDeepThinkTurns] = useState<Set<string>>(new Set());
+  const pendingDeepThink = useRef(false);
   const { user } = useAuth();
   const lastInput = useRef("");
 
@@ -86,6 +89,7 @@ export default function Page() {
     body: {
       spaceIds: [...selectedSpaceIds],
       reportId,
+      deepThink,
     },
     onError: () => {
       setInput(lastInput.current);
@@ -94,6 +98,21 @@ export default function Page() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
   const turns = useMemo(() => groupTurns(messages), [messages]);
+
+  // ── 记录哪些 turn 在 deepThink 开启时发送 ──
+  useEffect(() => {
+    if (!pendingDeepThink.current) return;
+    const lastUserMsg = messages.filter((m) => m.role === "user").pop();
+    if (lastUserMsg) {
+      setDeepThinkTurns((prev) => {
+        if (prev.has(lastUserMsg.id)) return prev;
+        const next = new Set(prev);
+        next.add(lastUserMsg.id);
+        pendingDeepThink.current = false;
+        return next;
+      });
+    }
+  }, [messages]);
 
   // ── Sync write_report_section tool results into Canvas ──
   useEffect(() => {
@@ -167,6 +186,8 @@ export default function Page() {
   const startNewChat = useCallback(() => {
     setMessages([]);
     setReportId(null);
+    setDeepThink(false);
+    setDeepThinkTurns(new Set());
     report.setTitle("未命名报告");
     report.replaceAllSections([]);
     setCanvasOpen(true);
@@ -653,7 +674,10 @@ export default function Page() {
                     </div>
                     <AssistantTurn
                       assistantMessages={turn.assistantMessages}
+                      userContent={turn.userContent}
+                      spaceId={[...selectedSpaceIds][0]}
                       isStreaming={isLastTurn && isLoading}
+                      isAgentMode={deepThinkTurns.has(turn.id)}
                       onScrollNeeded={scrollToBottom}
                     />
                   </div>
@@ -674,6 +698,7 @@ export default function Page() {
                 onSubmit={(e) => {
                   lastInput.current = input;
                   userScrolledUp.current = false;
+                  pendingDeepThink.current = deepThink;
                   handleSubmit(e);
                 }}
                 className="flex gap-2 md:gap-3 max-w-3xl mx-auto items-center"
@@ -723,6 +748,31 @@ export default function Page() {
                     <line x1="12" x2="12" y1="3" y2="15" />
                   </svg>
                   <span className="hidden sm:inline">上传文件到知识库</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeepThink((v) => !v)}
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-xl border transition-colors ${
+                    deepThink
+                      ? "bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100"
+                      : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                  }`}
+                  title={deepThink ? "关闭深度思考" : "开启深度思考"}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 2a7 7 0 0 0-7 7c0 3 2 5.5 4 7.5.6.6 1 1.5 1 2.5h4c0-1 .4-1.9 1-2.5 2-2 4-4.5 4-7.5a7 7 0 0 0-7-7z" />
+                    <path d="M10 22h4" />
+                  </svg>
+                  <span className="hidden sm:inline">深度思考</span>
                 </button>
                 <input
                   value={input}

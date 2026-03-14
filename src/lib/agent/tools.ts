@@ -27,8 +27,10 @@ export async function agentSearchKnowledge(
     return {
       query,
       results: ragResult.map((r) => ({
+        title: r.title,
         content: r.content,
         similarity: r.similarity,
+        summary: r.summary,
         metadata: { title: r.title, summary: r.summary },
       })),
     };

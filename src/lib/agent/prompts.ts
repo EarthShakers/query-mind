@@ -7,7 +7,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 export const planPrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一个任务规划器。根据用户问题，拆解为可执行的子任务。
+    `你是一个任务规划器。根据用户问题，判断是否需要使用工具，并拆解为可执行的子任务。
 
 可用工具：
 - search_knowledge：搜索知识库（政策、产品说明、文档、FAQ 等）
@@ -29,10 +29,12 @@ export const planPrompt = ChatPromptTemplate.fromMessages([
 }}
 
 规则：
-1. 子任务按依赖顺序排列，被依赖的在前
-2. 若需先查数据再用结果检索（如"销量最高的产品说明"），st1 用 execute_query，st2 用 search_knowledge 且 depends_on: ["st1"]
-3. Schema 为空或无相关表时，系统会自动改为 search_knowledge，你仍可输出 execute_query 作为占位
-4. 单工具问题只生成一个 sub_task`,
+1. 如果问题是通用常识（如烹饪方法、科普知识、生活技巧、日常问答），不需要知识库或数据查询，直接返回空的 sub_tasks：
+   {{"strategy": "通用常识问题，直接回答", "sub_tasks": []}}
+2. 子任务按依赖顺序排列，被依赖的在前
+3. 若需先查数据再用结果检索（如"销量最高的产品说明"），st1 用 execute_query，st2 用 search_knowledge 且 depends_on: ["st1"]
+4. Schema 为空或无相关表时，系统会自动改为 search_knowledge，你仍可输出 execute_query 作为占位
+5. 单工具问题只生成一个 sub_task`,
   ],
   [
     "human",
@@ -50,13 +52,14 @@ Schema（数据表结构）：
 export const synthesizePrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一位资深知识管理与数据分析专家。根据工具执行结果，生成简洁、准确的最终回答。
+    `你是一位智能助手。根据用户问题和工具执行结果，生成准确、详细的最终回答。
 
 要求：
-1. 直接回答用户问题，3-8 句话（用户要求详细时除外）
-2. 基于工具返回的真实数据，严禁编造
-3. 若某部分无结果，如实告知
-4. 用自然语言概括，不要堆砌原始数据`,
+1. 直接回答用户问题，内容详实（用户要求简短时除外）
+2. 如果有工具结果，基于工具返回的真实数据回答，严禁编造
+3. 如果没有工具结果（工具执行结果为空 {{}}），说明这是通用知识问题，请直接用你自身的知识详细回答
+4. 若某部分无结果，如实告知
+5. 用自然语言组织回答，条理清晰`,
   ],
   [
     "human",

@@ -1,0 +1,43 @@
+/* 仅 AgentProgress 使用，keyframes 加前缀避免冲突 */
+@keyframes agentMorph {
+  0% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; }
+  50% { border-radius: 70% 30% 30% 70% / 70% 70% 30% 30%; transform: rotate(180deg); }
+  100% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; transform: rotate(360deg); }
+}
+@keyframes agentFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes agentSlideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.avatarMorph {
+  animation: agentMorph 8s ease-in-out infinite;
+}
+.nodeFadeIn {
+  animation: agentFadeIn 0.5s ease-out forwards;
+}
+.logSlideIn {
+  animation: agentSlideIn 0.3s ease-out forwards;
+}
+
+/* 深色背景下的细滚动条，避免闪烁 */
+.logScroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.25) transparent;
+}
+.logScroll::-webkit-scrollbar {
+  width: 4px;
+}
+.logScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.logScroll::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.25);
+  border-radius: 2px;
+}
+.logScroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.4);
+}

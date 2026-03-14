@@ -39,26 +39,6 @@ async function planNode(state: AgentStateType) {
     !!state.enableQuery
   );
 
-  // 强制只用知识库：跳过 LLM，直接生成单任务
-  if (routeHint.forceSearchOnly && state.enableKnowledge) {
-    return {
-      plan: {
-        strategy: "Schema 无相关表或仅知识库，直接检索知识库",
-        sub_tasks: [
-          {
-            id: "st1",
-            tool: "search_knowledge",
-            description: "检索知识库",
-            query: state.userMessage,
-            depends_on: [],
-          },
-        ],
-      },
-      currentStep: "planning",
-      completedSteps: ["planning"],
-    };
-  }
-
   const llm = getDashScopeLLM({
     model: MODEL_CHAT,
     temperature: 0.2,
@@ -147,7 +127,12 @@ function extractInjectContext(prevResults: unknown): string {
 async function executeNode(state: AgentStateType) {
   const plan = state.plan;
   if (!plan || !plan.sub_tasks.length) {
-    return { currentStep: "execute", errors: ["无有效规划"] };
+    // 无子任务（通用问题直接回答），跳过执行
+    return {
+      toolResults: {},
+      completedSteps: [...(state.completedSteps || []), "execute"],
+      currentStep: "execute",
+    };
   }
 
   const toolResults = { ...state.toolResults };
@@ -257,7 +242,7 @@ function validateNode(state: AgentStateType) {
  * 构建并编译 Agent 图
  *
  * 节点：plan → execute → synthesize → validate
- * 边：线性流转，无条件分支
+ * 条件边：plan 后若无子任务（通用问题）直接跳到 synthesize
  */
 export function buildAgentGraph() {
   const graph = new StateGraph(AgentState)
@@ -266,7 +251,10 @@ export function buildAgentGraph() {
     .addNode("synthesize", synthesizeNode)
     .addNode("validate", validateNode)
     .addEdge("__start__", "planning")
-    .addEdge("planning", "execute")
+    .addConditionalEdges("planning", (state: AgentStateType) => {
+      const hasTasks = state.plan?.sub_tasks?.length ?? 0;
+      return hasTasks > 0 ? "execute" : "synthesize";
+    })
     .addEdge("execute", "synthesize")
     .addEdge("synthesize", "validate")
     .addEdge("validate", END);

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { SqlResult } from "@/components/sql-result";
 import { TOOL_LABELS } from "./constants";
 
@@ -9,13 +11,55 @@ export function SmallSpinner() {
   );
 }
 
+/** 单个知识库片段的预览弹窗 */
+function ChunkPreviewModal({
+  title,
+  content,
+  onClose,
+}: {
+  title: string;
+  content: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-w-2xl w-full max-h-[80vh] overflow-hidden rounded-xl bg-white shadow-xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+          <span className="font-medium text-slate-700 truncate">{title}</span>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
+          {content}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ThinkingDetails({
   allTools,
   intermediateTexts,
+  spaceId,
 }: {
   allTools: any[];
   intermediateTexts: string[];
+  /** 空间 ID，用于预览知识库文档 */
+  spaceId?: string;
 }) {
+  const [previewChunk, setPreviewChunk] = useState<{ title: string; content: string } | null>(null);
   return (
     <div className="mt-1.5 ml-6 max-h-[40vh] overflow-y-auto space-y-2 border-l-2 border-slate-100 pl-3 text-xs text-slate-400">
       {intermediateTexts.map((text, i) => (
@@ -130,29 +174,47 @@ export function ThinkingDetails({
               </span>
               {results.length > 0 && (
                 <div className="mt-1 space-y-1">
-                  {results.map((doc: { title: string; content: string; similarity: number; summary?: string }, i: number) => (
-                    <div
-                      key={i}
-                      className="p-2 bg-slate-50 rounded border border-slate-100"
-                    >
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="font-medium text-slate-500">
-                          {doc.title}
-                        </span>
-                        <span className="text-[10px] text-slate-300">
-                          {Math.round(doc.similarity * 100)}%
-                        </span>
-                      </div>
-                      {doc.summary && (
-                        <p className="text-[10px] text-indigo-600/80 leading-relaxed mb-1">
-                          摘要：{doc.summary}
+                  {results.map((doc: { title?: string; content: string; similarity: number; summary?: string; metadata?: { title?: string } }, i: number) => {
+                    const fileTitle = doc.title ?? doc.metadata?.title ?? "未知文件";
+                    return (
+                      <div
+                        key={i}
+                        className="p-2 bg-slate-50 rounded border border-slate-100"
+                      >
+                        <div className="flex items-center justify-between mb-0.5 gap-2">
+                          <span className="font-medium text-slate-500 truncate" title={fileTitle}>
+                            📄 {fileTitle}
+                          </span>
+                          <span className="text-[10px] text-slate-300 shrink-0">
+                            {Math.round(doc.similarity * 100)}%
+                          </span>
+                        </div>
+                        {doc.summary && (
+                          <p className="text-[10px] text-indigo-600/80 leading-relaxed mb-1">
+                            摘要：{doc.summary}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3">
+                          {doc.content}
                         </p>
-                      )}
-                      <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-3">
-                        {doc.content}
-                      </p>
-                    </div>
-                  ))}
+                        <div className="mt-1 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewChunk({ title: fileTitle, content: doc.content })}
+                            className="text-[10px] text-indigo-500 hover:text-indigo-600 hover:underline"
+                          >
+                            预览片段
+                          </button>
+                          <Link
+                            href={spaceId ? `/knowledge?spaceId=${encodeURIComponent(spaceId)}` : "/knowledge"}
+                            className="text-[10px] text-indigo-500 hover:text-indigo-600 hover:underline"
+                          >
+                            知识库
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -176,6 +238,13 @@ export function ThinkingDetails({
           </p>
         );
       })}
+      {previewChunk && (
+        <ChunkPreviewModal
+          title={previewChunk.title}
+          content={previewChunk.content}
+          onClose={() => setPreviewChunk(null)}
+        />
+      )}
     </div>
   );
 }
