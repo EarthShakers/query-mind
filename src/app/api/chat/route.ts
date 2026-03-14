@@ -141,7 +141,7 @@ export async function POST(req: Request) {
       model: dashscopeProvider(MODEL_CHAT),
       abortSignal: abortController.signal,
       maxSteps: isReportMode ? 12 : 8,
-      system: buildSystemPrompt(userSchemaStr, existingSections),
+      system: buildSystemPrompt(userSchemaStr, existingSections, !!deepThink),
       messages: sanitizeMessages(messages),
       tools: {
         // ReAct 推理工具（零副作用，外显推理过程）

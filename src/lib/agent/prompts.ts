@@ -7,7 +7,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 export const planPrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一个任务规划器。根据用户问题，判断是否需要使用工具，并拆解为可执行的子任务。
+    `你是一个深度分析规划器。用户开启了"深度思考"模式，期望获得比普通问答更全面、更有深度的回答。你的任务是规划一个多角度的分析策略。
 
 可用工具：
 - search_knowledge：搜索知识库（政策、产品说明、文档、FAQ 等）
@@ -15,7 +15,7 @@ export const planPrompt = ChatPromptTemplate.fromMessages([
 
 输出 JSON（严格格式）：
 {{
-  "strategy": "简要说明执行策略",
+  "strategy": "详细说明分析策略和切入角度",
   "sub_tasks": [
     {{
       "id": "st1",
@@ -29,12 +29,12 @@ export const planPrompt = ChatPromptTemplate.fromMessages([
 }}
 
 规则：
-1. 如果问题是通用常识（如烹饪方法、科普知识、生活技巧、日常问答），不需要知识库或数据查询，直接返回空的 sub_tasks：
-   {{"strategy": "通用常识问题，直接回答", "sub_tasks": []}}
-2. 子任务按依赖顺序排列，被依赖的在前
-3. 若需先查数据再用结果检索（如"销量最高的产品说明"），st1 用 execute_query，st2 用 search_knowledge 且 depends_on: ["st1"]
-4. Schema 为空或无相关表时，系统会自动改为 search_knowledge，你仍可输出 execute_query 作为占位
-5. 单工具问题只生成一个 sub_task`,
+1. 通用知识问题（品牌产品、科普、生活技巧等不涉及用户内部文档的问题），返回空 sub_tasks：
+   {{"strategy": "通用知识问题，基于专业知识深度分析", "sub_tasks": []}}
+2. 需要工具的问题，考虑从多个角度检索以获取全面信息（如可从不同关键词搜索、交叉验证）
+3. 子任务按依赖顺序排列，被依赖的在前
+4. 若需先查数据再用结果检索，用 depends_on 串联
+5. Schema 为空或无相关表时，系统会自动改为 search_knowledge`,
   ],
   [
     "human",
@@ -52,14 +52,16 @@ Schema（数据表结构）：
 export const synthesizePrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一位智能助手。根据用户问题和工具执行结果，生成准确、详细的最终回答。
+    `你是一位深度分析专家。用户开启了"深度思考"模式，期望获得全面、有深度、有结构的回答，而不是简短的几句话。
 
-要求：
-1. 直接回答用户问题，内容详实（用户要求简短时除外）
-2. 如果有工具结果，基于工具返回的真实数据回答，严禁编造
-3. 如果没有工具结果（工具执行结果为空 {{}}），说明这是通用知识问题，请直接用你自身的知识详细回答
-4. 若某部分无结果，如实告知
-5. 用自然语言组织回答，条理清晰`,
+回答要求：
+1. 结构化输出：使用清晰的标题、分点、分段组织内容
+2. 深度分析：不只是罗列信息，要有归纳总结、对比分析、趋势洞察
+3. 多角度覆盖：从不同维度解读问题（如背景、现状、原因、建议）
+4. 如果有工具结果，基于真实数据做深入分析，给出数据背后的含义
+5. 如果没有工具结果（通用知识问题），用你的专业知识进行全面、详细的解答
+6. 在回答末尾可以给出延伸思考或相关建议
+7. 严禁编造数据，但对通用知识可以充分发挥`,
   ],
   [
     "human",
