@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   const blocked = (await checkRateLimit(req)) ?? (await checkDailyBudget());
   if (blocked) return blocked;
 
-  const { messages, spaceIds: clientSpaceIds, reportId, deepThink } = await req.json();
+  const { messages, spaceIds: clientSpaceIds, reportId, agentMode } = await req.json();
 
   const lastMsg = messages[messages.length - 1]?.content ?? "";
   const inputBlocked = checkInputLength(lastMsg);
@@ -112,8 +112,8 @@ export async function POST(req: Request) {
 
   const isReportMode = reportId || isReportRequest;
 
-  // ── Phase 2: 手动开启"深度思考"走 LangGraph Agent ──
-  if (deepThink && !isReportMode) {
+  // ── Phase 2: 手动开启 Agent 模式走 LangGraph Agent ──
+  if (agentMode && !isReportMode) {
     try {
       const agentResponse = await createAgentStreamResponse({
         userMessage: lastMsg,
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
       model: dashscopeProvider(MODEL_CHAT),
       abortSignal: abortController.signal,
       maxSteps: isReportMode ? 12 : 8,
-      system: buildSystemPrompt(userSchemaStr, existingSections, !!deepThink),
+      system: buildSystemPrompt(userSchemaStr, existingSections, !!agentMode),
       messages: sanitizeMessages(messages),
       tools: {
         // ReAct 推理工具（零副作用，外显推理过程）

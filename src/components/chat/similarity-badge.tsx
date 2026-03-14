@@ -23,13 +23,13 @@ const SCORE_TITLE: Record<ScoreType, string> = {
 /** 各策略的正常分数上限，用于进度条缩放 */
 const BAR_CEILING: Record<ScoreType, number> = {
   embedding: 100,
-  rerank: 70,
+  rerank: 100,
 };
 
-/** 各策略的正常范围提示 */
+/** 各策略的正常范围提示（qwen3-rerank 为 sigmoid 归一化 [0,1]，0.5 为相关性分界线） */
 const RANGE_HINT: Record<ScoreType, string> = {
-  embedding: "正常范围 40–95%",
-  rerank: "正常范围 10–70%",
+  embedding: "向量相似度 [0, 1]",
+  rerank: "Sigmoid归一化 [0, 1] 0.5为相关性分界线",
 };
 
 /** 匹配度展示：进度条 + 数字 + 可选语义标签 */

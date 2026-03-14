@@ -6,7 +6,7 @@ export function buildSystemPrompt(
     title?: string;
     content_type: string;
   }[],
-  deepThink = false
+  agentMode = false
 ) {
   const hasUserTables = !!userSchemaStr;
 
@@ -143,9 +143,9 @@ ${
   }
 
   // ── 普通问答模式 ──
-  const taskBlock = deepThink
+  const taskBlock = agentMode
     ? `<Task>
-用户开启了「深度思考」模式，期望获得比简短回答更全面、更有深度的分析。
+用户开启了「Agent 模式」，期望获得比简短回答更全面、更有深度的分析。
 
 回答风格要求：
 1. 结构化输出：使用 Markdown 标题（##）、分点、分段组织内容
@@ -266,7 +266,7 @@ groupKey：在同一张图中对比不同类别时设置（如 xKey: "month", yK
       ? "；销量/产品数据 → 先查 Schema，无表或失败则 search_knowledge"
       : ""
   }）
-2. ${deepThink ? "回答是否有深度和结构？是否从多角度分析了问题？" : "回答是否简洁聚焦、直接回应用户问题？"}
+2. ${agentMode ? "回答是否有深度和结构？是否从多角度分析了问题？" : "回答是否简洁聚焦、直接回应用户问题？"}
 3. 是否基于工具返回的真实结果回答？（搜索结果不相关时，通用知识直接用自身知识回答）
 4. 若检索片段包含 Markdown 图片语法（![...](https://...)），必须在回答中原样输出该图片，放在相关文字说明之后
 </SelfCheck>`;

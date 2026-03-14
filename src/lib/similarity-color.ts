@@ -15,7 +15,7 @@ export function getSimilarityColor(pct: number): string {
 
 /** 返回完整颜色配置（含进度条、语义标签）
  * @param variant light=浅色背景(thinking-details) dark=深色背景(agent-progress)
- * @param scoreType embedding=向量相似度(阈值80/60/40) rerank=Rerank相关度(阈值50/30/15)
+ * @param scoreType embedding=向量相似度(阈值80/60/40) rerank=Rerank相关度(阈值70/50/30, sigmoid归一化, 0.5为相关性分界线)
  */
 export function getSimilarityConfig(
   pct: number,
@@ -25,7 +25,7 @@ export function getSimilarityConfig(
   const isDark = variant === "dark";
   const thresholds =
     scoreType === "rerank"
-      ? { high: 50, mid: 30, midLow: 15 }
+      ? { high: 70, mid: 50, midLow: 30 }
       : { high: 80, mid: 60, midLow: 40 };
 
   if (pct >= thresholds.high)

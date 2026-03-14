@@ -23,9 +23,9 @@ import { ExportDropdown } from "@/components/chat/export-dropdown";
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [deepThink, setDeepThink] = useState(false);
-  const [deepThinkTurns, setDeepThinkTurns] = useState<Set<string>>(new Set());
-  const pendingDeepThink = useRef(false);
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentModeTurnIds, setAgentModeTurnIds] = useState<Set<string>>(new Set());
+  const pendingAgentMode = useRef(false);
   const { user } = useAuth();
   const lastInput = useRef("");
 
@@ -90,7 +90,7 @@ export default function Page() {
     body: {
       spaceIds: [...selectedSpaceIds],
       reportId,
-      deepThink,
+      agentMode,
     },
     onError: () => {
       setInput(lastInput.current);
@@ -99,6 +99,9 @@ export default function Page() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
   const lastStreamDataRef = useRef<any>(null);
+  /** streamData 在当前 turn 开始时的累积长度，用于计算增量 */
+  const turnStreamStartRef = useRef(0);
+  const wasLoadingRef = useRef(false);
   const turns = useMemo(() => groupTurns(messages), [messages]);
   const currentSession = useMemo(
     () => chatHistory.sessions.find((s) => s.id === sessionId),
@@ -107,20 +110,36 @@ export default function Page() {
 
   // 持久化 streamData，流结束后仍可展示 agent 进度
   useEffect(() => {
-    if (isLoading) lastStreamDataRef.current = null; // 新请求开始时清空
+    // isLoading 从 false→true（新请求开始）：快照当前累积长度
+    if (isLoading && !wasLoadingRef.current) {
+      const flat = streamData
+        ? (Array.isArray(streamData) ? streamData.flat(2) : [streamData])
+        : [];
+      turnStreamStartRef.current = flat.length;
+      lastStreamDataRef.current = null;
+    }
+    wasLoadingRef.current = isLoading;
     if (streamData != null) lastStreamDataRef.current = streamData;
   }, [streamData, isLoading]);
 
-  // ── 记录哪些 turn 在 deepThink 开启时发送 ──
+  /** 当前 turn 的 streamData（仅增量，不含前序 turn 的事件） */
+  const currentTurnStreamData = useMemo(() => {
+    const raw = streamData ?? lastStreamDataRef.current;
+    if (!raw) return raw;
+    const flat = Array.isArray(raw) ? raw.flat(2) : [raw];
+    return flat.slice(turnStreamStartRef.current);
+  }, [streamData]);
+
+  // ── 记录哪些 turn 在 Agent 模式开启时发送 ──
   useEffect(() => {
-    if (!pendingDeepThink.current) return;
+    if (!pendingAgentMode.current) return;
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();
     if (lastUserMsg) {
-      setDeepThinkTurns((prev) => {
+      setAgentModeTurnIds((prev) => {
         if (prev.has(lastUserMsg.id)) return prev;
         const next = new Set(prev);
         next.add(lastUserMsg.id);
-        pendingDeepThink.current = false;
+        pendingAgentMode.current = false;
         return next;
       });
     }
@@ -192,23 +211,30 @@ export default function Page() {
     if (messages.length > 0 && !isLoading) {
       const lastTurnId = turns[turns.length - 1]?.id;
       const dataToSave = streamData ?? lastStreamDataRef.current;
-      const streamDataForLast =
-        lastTurnId && dataToSave != null
-          ? { [lastTurnId]: dataToSave }
-          : undefined;
+      let streamDataForLast: Record<string, any[]> | undefined;
+      if (lastTurnId && dataToSave != null) {
+        const flat = Array.isArray(dataToSave)
+          ? dataToSave.flat(2)
+          : [dataToSave];
+        // 只保存当前 turn 的增量事件，避免跨 turn 数据污染
+        const turnEvents = flat.slice(turnStreamStartRef.current);
+        if (turnEvents.length > 0) {
+          streamDataForLast = { [lastTurnId]: turnEvents };
+        }
+      }
       chatHistory.saveSession(sessionId, messages, {
-        agentTurnIds: Array.from(deepThinkTurns),
+        agentTurnIds: Array.from(agentModeTurnIds),
         streamDataByTurn: streamDataForLast,
       });
       chatHistory.setActiveSessionId(sessionId);
     }
-  }, [messages, isLoading, turns, deepThinkTurns, streamData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, turns, agentModeTurnIds, streamData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startNewChat = useCallback(() => {
     setMessages([]);
     setReportId(null);
-    setDeepThink(false);
-    setDeepThinkTurns(new Set());
+    setAgentMode(false);
+    setAgentModeTurnIds(new Set());
     report.setTitle("未命名报告");
     report.replaceAllSections([]);
     setCanvasOpen(true);
@@ -235,8 +261,10 @@ export default function Page() {
       // Load session
       setSessionId(session.id);
       setMessages(session.messages);
-      setDeepThinkTurns(new Set(session.agentTurnIds ?? []));
+      setAgentModeTurnIds(new Set(session.agentTurnIds ?? []));
       lastStreamDataRef.current = null; // 切换会话时清空
+      turnStreamStartRef.current = 0;
+      wasLoadingRef.current = false;
       chatHistory.setActiveSessionId(session.id);
       setSidebarOpen(false);
     },
@@ -700,10 +728,10 @@ export default function Page() {
                       userContent={turn.userContent}
                       spaceId={[...selectedSpaceIds][0]}
                       isStreaming={isLastTurn && isLoading}
-                      isAgentMode={deepThinkTurns.has(turn.id)}
+                      isAgentMode={agentModeTurnIds.has(turn.id)}
                       streamData={
                         isLastTurn
-                          ? streamData ?? lastStreamDataRef.current
+                          ? currentTurnStreamData
                           : currentSession?.streamDataByTurn?.[turn.id]
                       }
                       onScrollNeeded={scrollToBottom}
@@ -726,7 +754,7 @@ export default function Page() {
                 onSubmit={(e) => {
                   lastInput.current = input;
                   userScrolledUp.current = false;
-                  pendingDeepThink.current = deepThink;
+                  pendingAgentMode.current = agentMode;
                   handleSubmit(e);
                 }}
                 className="flex gap-2 md:gap-3 max-w-3xl mx-auto items-center"
@@ -779,13 +807,13 @@ export default function Page() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDeepThink((v) => !v)}
+                  onClick={() => setAgentMode((v) => !v)}
                   className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-xl border transition-colors ${
-                    deepThink
+                    agentMode
                       ? "bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100"
                       : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
                   }`}
-                  title={deepThink ? "关闭深度思考" : "开启深度思考"}
+                  title={agentMode ? "关闭 Agent 模式" : "开启 Agent 模式"}
                 >
                   <svg
                     width="16"
@@ -800,7 +828,7 @@ export default function Page() {
                     <path d="M12 2a7 7 0 0 0-7 7c0 3 2 5.5 4 7.5.6.6 1 1.5 1 2.5h4c0-1 .4-1.9 1-2.5 2-2 4-4.5 4-7.5a7 7 0 0 0-7-7z" />
                     <path d="M10 22h4" />
                   </svg>
-                  <span className="hidden sm:inline">深度思考</span>
+                  <span className="hidden sm:inline">Agent 模式</span>
                 </button>
                 <input
                   value={input}

@@ -87,7 +87,7 @@
 - **安全响应头 middleware**：`X-Frame-Options` / `X-Content-Type-Options` / `CSP`
 - IP 提取优化：优先 `x-forwarded-for` 首段，fallback `x-real-ip`
 
-## v0.9.0 — Chat 交互重构：深度思考 & 图表建议 <sub>2026-02-20</sub>
+## v0.9.0 — Chat 交互重构：agent 模式 & 图表建议 <sub>2026-02-20</sub>
 
 - **新增 `suggest_chart` 工具**：AI 默认文字回答，数据适合可视化时提供「用图表展示」按钮
 - **AI 多步推理过程折叠**：SQL 查询、知识库检索等中间过程归入可折叠「思考中」区块

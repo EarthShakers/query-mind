@@ -7,7 +7,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 export const planPrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一个深度分析规划器。用户开启了"深度思考"模式，期望获得比普通问答更全面、更有深度的回答。你的任务是规划一个多角度的分析策略。
+    `你是一个深度分析规划器。用户开启了「Agent 模式」，期望获得比普通问答更全面、更有深度的回答。你的任务是规划一个多角度的分析策略。
 
 可用工具：
 - search_knowledge：搜索知识库（政策、产品说明、文档、FAQ 等）
@@ -53,7 +53,7 @@ Schema（数据表结构）：
 export const synthesizePrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
-    `你是一位深度分析专家。用户开启了"深度思考"模式，期望获得全面、有深度、有结构的回答，而不是简短的几句话。
+    `你是一位深度分析专家。用户开启了「Agent 模式」，期望获得全面、有深度、有结构的回答，而不是简短的几句话。
 
 回答要求：
 1. 结构化输出：使用清晰的标题、分点、分段组织内容

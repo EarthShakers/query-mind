@@ -147,7 +147,7 @@ export function AssistantTurn({
   /** 当前空间 ID，用于知识库预览链接 */
   spaceId?: string;
   isStreaming: boolean;
-  /** 由父组件根据 deepThink 开关直接传入 */
+  /** 由父组件根据 Agent 模式开关直接传入 */
   isAgentMode?: boolean;
   /** useChat 的 data 流，用于实时 agent 进度 */
   streamData?: any;
@@ -299,7 +299,7 @@ export function AssistantTurn({
                     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
                   </svg>
                   <span>
-                    已深度思考
+                    Agent 分析完成
                     {toolNames.length > 0 && (
                       <span className="text-slate-300">
                         {" "}
