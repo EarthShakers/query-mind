@@ -431,11 +431,15 @@ export async function POST(req: Request) {
                 }),
                 execute: async ({ query: q }) => {
                   try {
-                    const results = await searchWithRagEnhanced(
+                    const { results, pipeline } = await searchWithRagEnhanced(
                       lastMsg || q,
                       searchSpaceIds
                     );
-                    return { query: lastMsg || q, results };
+                    return {
+                      query: lastMsg || q,
+                      results,
+                      pipeline,
+                    };
                   } catch (e: unknown) {
                     const msg = e instanceof Error ? e.message : String(e);
                     return { query: q, results: [], error: msg };

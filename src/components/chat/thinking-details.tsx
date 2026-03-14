@@ -165,6 +165,16 @@ export function ThinkingDetails({
         }
         if (tool.toolName === "search_knowledge") {
           const results = tool.result.results ?? [];
+          const pipeline = tool.result.pipeline as
+            | {
+                usedSelfQuery?: boolean;
+                usedRerank?: boolean;
+                usedMultiQuery?: boolean;
+                action?: string;
+                initialCount?: number;
+                finalCount?: number;
+              }
+            | undefined;
           return (
             <div key={tool.toolCallId} className="py-0.5">
               <span className="text-slate-500">
@@ -173,6 +183,38 @@ export function ThinkingDetails({
               <span className="text-slate-300 ml-1">
                 — 找到 {results.length} 个相关片段
               </span>
+              {pipeline && (
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <span className="text-[10px] text-slate-400">检索策略：</span>
+                  {pipeline.usedSelfQuery && (
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600 text-[10px]">
+                      Self-Query
+                    </span>
+                  )}
+                  {pipeline.usedRerank && (
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-100 text-cyan-600 text-[10px]">
+                      Rerank
+                    </span>
+                  )}
+                  {pipeline.usedMultiQuery && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-600 text-[10px]">
+                      Multi-Query
+                    </span>
+                  )}
+                  {pipeline.action === "top10" &&
+                    !pipeline.usedRerank &&
+                    !pipeline.usedMultiQuery && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px]">
+                        Top10
+                      </span>
+                    )}
+                  {pipeline.initialCount != null && pipeline.finalCount != null && (
+                    <span className="text-[10px] text-slate-400">
+                      ({pipeline.initialCount}→{pipeline.finalCount})
+                    </span>
+                  )}
+                </div>
+              )}
               {results.length > 0 && (
                 <div className="mt-1 space-y-1">
                   {results.map((doc: { title?: string; content: string; similarity: number; summary?: string; metadata?: { title?: string } }, i: number) => {
@@ -189,6 +231,7 @@ export function ThinkingDetails({
                           <SimilarityBadge
                             pct={Math.round((doc.similarity ?? 0) * 100)}
                             variant="light"
+                            scoreType={pipeline?.usedRerank ? "rerank" : "embedding"}
                           />
                         </div>
                         {doc.summary && (

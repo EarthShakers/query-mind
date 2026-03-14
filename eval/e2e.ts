@@ -20,7 +20,7 @@ async function generateSample(
   spaceIds?: string[]
 ): Promise<EvalSample> {
   // 1. 检索
-  const results = await searchWithRagEnhanced(input.question, spaceIds);
+  const { results } = await searchWithRagEnhanced(input.question, spaceIds);
   const contexts = results.map((r) => `${r.title}\n\n${r.content}`);
 
   // 2. 生成

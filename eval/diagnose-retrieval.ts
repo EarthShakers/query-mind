@@ -35,7 +35,7 @@ async function main() {
 
     // 2. 走完整 RAG 增强链
     console.log("\n--- RAG 增强检索 ---");
-    const enhanced = await searchWithRagEnhanced(q);
+    const { results: enhanced } = await searchWithRagEnhanced(q);
     if (enhanced.length === 0) {
       console.log("  (无结果)");
     }

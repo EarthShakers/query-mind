@@ -32,11 +32,29 @@ interface ProgressEvent {
   validationCheck?: { name: string; score?: number };
 }
 
+/** RAG pipeline 元数据（与 rag-enhanced 一致） */
+interface RagPipelineMeta {
+  query: string;
+  filterTitle?: string;
+  confidence: "high" | "low";
+  action: "top10" | "rerank" | "multi_query";
+  actionLabel: string;
+  initialCount: number;
+  finalCount: number;
+  usedRerank: boolean;
+  usedMultiQuery: boolean;
+  usedSelfQuery: boolean;
+}
+
 interface LogItem {
   ts: string;
   msg: string;
   /** 对应的计划描述，用于「计划 + 执行结果」一一映射展示 */
   planDescription?: string;
+  /** 实际搜索的 query（search_knowledge 时） */
+  searchQuery?: string;
+  /** RAG 检索 pipeline 元数据 */
+  pipeline?: RagPipelineMeta;
   chunks?: Array<{
     title?: string;
     content: string;
@@ -126,12 +144,21 @@ function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
         const tc = ev.toolComplete;
         const planDesc = planMap.get(tc.taskId);
         if (tc.toolName === "search_knowledge" && tc.result) {
-          const r = tc.result as { query?: string; results?: unknown[] };
+          const r = tc.result as {
+            query?: string;
+            results?: unknown[];
+            pipeline?: RagPipelineMeta;
+          };
           const chunkList = (r.results ?? []) as NonNullable<LogItem["chunks"]>;
+          const q = r.query?.trim();
           logs.push({
             ts,
-            msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
+            msg: q
+              ? `搜索「${q}」— 找到 ${chunkList.length} 条结果`
+              : `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
             planDescription: planDesc,
+            searchQuery: r.query,
+            pipeline: r.pipeline,
             chunks: chunkList.length > 0 ? chunkList : undefined,
             chunksRelevant: tc.chunksRelevant,
           });
@@ -151,14 +178,23 @@ function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
         ev.toolResults.forEach((tr, idx) => {
           const planDesc = taskIds[idx] ? planMap.get(taskIds[idx]) : undefined;
           if (tr.toolName === "search_knowledge" && tr.result) {
-            const r = tr.result as { query?: string; results?: unknown[] };
+            const r = tr.result as {
+              query?: string;
+              results?: unknown[];
+              pipeline?: RagPipelineMeta;
+            };
             const chunkList = (r.results ?? []) as NonNullable<
               LogItem["chunks"]
             >;
+            const q = r.query?.trim();
             logs.push({
               ts,
-              msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
+              msg: q
+                ? `搜索「${q}」— 找到 ${chunkList.length} 条结果`
+                : `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
               planDescription: planDesc,
+              searchQuery: r.query,
+              pipeline: r.pipeline,
               chunks: chunkList.length > 0 ? chunkList : undefined,
               chunksRelevant: tr.chunksRelevant,
             });
@@ -233,16 +269,25 @@ function buildLogsFromTools(
 ): LogItem[] {
   const logs: LogItem[] = [];
   const ts = fmtTime();
-  for (const t of tools) {
+  tools.forEach((t) => {
     const taskId = t.toolCallId?.replace(/^agent-/, "");
     const planDesc = taskId && planMap?.get(taskId);
     if (t.toolName === "search_knowledge" && t.result) {
-      const r = t.result as { query?: string; results?: unknown[] };
+      const r = t.result as {
+        query?: string;
+        results?: unknown[];
+        pipeline?: RagPipelineMeta;
+      };
       const chunkList = (r.results ?? []) as NonNullable<LogItem["chunks"]>;
+      const q = r.query?.trim();
       logs.push({
         ts,
-        msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
+        msg: q
+          ? `搜索「${q}」— 找到 ${chunkList.length} 条结果`
+          : `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
         planDescription: planDesc,
+        searchQuery: r.query,
+        pipeline: r.pipeline,
         chunks: chunkList.length > 0 ? chunkList : undefined,
       });
     } else if (t.toolName === "execute_query" && t.result) {
@@ -256,7 +301,7 @@ function buildLogsFromTools(
         planDescription: planDesc,
       });
     }
-  }
+  });
   return logs;
 }
 
@@ -594,6 +639,37 @@ export function AgentProgress({
                     )}
                   </span>
                 </div>
+                {item.pipeline && (
+                  <div className="ml-8 flex flex-wrap gap-1.5">
+                    <span className="text-[10px] text-slate-500">检索策略：</span>
+                    {item.pipeline.usedSelfQuery && (
+                      <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px]">
+                        Self-Query
+                      </span>
+                    )}
+                    {item.pipeline.usedRerank && (
+                      <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px]">
+                        Rerank
+                      </span>
+                    )}
+                    {item.pipeline.usedMultiQuery && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">
+                        Multi-Query
+                      </span>
+                    )}
+                    {item.pipeline.action === "top10" && !item.pipeline.usedRerank && !item.pipeline.usedMultiQuery && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-500/20 text-slate-300 text-[10px]">
+                        Top10
+                      </span>
+                    )}
+                    <span
+                      className="text-[10px] text-slate-500"
+                      title={item.pipeline.actionLabel}
+                    >
+                      ({item.pipeline.initialCount}→{item.pipeline.finalCount})
+                    </span>
+                  </div>
+                )}
                 {item.chunks && item.chunks.length > 0 && (
                   <div className="mt-1 ml-0 space-y-1">
                     {item.chunksRelevant === false && (
@@ -604,6 +680,7 @@ export function AgentProgress({
                     )}
                     {item.chunks.slice(0, 5).map((doc, j) => {
                       const pct = Math.round((doc.similarity ?? 0) * 100);
+                      const scoreType = item.pipeline?.usedRerank ? "rerank" as const : "embedding" as const;
                       return (
                         <div
                           key={j}
@@ -613,7 +690,7 @@ export function AgentProgress({
                             <span className="font-medium text-indigo-300/90 truncate min-w-0">
                               {doc.title ?? doc.metadata?.title ?? "未知文件"}
                             </span>
-                            <SimilarityBadge pct={pct} variant="dark" />
+                            <SimilarityBadge pct={pct} variant="dark" scoreType={scoreType} />
                           </div>
                           <p className="text-slate-400 leading-relaxed line-clamp-2">
                             {doc.content}

@@ -6,7 +6,6 @@
  * 4. 低置信度 → Rerank 或 Multi-Query
  * 5. 统一过滤：相似度断崖截断 + 下限过滤，输出 3~10 个高质量 chunk
  */
-import { RunnableSequence, RunnableBranch } from "@langchain/core/runnables";
 import { searchDocuments, type DocResult, type SearchFilter } from "./rag";
 import { parseSelfQuery } from "./self-query";
 import { getDashScopeLLM } from "../llm/llm";
@@ -47,15 +46,28 @@ const DROP_RATIO = parseThreshold(process.env.RAG_DROP_RATIO, 0.7);
 /** 过滤后最少保留的结果数 */
 const MIN_RESULTS = parseInt(process.env.RAG_MIN_RESULTS ?? "3", 10);
 
-export interface RagEnhancedState {
-  userMessage: string;
-  spaceIds: string[];
+/** RAG 检索 pipeline 元数据，用于前端展示 */
+export interface RagPipelineMeta {
+  /** 实际检索 query（Self-Query 解析后） */
   query: string;
-  filter?: SearchFilter;
-  results: DocResult[];
-  scores: number[];
+  /** 是否使用了 filterTitle 限定文档 */
+  filterTitle?: string;
+  /** 置信度：high=直接 top10，low=走 rerank/multi_query */
   confidence: "high" | "low";
+  /** 实际采用的策略 */
   action: "top10" | "rerank" | "multi_query";
+  /** 策略说明（用于 UI 展示） */
+  actionLabel: string;
+  /** 初始召回数 */
+  initialCount: number;
+  /** 过滤后最终数量 */
+  finalCount: number;
+  /** 是否使用了 Rerank（DashScope） */
+  usedRerank: boolean;
+  /** 是否使用了 Multi-Query */
+  usedMultiQuery: boolean;
+  /** 是否使用了 Self-Query 解析 */
+  usedSelfQuery: boolean;
 }
 
 function std(arr: number[]): number {
@@ -272,121 +284,116 @@ function filterByRelevance(docs: DocResult[]): DocResult[] {
   return docs.slice(0, finalCount);
 }
 
-/** 构建 RAG 增强检索链 */
-function buildRagEnhancedChain() {
-  const retrieveAndParse = async (input: {
-    userMessage: string;
-    spaceIds: string[];
-  }): Promise<RagEnhancedState> => {
-    const { userMessage, spaceIds } = input;
-    const { query, filterTitle } = await parseSelfQuery(userMessage);
-    if (!query.trim()) {
-      return {
-        ...input,
-        query: userMessage,
-        results: [],
-        scores: [],
-        confidence: "low",
-        action: "multi_query",
-      };
-    }
-
-    const filter: SearchFilter | undefined = filterTitle
-      ? { filterTitle }
-      : undefined;
-    let results = await searchDocuments(query, TOP_K_INITIAL, spaceIds, filter);
-    if (filter && results.length === 0) {
-      results = await searchDocuments(query, TOP_K_INITIAL, spaceIds);
-    }
-
-    const scores = results.map((r) => r.similarity);
-    const { confidence, action } = computeConfidence(results);
-
-    console.log("[RAG-Enhanced]", {
-      query,
-      resultsCount: results.length,
-      confidence,
-      action,
-      scoreGap: scores.length >= 2 ? scores[0] - scores[1] : 0,
-      scoreStd: std(scores),
-    });
-
-    return {
-      userMessage,
-      spaceIds,
-      query,
-      filter,
-      results,
-      scores,
-      confidence,
-      action,
-    };
-  };
-
-  const useTop10 = (state: RagEnhancedState): DocResult[] =>
-    state.results.slice(0, TOP_K_FINAL);
-
-  const doRerank = async (state: RagEnhancedState): Promise<DocResult[]> => {
-    const hasDashScope = !!process.env.DASHSCOPE_API_KEY;
-    if (!hasDashScope) {
-      console.log("[RAG-Enhanced] DashScope 未配置，rerank 回退到 multi-query");
-      return multiQueryRetrieve(state.query, state.spaceIds, state.filter);
-    }
-    try {
-      return await rerankDocs(state.query, state.results);
-    } catch (e) {
-      console.warn("[RAG-Enhanced] rerank 失败，回退到 multi-query:", e);
-      return multiQueryRetrieve(state.query, state.spaceIds, state.filter);
-    }
-  };
-
-  const doMultiQuery = async (state: RagEnhancedState): Promise<DocResult[]> =>
-    multiQueryRetrieve(state.query, state.spaceIds, state.filter);
-
-  const branch = RunnableBranch.from([
-    [
-      (s: RagEnhancedState) => s.confidence === "high" && s.action === "top10",
-      useTop10,
-    ],
-    [(s: RagEnhancedState) => s.action === "rerank", doRerank],
-    doMultiQuery, // default
-  ]);
-
-  const branchThenFilter = RunnableSequence.from([
-    branch,
-    (docs: DocResult[]) => {
-      const filtered = filterByRelevance(docs);
-      console.log(
-        `[RAG-Enhanced] 过滤: ${docs.length} → ${filtered.length} chunks` +
-          (filtered.length > 0
-            ? ` (similarity ${filtered[0].similarity.toFixed(3)}~${filtered[
-                filtered.length - 1
-              ].similarity.toFixed(3)})`
-            : "")
-      );
-      return filtered;
-    },
-  ]);
-
-  return RunnableSequence.from([retrieveAndParse, branchThenFilter]);
-}
-
-let chainInstance: ReturnType<typeof buildRagEnhancedChain> | null = null;
+const ACTION_LABELS: Record<string, string> = {
+  top10: "高置信度 → 直接取 Top10",
+  rerank: "低置信度 → DashScope Rerank 重排",
+  multi_query: "低置信度 → Multi-Query 多路召回",
+};
 
 /**
  * RAG 增强检索入口：自适应选择 top-10 / Rerank / Multi-Query
+ * 返回 results + pipeline 元数据（供前端展示检索过程）
  */
 export async function searchWithRagEnhanced(
   userMessage: string,
   spaceIds?: string[]
-): Promise<DocResult[]> {
-  if (!chainInstance) {
-    chainInstance = buildRagEnhancedChain();
-  }
+): Promise<{ results: DocResult[]; pipeline?: RagPipelineMeta }> {
   const ids = spaceIds?.length ? spaceIds : [];
-  const result = await chainInstance.invoke({
-    userMessage,
-    spaceIds: ids,
+  const { query, filterTitle } = await parseSelfQuery(userMessage);
+  const usedSelfQuery = !!query?.trim() && query !== userMessage;
+  const finalQuery = query?.trim() || userMessage;
+
+  if (!finalQuery) {
+    return {
+      results: [],
+      pipeline: {
+        query: userMessage,
+        confidence: "low",
+        action: "multi_query",
+        actionLabel: ACTION_LABELS.multi_query,
+        initialCount: 0,
+        finalCount: 0,
+        usedRerank: false,
+        usedMultiQuery: false,
+        usedSelfQuery: false,
+      },
+    };
+  }
+
+  const filter: SearchFilter | undefined = filterTitle
+    ? { filterTitle }
+    : undefined;
+  let results = await searchDocuments(
+    finalQuery,
+    TOP_K_INITIAL,
+    ids,
+    filter
+  );
+  if (filter && results.length === 0) {
+    results = await searchDocuments(finalQuery, TOP_K_INITIAL, ids);
+  }
+
+  const scores = results.map((r) => r.similarity);
+  const { confidence, action } = computeConfidence(results);
+
+  console.log("[RAG-Enhanced]", {
+    query: finalQuery,
+    resultsCount: results.length,
+    confidence,
+    action,
+    scoreGap: scores.length >= 2 ? scores[0] - scores[1] : 0,
+    scoreStd: std(scores),
   });
-  return Array.isArray(result) ? result : [];
+
+  let docs: DocResult[];
+  let usedRerank = false;
+  let usedMultiQuery = false;
+
+  if (confidence === "high" && action === "top10") {
+    docs = results.slice(0, TOP_K_FINAL);
+  } else if (action === "rerank") {
+    const hasDashScope = !!process.env.DASHSCOPE_API_KEY;
+    if (!hasDashScope) {
+      console.log("[RAG-Enhanced] DashScope 未配置，rerank 回退到 multi-query");
+      docs = await multiQueryRetrieve(finalQuery, ids, filter);
+      usedMultiQuery = true;
+    } else {
+      try {
+        docs = await rerankDocs(finalQuery, results);
+        usedRerank = true;
+      } catch (e) {
+        console.warn("[RAG-Enhanced] rerank 失败，回退到 multi-query:", e);
+        docs = await multiQueryRetrieve(finalQuery, ids, filter);
+        usedMultiQuery = true;
+      }
+    }
+  } else {
+    docs = await multiQueryRetrieve(finalQuery, ids, filter);
+    usedMultiQuery = true;
+  }
+
+  const filtered = filterByRelevance(docs);
+  console.log(
+    `[RAG-Enhanced] 过滤: ${docs.length} → ${filtered.length} chunks` +
+      (filtered.length > 0
+        ? ` (similarity ${filtered[0].similarity.toFixed(3)}~${filtered[
+            filtered.length - 1
+          ].similarity.toFixed(3)})`
+        : "")
+  );
+
+  const pipeline: RagPipelineMeta = {
+    query: finalQuery,
+    filterTitle: filterTitle || undefined,
+    confidence,
+    action,
+    actionLabel: ACTION_LABELS[action] ?? action,
+    initialCount: results.length,
+    finalCount: filtered.length,
+    usedRerank,
+    usedMultiQuery,
+    usedSelfQuery,
+  };
+
+  return { results: filtered, pipeline };
 }

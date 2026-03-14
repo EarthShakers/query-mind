@@ -2,7 +2,10 @@
  * Agent 工具函数：包装现有 RAG、SQL 逻辑供 agent graph 调用
  */
 import { queryUserData } from "@/lib/data/pg";
-import { searchWithRagEnhanced } from "@/lib/rag/rag-enhanced";
+import {
+  searchWithRagEnhanced,
+  type RagPipelineMeta,
+} from "@/lib/rag/rag-enhanced";
 
 export interface SearchKnowledgeResult {
   query: string;
@@ -11,6 +14,8 @@ export interface SearchKnowledgeResult {
     similarity: number;
     metadata?: Record<string, unknown>;
   }>;
+  /** RAG 检索 pipeline 元数据，用于前端展示 */
+  pipeline?: RagPipelineMeta;
   error?: string;
 }
 
@@ -20,7 +25,7 @@ export async function agentSearchKnowledge(
   userMessage?: string
 ): Promise<SearchKnowledgeResult> {
   try {
-    const ragResult = await searchWithRagEnhanced(
+    const { results: ragResult, pipeline } = await searchWithRagEnhanced(
       userMessage || query,
       spaceIds
     );
@@ -33,6 +38,7 @@ export async function agentSearchKnowledge(
         summary: r.summary,
         metadata: { title: r.title, summary: r.summary },
       })),
+      pipeline,
     };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
