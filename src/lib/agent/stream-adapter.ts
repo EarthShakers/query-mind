@@ -3,12 +3,36 @@
  *
  * 关键改动：使用 graph.stream() 实时推送节点进度，前端可展示真实的规划/执行/综合过程
  */
-import { streamText, formatStreamPart } from "ai";
+import { streamText, formatStreamPart, generateObject } from "ai";
+import { z } from "zod";
 import { dashscopeProvider } from "@/lib/llm/llm";
 import { MODEL_LIGHT } from "@/lib/llm/models";
 import { buildAgentGraph } from "@/lib/agent/agent-graph";
 import type { CoreMessage } from "ai";
 import type { SubTask } from "@/lib/agent/state";
+
+/** 大模型判断检索 chunks 是否与用户问题相关 */
+async function judgeChunksRelevance(
+  userQuery: string,
+  chunks: Array<{ content?: string; summary?: string; similarity?: number }>
+): Promise<boolean> {
+  if (!chunks?.length) return true;
+  const summaries = chunks
+    .slice(0, 5)
+    .map((c, i) => `[${i + 1}] ${(c.summary ?? c.content ?? "").slice(0, 150)}...`)
+    .join("\n");
+  try {
+    const { object } = await generateObject({
+      model: dashscopeProvider(MODEL_LIGHT),
+      schema: z.object({ relevant: z.boolean() }),
+      prompt: `用户问题：${userQuery}\n\n检索到的片段：\n${summaries}\n\n这些片段与用户问题是否相关？回答 true 或 false。`,
+      maxTokens: 16,
+    });
+    return object.relevant;
+  } catch {
+    return true; // 判断失败默认视为相关
+  }
+}
 
 export interface AgentStreamInput {
   userMessage: string;
@@ -27,6 +51,8 @@ export interface AgentProgressEvent {
   strategy?: string;
   subTasks?: { id: string; tool: string; description: string }[];
   toolSummary?: { id: string; kind: string; count: number; error?: string }[];
+  /** execute 节点的完整 tool 结果，含 chunks，用于实时展示 */
+  toolResults?: Array<{ toolName: string; result: unknown; chunksRelevant?: boolean }>;
 }
 
 /**
@@ -69,6 +95,41 @@ function buildToolStreamParts(
 export async function createAgentStreamResponse(input: AgentStreamInput) {
   const graph = buildAgentGraph();
 
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+
+  const streamWriter = async (event: unknown) => {
+    const e = event as {
+      type?: string;
+      node?: string;
+      ts?: string;
+      toolComplete?: { taskId: string; toolName: string; result: unknown };
+    };
+    if (!e?.toolComplete) return;
+    const { taskId, toolName, result } = e.toolComplete;
+    let chunksRelevant: boolean | undefined;
+    if (
+      toolName === "search_knowledge" &&
+      Array.isArray((result as { results?: unknown[] }).results)
+    ) {
+      const chunks = (result as { results?: unknown[] }).results ?? [];
+      chunksRelevant = await judgeChunksRelevance(
+        input.userMessage,
+        chunks as Array<{ content?: string; summary?: string; similarity?: number }>
+      );
+    }
+    const progress = {
+      type: "agent_progress",
+      node: "execute",
+      ts: e.ts ?? new Date().toISOString(),
+      toolComplete: { taskId, toolName, result, chunksRelevant },
+    };
+    await writer.write(
+      encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
+    );
+  };
+
   const initialState = {
     userMessage: input.userMessage,
     conversationHistory: input.conversationHistory,
@@ -76,11 +137,8 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
     tableSchemas: input.tableSchemas,
     enableKnowledge: input.enableKnowledge,
     enableQuery: input.enableQuery,
+    streamWriter,
   };
-
-  const encoder = new TextEncoder();
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
 
   // 异步执行 agent 管线，边执行边推送进度
   (async () => {
@@ -106,53 +164,76 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
         }
         if (nodeData.finalAnswer) finalAnswer = nodeData.finalAnswer as string;
 
-        // 构建进度事件
-        const progress: Record<string, unknown> = {
-          type: "agent_progress",
-          node: nodeName,
-          ts: new Date().toISOString(),
-        };
-
         if (nodeName === "planning" && plan) {
-          progress.strategy = plan.strategy;
-          progress.subTasks = (plan.sub_tasks ?? []).map((t) => ({
-            id: t.id,
-            tool: t.tool,
-            description: t.description,
-          }));
-        }
+          // 逐条推送计划子任务，搜索到一条展示一个
+          const tasks = plan.sub_tasks ?? [];
+          if (plan.strategy) {
+            await writer.write(
+              encoder.encode(
+                formatStreamPart("data", [
+                  JSON.parse(
+                    JSON.stringify({
+                      type: "agent_progress",
+                      node: "planning",
+                      ts: new Date().toISOString(),
+                      strategy: plan.strategy,
+                    })
+                  ),
+                ])
+              )
+            );
+          }
+          for (const t of tasks) {
+            await writer.write(
+              encoder.encode(
+                formatStreamPart("data", [
+                  JSON.parse(
+                    JSON.stringify({
+                      type: "agent_progress",
+                      node: "planning",
+                      ts: new Date().toISOString(),
+                      strategy: plan.strategy,
+                      planTask: { id: t.id, tool: t.tool, description: t.description },
+                    })
+                  ),
+                ])
+              )
+            );
+          }
+        } else if (nodeName === "execute") {
+          // toolComplete 已由 streamWriter 逐条推送，此处只推送最小事件标记 execute 完成
+          const progress: Record<string, unknown> = {
+            type: "agent_progress",
+            node: "execute",
+            ts: new Date().toISOString(),
+          };
+          await writer.write(
+            encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
+          );
 
-        if (nodeName === "execute") {
-          progress.toolSummary = Object.entries(toolResults).map(([id, r]) => {
-            const res = r as Record<string, unknown>;
-            if (Array.isArray(res?.results)) {
-              return { id, kind: "search", count: (res.results as unknown[]).length };
+          // 注入 tool_call + tool_result
+          if (plan?.sub_tasks?.length) {
+            const toolParts = buildToolStreamParts(plan, toolResults);
+            for (const part of toolParts) {
+              await writer.write(encoder.encode(part));
             }
-            if (Array.isArray(res?.data)) {
-              return {
-                id,
-                kind: "query",
-                count: (res.data as unknown[]).length,
-                error: res.error as string | undefined,
-              };
-            }
-            return { id, kind: "other", count: 0 };
-          });
+          }
+        } else {
+          // synthesize / validate 等
+          const progress: Record<string, unknown> = {
+            type: "agent_progress",
+            node: nodeName,
+            ts: new Date().toISOString(),
+          };
+          await writer.write(
+            encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
+          );
         }
-
-        // 推送到客户端
-        await writer.write(
-          encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
-        );
       }
 
       finalAnswer = finalAnswer?.trim() || "抱歉，处理时遇到问题，请稍后重试。";
 
-      // ── Phase 2: 注入 tool_call + tool_result ──
-      const toolParts = buildToolStreamParts(plan, toolResults);
-      for (const part of toolParts) {
-        await writer.write(encoder.encode(part));
-      }
+      // Phase 2 已移至 execute 节点完成时实时推送，此处不再重复注入
 
       // ── Phase 3: 流式输出最终回答 ──
       const result = await streamText({

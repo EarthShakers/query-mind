@@ -11,12 +11,25 @@ interface ProgressEvent {
   ts: string;
   strategy?: string;
   subTasks?: { id: string; tool: string; description: string }[];
+  /** 逐条推送的计划子任务 */
+  planTask?: { id: string; tool: string; description: string };
   toolSummary?: { id: string; kind: string; count: number; error?: string }[];
+  /** execute 节点含完整 tool 结果（含 chunks），chunksRelevant 为大模型判断（批量，兼容旧格式） */
+  toolResults?: Array<{ toolName: string; result: unknown; chunksRelevant?: boolean }>;
+  /** 逐条推送的工具完成事件 */
+  toolComplete?: {
+    taskId: string;
+    toolName: string;
+    result: unknown;
+    chunksRelevant?: boolean;
+  };
 }
 
 interface LogItem {
   ts: string;
   msg: string;
+  /** 对应的计划描述，用于「计划 + 执行结果」一一映射展示 */
+  planDescription?: string;
   chunks?: Array<{
     title?: string;
     content: string;
@@ -24,6 +37,8 @@ interface LogItem {
     summary?: string;
     metadata?: { title?: string };
   }>;
+  /** 大模型判断：chunks 是否与用户问题相关 */
+  chunksRelevant?: boolean;
 }
 
 interface AgentProgressProps {
@@ -31,8 +46,8 @@ interface AgentProgressProps {
   isActive?: boolean;
   /** 后端实时推送的进度事件 */
   progressEvents?: ProgressEvent[];
-  /** 完成后的 tool 结果（用于展示知识库 chunks） */
-  executionTools?: Array<{ toolName: string; result?: unknown }>;
+  /** 完成后的 tool 结果（用于展示知识库 chunks），toolCallId 用于与计划映射 */
+  executionTools?: Array<{ toolName: string; result?: unknown; toolCallId?: string }>;
 }
 
 const NODE_TO_STEP: Record<string, number> = {
@@ -56,34 +71,105 @@ function fmtTime(iso?: string) {
   ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
 }
 
-/** 从进度事件构建日志 */
+/** 从进度事件构建日志（计划与执行结果一一映射、顺序排列） */
 function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
   const logs: LogItem[] = [];
+  const planMap = new Map<string, string>(); // taskId -> plan description
+
   for (const ev of events) {
     const ts = fmtTime(ev.ts);
     if (ev.node === "planning") {
-      if (ev.strategy) {
+      if (ev.strategy && !ev.planTask) {
         logs.push({ ts, msg: `分析策略：${ev.strategy}` });
       }
-      if (ev.subTasks?.length) {
+      if (ev.planTask) {
+        planMap.set(ev.planTask.id, ev.planTask.description);
+      } else if (ev.subTasks?.length) {
+        for (const t of ev.subTasks) {
+          planMap.set(t.id, t.description);
+        }
+      }
+      // 有 toolComplete 时不再单独展示计划，计划会随执行结果一起展示（一一映射）
+      if (ev.planTask && !events.some((e) => e.toolComplete)) {
+        logs.push({ ts, msg: `计划：${ev.planTask.description}` });
+      } else if (ev.subTasks?.length && !events.some((e) => e.toolComplete)) {
         for (const t of ev.subTasks) {
           logs.push({ ts, msg: `计划：${t.description}` });
         }
       } else if (ev.subTasks) {
         logs.push({ ts, msg: "该问题无需查询工具，直接分析回答。" });
       }
-    } else if (ev.node === "execute" && ev.toolSummary) {
-      for (const t of ev.toolSummary) {
-        if (t.kind === "search") {
-          logs.push({ ts, msg: `搜索相关文档，找到 ${t.count} 条结果` });
-        } else if (t.kind === "query") {
+    } else if (ev.node === "execute") {
+      if (ev.toolComplete) {
+        const tc = ev.toolComplete;
+        const planDesc = planMap.get(tc.taskId);
+        if (tc.toolName === "search_knowledge" && tc.result) {
+          const r = tc.result as { query?: string; results?: unknown[] };
+          const chunkList = (r.results ?? []) as NonNullable<LogItem["chunks"]>;
           logs.push({
             ts,
-            msg: t.error
-              ? `数据查询失败：${t.error}`
-              : `查询数据表，返回 ${t.count} 条记录`,
+            msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
+            planDescription: planDesc,
+            chunks: chunkList.length > 0 ? chunkList : undefined,
+            chunksRelevant: tc.chunksRelevant,
+          });
+        } else if (tc.toolName === "execute_query" && tc.result) {
+          const r = tc.result as { data?: unknown[]; error?: string };
+          const count = r.error ? 0 : r.data?.length ?? 0;
+          logs.push({
+            ts,
+            msg: r.error
+              ? `数据查询失败：${r.error}`
+              : `查询数据表，返回 ${count} 条记录`,
+            planDescription: planDesc,
           });
         }
+      } else if (ev.toolResults?.length && planMap.size > 0) {
+        const taskIds = Array.from(planMap.keys());
+        ev.toolResults.forEach((tr, idx) => {
+          const planDesc = taskIds[idx] ? planMap.get(taskIds[idx]) : undefined;
+          if (tr.toolName === "search_knowledge" && tr.result) {
+            const r = tr.result as { query?: string; results?: unknown[] };
+            const chunkList = (r.results ?? []) as NonNullable<LogItem["chunks"]>;
+            logs.push({
+              ts,
+              msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
+              planDescription: planDesc,
+              chunks: chunkList.length > 0 ? chunkList : undefined,
+              chunksRelevant: tr.chunksRelevant,
+            });
+          } else if (tr.toolName === "execute_query" && tr.result) {
+            const r = tr.result as { data?: unknown[]; error?: string };
+            const count = r.error ? 0 : r.data?.length ?? 0;
+            logs.push({
+              ts,
+              msg: r.error
+                ? `数据查询失败：${r.error}`
+                : `查询数据表，返回 ${count} 条记录`,
+              planDescription: planDesc,
+            });
+          }
+        });
+      } else if (ev.toolSummary) {
+        const taskIds = Array.from(planMap.keys());
+        ev.toolSummary.forEach((t, idx) => {
+          const planDesc = taskIds[idx] ? planMap.get(taskIds[idx]) : undefined;
+          if (t.kind === "search") {
+            logs.push({
+              ts,
+              msg: `搜索相关文档，找到 ${t.count} 条结果`,
+              planDescription: planDesc,
+            });
+          } else if (t.kind === "query") {
+            logs.push({
+              ts,
+              msg: t.error
+                ? `数据查询失败：${t.error}`
+                : `查询数据表，返回 ${t.count} 条记录`,
+              planDescription: planDesc,
+            });
+          }
+        });
       }
     } else if (ev.node === "synthesize") {
       logs.push({ ts, msg: "正在整合分析结果，生成回答..." });
@@ -94,19 +180,35 @@ function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
   return logs;
 }
 
-/** 完成后从 tool 结果构建日志（含 chunks） */
+/** 从 progressEvents 提取 planMap（taskId -> description） */
+function buildPlanMap(events: ProgressEvent[]): Map<string, string> {
+  const planMap = new Map<string, string>();
+  for (const ev of events) {
+    if (ev.planTask) planMap.set(ev.planTask.id, ev.planTask.description);
+    else if (ev.subTasks?.length) {
+      for (const t of ev.subTasks) planMap.set(t.id, t.description);
+    }
+  }
+  return planMap;
+}
+
+/** 完成后从 tool 结果构建日志（含 chunks，支持计划映射） */
 function buildLogsFromTools(
-  tools: Array<{ toolName: string; result?: unknown }>
+  tools: Array<{ toolName: string; result?: unknown; toolCallId?: string }>,
+  planMap?: Map<string, string>
 ): LogItem[] {
   const logs: LogItem[] = [];
   const ts = fmtTime();
   for (const t of tools) {
+    const taskId = t.toolCallId?.replace(/^agent-/, "");
+    const planDesc = taskId && planMap?.get(taskId);
     if (t.toolName === "search_knowledge" && t.result) {
       const r = t.result as { query?: string; results?: unknown[] };
       const chunkList = (r.results ?? []) as NonNullable<LogItem["chunks"]>;
       logs.push({
         ts,
         msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
+        planDescription: planDesc,
         chunks: chunkList.length > 0 ? chunkList : undefined,
       });
     } else if (t.toolName === "execute_query" && t.result) {
@@ -117,6 +219,7 @@ function buildLogsFromTools(
         msg: r.error
           ? `数据查询失败：${r.error}`
           : `查询数据表，返回 ${count} 条记录`,
+        planDescription: planDesc,
       });
     }
   }
@@ -154,15 +257,18 @@ export function AgentProgress({
   // ── 从事件构建日志（保留所有，不合并）──
   const logs = useMemo<LogItem[]>(() => {
     const ts = fmtTime();
+    const hasToolComplete = progressEvents.some((ev) => ev.toolComplete != null);
     if (progressEvents.length > 0) {
       const eventLogs = buildLogsFromEvents(progressEvents);
-      if (!isActive && executionTools?.length) {
-        const toolLogs = buildLogsFromTools(executionTools);
+      // 已有 toolComplete 时不再追加 executionTools，避免重复展示且无 chunksRelevant
+      if (!isActive && executionTools?.length && !hasToolComplete) {
+        const planMap = buildPlanMap(progressEvents);
+        const toolLogs = buildLogsFromTools(executionTools, planMap);
         return [...eventLogs, ...toolLogs];
       }
       return eventLogs;
     }
-    if (!isActive && executionTools?.length) {
+    if (!isActive && executionTools?.length && !hasToolComplete) {
       const toolLogs = buildLogsFromTools(executionTools);
       return [
         { ts, msg: "已解析用户问题，拆解子任务。" },
@@ -308,7 +414,7 @@ export function AgentProgress({
 
       <div className="flex flex-col md:flex-row min-h-[420px] max-h-[60vh] overflow-hidden">
         {/* Agent 核心 — 变形 avatar */}
-        <div className="flex flex-col items-center justify-center w-52 min-w-52 max-w-52 px-8 py-8 border-b md:border-b-0 md:border-r border-white/10 shrink-0">
+        <div className="flex flex-col items-center justify-center w-80 min-w-80 max-w-80 px-8 py-8 border-b md:border-b-0 md:border-r border-white/10 shrink-0">
           <div className="w-24 h-24 mx-auto mb-4 relative">
             <div
               className={`w-full h-full rounded-[30%_70%_70%_30%_/_30%_30%_70%_70%] ${styles.avatarMorph}`}
@@ -327,7 +433,7 @@ export function AgentProgress({
               <p className="text-[11px] text-indigo-400/90 mb-1.5 tracking-wide">
                 当前目标：
               </p>
-              <p className="text-sm text-slate-300 leading-relaxed line-clamp-3">
+              <p className="text-sm text-slate-300 leading-relaxed">
                 {userQuery}
               </p>
             </div>
@@ -434,10 +540,26 @@ export function AgentProgress({
                   <span className="text-indigo-400/90 shrink-0 font-semibold text-xs">
                     [{item.ts}]
                   </span>
-                  <span className="text-slate-300 text-sm">{item.msg}</span>
+                  <span className="text-slate-300 text-sm">
+                    {item.planDescription ? (
+                      <>
+                        <span className="text-indigo-300/90">计划：{item.planDescription}</span>
+                        <span className="mx-1.5 text-slate-500">→</span>
+                        <span>{item.msg}</span>
+                      </>
+                    ) : (
+                      item.msg
+                    )}
+                  </span>
                 </div>
                 {item.chunks && item.chunks.length > 0 && (
                   <div className="mt-1 ml-0 space-y-1">
+                    {item.chunksRelevant === false && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400/90 text-[10px]">
+                        <span>⚠️</span>
+                        <span>相关度较低，仅供参考</span>
+                      </div>
+                    )}
                     {item.chunks.slice(0, 5).map((doc, j) => (
                       <div
                         key={j}
@@ -448,7 +570,7 @@ export function AgentProgress({
                             {doc.title ?? doc.metadata?.title ?? "未知文件"}
                           </span>
                           <span className="text-slate-400 shrink-0">
-                            {Math.round(doc.similarity * 100)}%
+                            {Math.round((doc.similarity ?? 0) * 100)}%
                           </span>
                         </div>
                         <p className="text-slate-400 leading-relaxed line-clamp-2">

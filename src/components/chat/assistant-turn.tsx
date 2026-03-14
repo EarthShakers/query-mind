@@ -268,7 +268,11 @@ export function AssistantTurn({
                   progressEvents={agentProgressEvents}
                   executionTools={allTools
                     .filter((t) => t.state === "result")
-                    .map((t) => ({ toolName: t.toolName, result: t.result }))}
+                    .map((t) => ({
+                      toolName: t.toolName,
+                      result: t.result,
+                      toolCallId: t.toolCallId,
+                    }))}
                 />
               ) : isStillThinking ? (
                 <div className="flex items-center gap-2 py-1.5 text-xs">

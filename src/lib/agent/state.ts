@@ -55,6 +55,12 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
   retries: Annotation<number>({ reducer: (_, v) => v, default: () => 0 }),
+
+  /** 流式推送回调，execute 节点每完成一个工具即调用 */
+  streamWriter: Annotation<((event: unknown) => Promise<void>) | undefined>({
+    reducer: (_, v) => v,
+    default: () => undefined,
+  }),
 });
 
 export type AgentStateType = typeof AgentState.State;

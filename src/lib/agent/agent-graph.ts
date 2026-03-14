@@ -157,6 +157,12 @@ async function executeNode(state: AgentStateType) {
       );
       toolResults[task.id] = result;
       completedSteps.push(`search_knowledge:${task.id}`);
+      await state.streamWriter?.({
+        type: "agent_progress",
+        node: "execute",
+        ts: new Date().toISOString(),
+        toolComplete: { taskId: task.id, toolName: task.tool, result },
+      });
     } else if (task.tool === "execute_query") {
       if (!task.sql) {
         // LLM 未输出 sql，fallback 到 search_knowledge
@@ -167,6 +173,12 @@ async function executeNode(state: AgentStateType) {
         );
         toolResults[task.id] = { ...fallback, _fallback: true, _reason: "no_sql" };
         completedSteps.push(`search_knowledge:${task.id}(fallback)`);
+        await state.streamWriter?.({
+          type: "agent_progress",
+          node: "execute",
+          ts: new Date().toISOString(),
+          toolComplete: { taskId: task.id, toolName: "search_knowledge", result: fallback },
+        });
       } else {
         const result = await agentExecuteQuery(task.sql);
         if (
@@ -185,9 +197,21 @@ async function executeNode(state: AgentStateType) {
             _originalError: result.error,
           };
           completedSteps.push(`search_knowledge:${task.id}(fallback)`);
+          await state.streamWriter?.({
+            type: "agent_progress",
+            node: "execute",
+            ts: new Date().toISOString(),
+            toolComplete: { taskId: task.id, toolName: "search_knowledge", result: fallback },
+          });
         } else {
           toolResults[task.id] = result;
           completedSteps.push(`execute_query:${task.id}`);
+          await state.streamWriter?.({
+            type: "agent_progress",
+            node: "execute",
+            ts: new Date().toISOString(),
+            toolComplete: { taskId: task.id, toolName: "execute_query", result },
+          });
         }
       }
     }
