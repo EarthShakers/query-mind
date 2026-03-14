@@ -50,6 +50,10 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
   finalAnswer: Annotation<string>({ reducer: (_, v) => v, default: () => "" }),
+  /** 验证失败时的重试提示，传给 synthesize */
+  validationFeedback: Annotation<string>({ reducer: (_, v) => v, default: () => "" }),
+  /** 验证是否全部通过，用于条件边 */
+  validationPassed: Annotation<boolean>({ reducer: (_, v) => v, default: () => true }),
   errors: Annotation<string[]>({
     reducer: (a, b) => [...(a ?? []), ...(b ?? [])],
     default: () => [],

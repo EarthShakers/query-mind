@@ -68,7 +68,8 @@ export const synthesizePrompt = ChatPromptTemplate.fromMessages([
     `用户问题：{userMessage}
 
 工具执行结果：
-{toolResults}`,
+{toolResults}
+{validationFeedback}`,
   ],
 ]);
 

@@ -15,7 +15,11 @@ interface ProgressEvent {
   planTask?: { id: string; tool: string; description: string };
   toolSummary?: { id: string; kind: string; count: number; error?: string }[];
   /** execute 节点含完整 tool 结果（含 chunks），chunksRelevant 为大模型判断（批量，兼容旧格式） */
-  toolResults?: Array<{ toolName: string; result: unknown; chunksRelevant?: boolean }>;
+  toolResults?: Array<{
+    toolName: string;
+    result: unknown;
+    chunksRelevant?: boolean;
+  }>;
   /** 逐条推送的工具完成事件 */
   toolComplete?: {
     taskId: string;
@@ -23,6 +27,8 @@ interface ProgressEvent {
     result: unknown;
     chunksRelevant?: boolean;
   };
+  /** 验证输出：逐项得分 0-100 */
+  validationCheck?: { name: string; score?: number };
 }
 
 interface LogItem {
@@ -39,6 +45,8 @@ interface LogItem {
   }>;
   /** 大模型判断：chunks 是否与用户问题相关 */
   chunksRelevant?: boolean;
+  /** 验证得分（展示 校验名: 85） */
+  validationCheck?: { name: string; score?: number };
 }
 
 interface AgentProgressProps {
@@ -47,7 +55,11 @@ interface AgentProgressProps {
   /** 后端实时推送的进度事件 */
   progressEvents?: ProgressEvent[];
   /** 完成后的 tool 结果（用于展示知识库 chunks），toolCallId 用于与计划映射 */
-  executionTools?: Array<{ toolName: string; result?: unknown; toolCallId?: string }>;
+  executionTools?: Array<{
+    toolName: string;
+    result?: unknown;
+    toolCallId?: string;
+  }>;
 }
 
 const NODE_TO_STEP: Record<string, number> = {
@@ -60,7 +72,7 @@ const NODE_TO_STEP: Record<string, number> = {
 const STEPS = [
   { id: "planning", label: "分析问题" },
   { id: "execute", label: "检索查询" },
-  { id: "synthesize", label: "深度分析" },
+  { id: "synthesize", label: "聚合结果" },
   { id: "validate", label: "验证输出" },
 ];
 
@@ -70,6 +82,15 @@ function fmtTime(iso?: string) {
     d.getMinutes()
   ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
 }
+
+/** 校验指标对应 icon */
+const VALIDATION_ICONS: Record<string, string> = {
+  完整性: "📄",
+  覆盖度: "📋",
+  数据一致性: "📊",
+  相关性: "🎯",
+  格式: "📐",
+};
 
 /** 从进度事件构建日志（计划与执行结果一一映射、顺序排列） */
 function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
@@ -130,7 +151,9 @@ function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
           const planDesc = taskIds[idx] ? planMap.get(taskIds[idx]) : undefined;
           if (tr.toolName === "search_knowledge" && tr.result) {
             const r = tr.result as { query?: string; results?: unknown[] };
-            const chunkList = (r.results ?? []) as NonNullable<LogItem["chunks"]>;
+            const chunkList = (r.results ?? []) as NonNullable<
+              LogItem["chunks"]
+            >;
             logs.push({
               ts,
               msg: `搜索相关文档 — 找到 ${chunkList.length} 条结果`,
@@ -174,7 +197,17 @@ function buildLogsFromEvents(events: ProgressEvent[]): LogItem[] {
     } else if (ev.node === "synthesize") {
       logs.push({ ts, msg: "正在整合分析结果，生成回答..." });
     } else if (ev.node === "validate") {
-      logs.push({ ts, msg: "验证回答完整性，输出最终答案。" });
+      if (ev.validationCheck) {
+        const score = ev.validationCheck.score ?? 0;
+        const icon = VALIDATION_ICONS[ev.validationCheck.name] ?? "•";
+        logs.push({
+          ts,
+          msg: `${icon} ${ev.validationCheck.name}: ${score} 分`,
+          validationCheck: { name: ev.validationCheck.name, score },
+        });
+      } else {
+        logs.push({ ts, msg: "校验完毕，输出最终回答。" });
+      }
     }
   }
   return logs;
@@ -257,7 +290,9 @@ export function AgentProgress({
   // ── 从事件构建日志（保留所有，不合并）──
   const logs = useMemo<LogItem[]>(() => {
     const ts = fmtTime();
-    const hasToolComplete = progressEvents.some((ev) => ev.toolComplete != null);
+    const hasToolComplete = progressEvents.some(
+      (ev) => ev.toolComplete != null
+    );
     if (progressEvents.length > 0) {
       const eventLogs = buildLogsFromEvents(progressEvents);
       // 已有 toolComplete 时不再追加 executionTools，避免重复展示且无 chunksRelevant
@@ -540,10 +575,16 @@ export function AgentProgress({
                   <span className="text-indigo-400/90 shrink-0 font-semibold text-xs">
                     [{item.ts}]
                   </span>
-                  <span className="text-slate-300 text-sm">
+                  <span
+                    className={`text-sm ${
+                      item.validationCheck ? "text-indigo-300/90" : "text-slate-300"
+                    }`}
+                  >
                     {item.planDescription ? (
                       <>
-                        <span className="text-indigo-300/90">计划：{item.planDescription}</span>
+                        <span className="text-indigo-300/90">
+                          计划：{item.planDescription}
+                        </span>
                         <span className="mx-1.5 text-slate-500">→</span>
                         <span>{item.msg}</span>
                       </>

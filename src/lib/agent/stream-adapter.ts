@@ -105,7 +105,26 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       node?: string;
       ts?: string;
       toolComplete?: { taskId: string; toolName: string; result: unknown };
+      validationCheck?: { name: string; score?: number; passed?: boolean; message?: string };
     };
+    if (e?.validationCheck) {
+      const vc = e.validationCheck;
+      await writer.write(
+        encoder.encode(
+          formatStreamPart("data", [
+            JSON.parse(
+              JSON.stringify({
+                type: "agent_progress",
+                node: "validate",
+                ts: e.ts ?? new Date().toISOString(),
+                validationCheck: { name: vc.name, score: vc.score },
+              })
+            ),
+          ])
+        )
+      );
+      return;
+    }
     if (!e?.toolComplete) return;
     const { taskId, toolName, result } = e.toolComplete;
     let chunksRelevant: boolean | undefined;

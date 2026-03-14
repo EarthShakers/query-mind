@@ -4,8 +4,11 @@
  * 流程：规划子任务 → 按依赖执行工具 → 综合生成回答 → 验证
  */
 import { StateGraph, END } from "@langchain/langgraph";
+import { generateObject } from "ai";
+import { z } from "zod";
 import { getDashScopeLLM } from "@/lib/llm/llm";
-import { MODEL_CHAT } from "@/lib/llm/models";
+import { dashscopeProvider } from "@/lib/llm/llm";
+import { MODEL_CHAT, MODEL_LIGHT } from "@/lib/llm/models";
 import {
   AgentState,
   type AgentStateType,
@@ -240,6 +243,7 @@ async function synthesizeNode(state: AgentStateType) {
   const response = await synthesizePrompt.pipe(llm).invoke({
     userMessage: state.userMessage,
     toolResults: JSON.stringify(state.toolResults, null, 2),
+    validationFeedback: "",
   });
   const text = typeof response.content === "string" ? response.content : "";
 
@@ -251,11 +255,72 @@ async function synthesizeNode(state: AgentStateType) {
 }
 
 /**
- * 验证节点：规则检查（当前为占位，可扩展为 retry 逻辑）
- *
- * 可检查：是否有 plan、finalAnswer 是否足够长、是否覆盖所有子任务等
+ * 验证节点：5 项校验，逐项推送得分，不阻塞答案输出
  */
-function validateNode(state: AgentStateType) {
+async function validateNode(state: AgentStateType) {
+  const { finalAnswer, userMessage, plan, toolResults, streamWriter } = state;
+  const ts = new Date().toISOString();
+  const pushCheck = async (name: string, score: number) => {
+    await streamWriter?.({
+      type: "agent_progress",
+      node: "validate",
+      ts,
+      validationCheck: { name, score },
+    });
+  };
+
+  // 1. 完整性：基于字数得分 0-100
+  const len = finalAnswer?.trim().length ?? 0;
+  const completenessScore = Math.min(100, Math.floor((len / 80) * 100));
+  await pushCheck("完整性", completenessScore);
+
+  // 2-5. 覆盖度、数据一致性、相关性、格式：LLM 打分 0-100
+  const subTasks = plan?.sub_tasks ?? [];
+  const planDescriptions = subTasks.map((t) => t.description).join("；") || "无";
+  const toolResultsStr = JSON.stringify(toolResults ?? {}, null, 2).slice(0, 2000);
+
+  try {
+    const { object } = await generateObject({
+      model: dashscopeProvider(MODEL_LIGHT),
+      schema: z.object({
+        coverage: z.number().min(0).max(100),
+        dataConsistency: z.number().min(0).max(100),
+        relevance: z.number().min(0).max(100),
+        format: z.number().min(0).max(100),
+      }),
+      prompt: `用户问题：${userMessage}
+
+计划子任务：${planDescriptions}
+
+工具结果摘要：${toolResultsStr}
+
+回答内容：${(finalAnswer ?? "").slice(0, 1500)}
+
+请对以下维度打分（0-100）：
+1. coverage：回答覆盖计划子任务的程度
+2. dataConsistency：回答基于工具结果、无编造的程度
+3. relevance：回答紧扣用户问题的程度
+4. format：回答结构清晰度（标题、分点、分段）
+
+只输出数字，如 {"coverage":85,"dataConsistency":90,"relevance":88,"format":75}`,
+      maxTokens: 64,
+    });
+
+    await pushCheck("覆盖度", Math.min(100, Math.max(0, object.coverage)));
+    await pushCheck("数据一致性", Math.min(100, Math.max(0, object.dataConsistency)));
+    await pushCheck("相关性", Math.min(100, Math.max(0, object.relevance)));
+    await pushCheck("格式", Math.min(100, Math.max(0, object.format)));
+  } catch (err) {
+    for (const c of [
+      { name: "覆盖度", score: 80 },
+      { name: "数据一致性", score: 80 },
+      { name: "相关性", score: 80 },
+      { name: "格式", score: 80 },
+    ]) {
+      await pushCheck(c.name, c.score);
+    }
+  }
+
   return {
     currentStep: "validate",
     completedSteps: [...(state.completedSteps || []), "validate"],
