@@ -493,10 +493,10 @@ export function AgentProgress({
         </span>
       </div>
 
-      <div className="flex flex-col md:flex-row min-h-[420px] max-h-[60vh] overflow-hidden">
-        {/* Agent 核心 — 变形 avatar */}
-        <div className="flex flex-col items-center justify-center w-80 min-w-80 max-w-80 px-8 py-8 border-b md:border-b-0 md:border-r border-white/10 shrink-0">
-          <div className="w-24 h-24 mx-auto mb-4 relative">
+      <div className="flex flex-col md:flex-row min-h-[420px] max-h-[60vh] overflow-y-auto md:overflow-hidden">
+        {/* Agent 核心 — 变形 avatar，移动端紧凑布局 */}
+        <div className="flex flex-row md:flex-col items-center justify-center gap-3 md:gap-0 w-full md:w-80 md:min-w-80 md:max-w-80 px-4 py-3 md:px-8 md:py-8 border-b md:border-b-0 md:border-r border-white/10 shrink-0">
+          <div className="w-10 h-10 md:w-24 md:h-24 shrink-0 relative">
             <div
               className={`w-full h-full rounded-[30%_70%_70%_30%_/_30%_30%_70%_70%] ${styles.avatarMorph}`}
               style={{
@@ -506,11 +506,18 @@ export function AgentProgress({
               }}
             />
           </div>
-          <span className="text-sm text-slate-400 font-medium">
-            QueryMind Agent
-          </span>
+          <div className="flex-1 min-w-0 md:flex-none md:mt-4">
+            <span className="text-xs md:text-sm text-slate-400 font-medium">
+              QueryMind Agent
+            </span>
+            {userQuery && (
+              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 md:hidden">
+                {userQuery}
+              </p>
+            )}
+          </div>
           {userQuery && (
-            <div className="mt-6 w-full text-left px-1">
+            <div className="hidden md:block mt-6 w-full text-left px-1">
               <p className="text-[11px] text-indigo-400/90 mb-1.5 tracking-wide">
                 当前目标：
               </p>
@@ -524,7 +531,7 @@ export function AgentProgress({
         {/* 推理图节点 */}
         <div
           ref={containerRef}
-          className="flex-1 flex items-center justify-center p-8 relative"
+          className="flex-1 flex items-center justify-center p-4 md:p-8 relative"
         >
           <div className="flex items-center gap-3 w-full max-w-lg">
             {STEPS.map((step, i) => {
@@ -602,8 +609,8 @@ export function AgentProgress({
 
         {/* 终端日志：限制最大高度，超出滚动 */}
         <div
-          className="flex-1 min-w-0 min-h-0 px-6 py-6 border-t md:border-t-0 md:border-l border-white/10 flex flex-col overflow-hidden"
-          style={{ minHeight: 200, maxHeight: "50vh" }}
+          className="flex-1 min-w-0 min-h-0 px-4 py-4 md:px-6 md:py-6 border-t md:border-t-0 md:border-l border-white/10 flex flex-col overflow-hidden"
+          style={{ minHeight: 160, maxHeight: "50vh" }}
         >
           <div className="text-xs text-indigo-400/80 mb-3 font-mono tracking-wider shrink-0">
             Execution Stream
