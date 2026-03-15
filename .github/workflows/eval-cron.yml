@@ -39,6 +39,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Run RAG E2E Evaluation
+        id: eval
         run: pnpm eval:cron
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -46,6 +47,39 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # 成功时钉钉通知（含各指标得分）
+      - name: Notify DingTalk (Success)
+        if: ${{ success() && secrets.DINGTALK_WEBHOOK != '' }}
+        env:
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          LATEST=$(ls -t eval/reports/report-*.json 2>/dev/null | head -1)
+          if [ -z "$LATEST" ]; then exit 0; fi
+          F=$(jq -r '.summary.faithfulness // 0' "$LATEST")
+          A=$(jq -r '.summary.answer_relevancy // 0' "$LATEST")
+          P=$(jq -r '.summary.context_precision // 0' "$LATEST")
+          R=$(jq -r '.summary.context_recall // 0' "$LATEST")
+          N=$(jq -r '.meta.sampleCount // (.samples | length)' "$LATEST")
+          CONTENT="✅ RAG Eval 成功
+          faithfulness: $(printf "%.2f" $F)
+          answer_relevancy: $(printf "%.2f" $A)
+          context_precision: $(printf "%.2f" $P)
+          context_recall: $(printf "%.2f" $R)
+          样本数: $N
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TIMESTAMP=$(date +%s)000
+          if [ -n "$DINGTALK_SECRET" ]; then
+            SIGN=$(printf '%s\n%s' "$TIMESTAMP" "$DINGTALK_SECRET" | openssl dgst -sha256 -hmac "$DINGTALK_SECRET" -binary | base64 -w 0 | sed 's/+/%2B/g;s/\//%2F/g;s/=/%3D/g')
+            URL="${DINGTALK_WEBHOOK}&timestamp=${TIMESTAMP}&sign=${SIGN}"
+          else
+            URL="$DINGTALK_WEBHOOK"
+          fi
+          curl -sS -X POST -H 'Content-type: application/json' --data "{
+            \"msgtype\": \"text\",
+            \"text\": {\"content\": $(echo "$CONTENT" | jq -Rs .)}
+          }" "$URL"
 
   # 失败时钉钉通知（需在仓库 Secrets 添加 DINGTALK_WEBHOOK，可选 DINGTALK_SECRET 用于加签）
   notify-failure:
