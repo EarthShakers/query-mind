@@ -50,11 +50,12 @@ jobs:
 
       # 成功时钉钉通知（含各指标得分）
       - name: Notify DingTalk (Success)
-        if: ${{ success() && secrets.DINGTALK_WEBHOOK != '' }}
+        if: success()
         env:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: |
+          if [ -z "$DINGTALK_WEBHOOK" ]; then echo "Skipping: DINGTALK_WEBHOOK not set"; exit 0; fi
           LATEST=$(ls -t eval/reports/report-*.json 2>/dev/null | head -1)
           if [ -z "$LATEST" ]; then exit 0; fi
           F=$(jq -r '.summary.faithfulness // 0' "$LATEST")
@@ -88,11 +89,11 @@ jobs:
     if: failure()
     steps:
       - name: Notify DingTalk
-        if: ${{ secrets.DINGTALK_WEBHOOK != '' }}
         env:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
         run: |
+          if [ -z "$DINGTALK_WEBHOOK" ]; then echo "Skipping: DINGTALK_WEBHOOK not set"; exit 0; fi
           TIMESTAMP=$(date +%s)000
           if [ -n "$DINGTALK_SECRET" ]; then
             SIGN=$(printf '%s\n%s' "$TIMESTAMP" "$DINGTALK_SECRET" | openssl dgst -sha256 -hmac "$DINGTALK_SECRET" -binary | base64 -w 0 | sed 's/+/%2B/g;s/\//%2F/g;s/=/%3D/g')
