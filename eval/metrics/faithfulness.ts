@@ -31,13 +31,14 @@ const VerificationSchema = z.object({
 /** Step 1: 分解答案为原子声明 */
 async function decomposeClaims(answer: string): Promise<string[]> {
   const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 512 });
-  const structured = llm.withStructuredOutput(ClaimsSchema);
+  const structured = llm.withStructuredOutput(ClaimsSchema, { method: "jsonMode" });
   const prompt = ChatPromptTemplate.fromMessages([
     [
       "system",
       `将给定的答案分解为独立的原子声明（atomic claims）。
 每条声明应该是一个独立的、可验证的事实陈述。
-去掉纯语气词和无实质信息的片段。`,
+去掉纯语气词和无实质信息的片段。
+请以 JSON 格式返回，格式为：{{"claims": ["声明1", "声明2", ...]}}`,
     ],
     ["human", "答案：{answer}"],
   ]);
@@ -56,7 +57,7 @@ async function verifyClaims(
   contexts: string[]
 ): Promise<{ claim: string; supported: boolean }[]> {
   const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 1024 });
-  const structured = llm.withStructuredOutput(VerificationSchema);
+  const structured = llm.withStructuredOutput(VerificationSchema, { method: "jsonMode" });
   const contextStr = contexts.join("\n\n---\n\n").slice(0, 6000);
 
   const prompt = ChatPromptTemplate.fromMessages([
@@ -64,7 +65,8 @@ async function verifyClaims(
       "system",
       `你是一个事实核查员。对于每条声明，判断它是否能从给定的上下文中推断或得到支持。
 仅当上下文中包含足够信息来支持该声明时，才标记为 supported: true。
-如果上下文中没有相关信息、或信息不足以验证该声明，标记为 supported: false。`,
+如果上下文中没有相关信息、或信息不足以验证该声明，标记为 supported: false。
+请以 JSON 格式返回，格式为：{{"results": [{{"claim": "...", "supported": true/false}}, ...]}}`,
     ],
     [
       "human",

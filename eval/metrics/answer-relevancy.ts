@@ -26,13 +26,14 @@ const GeneratedQuestionsSchema = z.object({
 /** Step 1: 根据 answer 反向生成问题 */
 async function generateQuestions(answer: string): Promise<string[]> {
   const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 300 });
-  const structured = llm.withStructuredOutput(GeneratedQuestionsSchema);
+  const structured = llm.withStructuredOutput(GeneratedQuestionsSchema, { method: "jsonMode" });
   const prompt = ChatPromptTemplate.fromMessages([
     [
       "system",
       `根据给定的答案，生成 ${NUM_QUESTIONS} 个该答案可能回答的问题。
 问题应尽量多样化，覆盖答案中的不同方面。
-每个问题应该是一个完整的、自然的疑问句。`,
+每个问题应该是一个完整的、自然的疑问句。
+请以 JSON 格式返回，格式为：{{"questions": ["问题1", "问题2", ...]}}`,
     ],
     ["human", "答案：{answer}"],
   ]);

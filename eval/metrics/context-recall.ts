@@ -31,13 +31,14 @@ const AttributionSchema = z.object({
 /** Step 1: 将 ground_truth 分解为原子声明 */
 async function decomposeGroundTruth(groundTruth: string): Promise<string[]> {
   const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 512 });
-  const structured = llm.withStructuredOutput(ClaimsSchema);
+  const structured = llm.withStructuredOutput(ClaimsSchema, { method: "jsonMode" });
   const prompt = ChatPromptTemplate.fromMessages([
     [
       "system",
       `将给定的参考答案分解为独立的原子声明（atomic claims）。
 每条声明应该是一个独立的、可验证的事实陈述。
-确保覆盖参考答案中的所有关键信息。`,
+确保覆盖参考答案中的所有关键信息。
+请以 JSON 格式返回，格式为：{{"claims": ["声明1", "声明2", ...]}}`,
     ],
     ["human", "参考答案：{ground_truth}"],
   ]);
@@ -58,7 +59,7 @@ async function checkCoverage(
   contexts: string[]
 ): Promise<{ claim: string; covered: boolean }[]> {
   const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 1024 });
-  const structured = llm.withStructuredOutput(AttributionSchema);
+  const structured = llm.withStructuredOutput(AttributionSchema, { method: "jsonMode" });
   const contextStr = contexts.join("\n\n---\n\n").slice(0, 6000);
 
   const prompt = ChatPromptTemplate.fromMessages([
@@ -66,7 +67,8 @@ async function checkCoverage(
       "system",
       `你是一个信息覆盖率检查员。对于每条声明，判断给定的检索上下文是否包含支持该声明的信息。
 只要上下文中有信息能够支持或包含该声明的核心内容，就标记为 covered: true。
-如果上下文中完全没有相关信息，标记为 covered: false。`,
+如果上下文中完全没有相关信息，标记为 covered: false。
+请以 JSON 格式返回，格式为：{{"results": [{{"claim": "...", "covered": true/false}}, ...]}}`,
     ],
     [
       "human",

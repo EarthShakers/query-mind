@@ -30,7 +30,7 @@ async function judgeRelevance(
   contexts: string[]
 ): Promise<boolean[]> {
   const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 512 });
-  const structured = llm.withStructuredOutput(RelevanceJudgmentSchema);
+  const structured = llm.withStructuredOutput(RelevanceJudgmentSchema, { method: "jsonMode" });
 
   // 每个 chunk 保留完整内容（最多 3000 字符），避免截断导致误判
   const chunksStr = contexts
@@ -43,7 +43,8 @@ async function judgeRelevance(
       `你是一个检索质量评估员。对于给定的问题和一组检索到的文档片段，判断每个片段是否包含与问题相关的有用信息。
 判断标准：只要片段中任何位置包含能帮助回答问题的信息（哪怕只是部分相关），就标记为 relevant: true。
 仅当片段内容与问题完全无关时，才标记为 relevant: false。
-请仔细阅读每个片段的完整内容后再做判断。`,
+请仔细阅读每个片段的完整内容后再做判断。
+请以 JSON 格式返回，格式为：{{"judgments": [{{"index": 1, "relevant": true/false}}, ...]}}`,
     ],
     [
       "human",

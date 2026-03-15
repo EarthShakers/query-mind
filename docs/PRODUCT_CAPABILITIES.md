@@ -45,7 +45,7 @@ mindmap
     P0 核心
       RAG 知识库 ✅
       RAG 应用评估 ✅
-      Agentic 工作流
+      Agentic 工作流 ✅
       多模态理解
       认证 ✅
       Agentic RAG
@@ -55,8 +55,8 @@ mindmap
       报告 ✅
       跨模态检索
       图表 ✅
-      Text-to-SQL ✅
-      数据表 ✅
+      Text-to-SQL ✅         
+      数据表 ✅    
       协作
       限流 ✅
       企业级
@@ -122,9 +122,9 @@ mindmap
 
 | 能力          | 重要度 | 是否已实现 | 说明                                                                 |
 | ------------- | ------ | ---------- | -------------------------------------------------------------------- |
-| 多步推理      | ★★★★★  | ✅ 部分    | LangGraph plan → execute → synthesize，复杂问题拆解为子任务          |
-| 自主规划      | ★★★★★  | ✅ 部分    | planning 节点 LLM 拆解 + router 规则路由（Schema/search 显式编排）   |
-| 工具链编排    | ★★★★★  | ✅ 部分    | search_knowledge + execute_query 按依赖执行，depends_on 跨工具传参   |
+| 多步推理      | ★★★★★  | ✅         | LangGraph plan → execute → synthesize，复杂问题拆解为子任务          |
+| 自主规划      | ★★★★★  | ✅         | planning 节点 LLM 拆解 + router 规则路由（Schema/search 显式编排）   |
+| 工具链编排    | ★★★★★  | ✅         | search_knowledge + execute_query 按依赖执行，depends_on 跨工具传参   |
 | 记忆管理      | ★★★★☆  | ❌         | 工作记忆 + 外部记忆（向量库、知识图谱）                             |
 | 多 Agent 协作 | ★★★☆☆  | ❌         | 专家 Agent 集群分工                                                 |
 
