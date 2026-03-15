@@ -18,6 +18,7 @@ import { AssistantTurn } from "@/components/chat/assistant-turn";
 import { SpacePicker } from "@/components/chat/space-picker";
 import { ChatUploadModal } from "@/components/chat/chat-upload-modal";
 import { ExportDropdown } from "@/components/chat/export-dropdown";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 
 /* ─── Main page ─── */
 export default function Page() {
@@ -96,6 +97,39 @@ export default function Page() {
       setInput(lastInput.current);
     },
   });
+  const voiceInput = useVoiceInput({
+    onResult: (text) => {
+      setInput((prev) => prev + text);
+      setVoiceMode(false);
+    },
+  });
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [holdState, setHoldState] = useState<"idle" | "recording" | "cancelling">("idle");
+  const touchStartYRef = useRef(0);
+
+  const handleHoldStart = useCallback(
+    (clientY: number) => {
+      touchStartYRef.current = clientY;
+      setHoldState("recording");
+      voiceInput.startRecording();
+    },
+    [voiceInput.startRecording]
+  );
+
+  const handleHoldMove = useCallback((clientY: number) => {
+    const diff = touchStartYRef.current - clientY;
+    setHoldState(diff > 50 ? "cancelling" : "recording");
+  }, []);
+
+  const handleHoldEnd = useCallback(() => {
+    if (holdState === "cancelling") {
+      voiceInput.cancelRecording();
+    } else {
+      voiceInput.stopRecording();
+    }
+    setHoldState("idle");
+  }, [holdState, voiceInput.stopRecording, voiceInput.cancelRecording]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
   const lastStreamDataRef = useRef<any>(null);
@@ -830,20 +864,125 @@ export default function Page() {
                   </svg>
                   <span className="hidden sm:inline">Agent 模式</span>
                 </button>
-                <input
-                  value={input}
-                  onChange={handleInputChange}
-                  placeholder="输入你想问的问题..."
-                  className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 md:px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm placeholder:text-slate-300"
-                />
+
+                {/* 输入区域：文本模式 or 语音模式 */}
+                {voiceMode ? (
+                  /* ── 语音模式：按住说话 ── */
+                  voiceInput.isTranscribing ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="flex-1 min-w-0 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 md:px-4 py-3 text-sm text-amber-600"
+                    >
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
+                      </svg>
+                      转写中...
+                    </button>
+                  ) : (
+                    <div className="relative flex-1 min-w-0">
+                      {/* 录音浮层提示 */}
+                      {holdState !== "idle" && (
+                        <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-5 py-3 rounded-2xl shadow-lg whitespace-nowrap text-sm font-medium flex items-center gap-2 transition-colors ${
+                          holdState === "cancelling"
+                            ? "bg-slate-500 text-white"
+                            : "bg-red-500 text-white"
+                        }`}>
+                          {holdState === "cancelling" ? (
+                            <>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" x2="6" y1="6" y2="18" />
+                                <line x1="6" x2="18" y1="6" y2="18" />
+                              </svg>
+                              松开 取消录音
+                            </>
+                          ) : (
+                            <>
+                              <span className="relative flex h-3 w-3">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                                <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
+                              </span>
+                              松开 发送，上划 取消
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onMouseDown={(e) => handleHoldStart(e.clientY)}
+                        onMouseMove={(e) => { if (holdState !== "idle") handleHoldMove(e.clientY); }}
+                        onMouseUp={handleHoldEnd}
+                        onMouseLeave={() => { if (holdState !== "idle") handleHoldEnd(); }}
+                        onTouchStart={(e) => handleHoldStart(e.touches[0].clientY)}
+                        onTouchMove={(e) => { if (holdState !== "idle") handleHoldMove(e.touches[0].clientY); }}
+                        onTouchEnd={handleHoldEnd}
+                        className={`w-full select-none rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
+                          holdState === "cancelling"
+                            ? "bg-slate-100 border-slate-300 text-slate-500"
+                            : holdState === "recording"
+                              ? "bg-red-50 border-red-300 text-red-600"
+                              : "bg-white border-slate-200 text-slate-400 active:bg-red-50"
+                        }`}
+                      >
+                        {holdState === "cancelling"
+                          ? "松开 取消"
+                          : holdState === "recording"
+                            ? "松开 发送"
+                            : "按住说话"}
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  /* ── 文本模式：普通输入框 ── */
+                  <input
+                    value={input}
+                    onChange={handleInputChange}
+                    placeholder="输入你想问的问题..."
+                    className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-3 md:px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm placeholder:text-slate-300"
+                  />
+                )}
+
+                {/* 语音/键盘切换按钮 */}
                 <button
-                  type="submit"
-                  disabled={isLoading || !input.trim()}
-                  className="shrink-0 px-4 md:px-5 py-3 bg-indigo-500 text-white text-sm font-medium rounded-xl hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  type="button"
+                  onClick={() => {
+                    setVoiceMode((v) => !v);
+                    voiceInput.reset();
+                  }}
+                  disabled={voiceInput.isTranscribing}
+                  className="shrink-0 p-2.5 rounded-xl border bg-white border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors disabled:opacity-40"
+                  title={voiceMode ? "键盘输入" : "语音输入"}
                 >
-                  发送
+                  {voiceMode ? (
+                    /* 键盘图标 */
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="4" width="20" height="16" rx="2" />
+                      <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
+                    </svg>
+                  ) : (
+                    /* 麦克风图标 */
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="2" width="6" height="11" rx="3" />
+                      <path d="M5 10a7 7 0 0 0 14 0" />
+                      <line x1="12" x2="12" y1="17" y2="22" />
+                    </svg>
+                  )}
                 </button>
+
+                {/* 发送按钮：仅文本模式且有内容时显示 */}
+                {!voiceMode && input.trim() && (
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="shrink-0 px-4 md:px-5 py-3 bg-indigo-500 text-white text-sm font-medium rounded-xl hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  >
+                    发送
+                  </button>
+                )}
               </form>
+              {voiceInput.error && (
+                <p className="text-xs text-red-500 mt-1 px-1">{voiceInput.error}</p>
+              )}
             </div>
           </div>
 

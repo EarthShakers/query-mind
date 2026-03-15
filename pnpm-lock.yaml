@@ -22,7 +22,7 @@ importers:
         version: 1.1.5(@langchain/core@1.1.31(@opentelemetry/api@1.9.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(zod-to-json-schema@3.25.1(zod@3.25.76))(zod@3.25.76)
       '@langchain/openai':
         specifier: ^1.2.9
-        version: 1.2.9(@langchain/core@1.1.31(@opentelemetry/api@1.9.0))(ws@8.19.0)
+        version: 1.2.9(@langchain/core@1.1.31(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@langchain/textsplitters':
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.1.31(@opentelemetry/api@1.9.0))
@@ -31,7 +31,7 @@ importers:
         version: 1.7.0
       '@supabase/supabase-js':
         specifier: ^2.95.3
-        version: 2.95.3
+        version: 2.95.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@upstash/ratelimit':
         specifier: ^2.0.8
         version: 2.0.8(@upstash/redis@1.36.2)
@@ -44,6 +44,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      bufferutil:
+        specifier: ^4.1.0
+        version: 4.1.0
       docx:
         specifier: ^9.5.3
         version: 9.5.3
@@ -98,6 +101,12 @@ importers:
       turndown:
         specifier: ^7.2.2
         version: 7.2.2
+      utf-8-validate:
+        specifier: ^6.0.6
+        version: 6.0.6
+      ws:
+        specifier: ^8.19.0
+        version: 8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
@@ -132,6 +141,9 @@ importers:
       '@types/turndown':
         specifier: ^5.0.6
         version: 5.0.6
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       autoprefixer:
         specifier: ^10.4.0
         version: 10.4.24(postcss@8.5.6)
@@ -1387,6 +1399,10 @@ packages:
 
   buffer@6.0.3:
     resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
+
+  bufferutil@4.1.0:
+    resolution: {integrity: sha512-ZMANVnAixE6AWWnPzlW2KpUrxhm9woycYvPOo67jWHyFowASTEd9s+QN1EIMsSDtwhIxN4sWE1jotpuDUIgyIw==}
+    engines: {node: '>=6.14.2'}
 
   call-bind-apply-helpers@1.0.2:
     resolution: {integrity: sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==}
@@ -2787,6 +2803,10 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
+  utf-8-validate@6.0.6:
+    resolution: {integrity: sha512-q3l3P9UtEEiAHcsgsqTgf9PPjctrDWoIXW3NpOHFdRDbLvu4DLIcxHangJ4RLrWkBcKjmcs/6NkerI8T/rE4LA==}
+    engines: {node: '>=6.14.2'}
+
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -3650,11 +3670,11 @@ snapshots:
       - react
       - react-dom
 
-  '@langchain/openai@1.2.9(@langchain/core@1.1.31(@opentelemetry/api@1.9.0))(ws@8.19.0)':
+  '@langchain/openai@1.2.9(@langchain/core@1.1.31(@opentelemetry/api@1.9.0))(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
     dependencies:
       '@langchain/core': 1.1.31(@opentelemetry/api@1.9.0)
       js-tiktoken: 1.0.21
-      openai: 6.23.0(ws@8.19.0)(zod@3.25.76)
+      openai: 6.23.0(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - ws
@@ -4050,12 +4070,12 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/realtime-js@2.95.3':
+  '@supabase/realtime-js@2.95.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
       '@types/phoenix': 1.6.7
       '@types/ws': 8.18.1
       tslib: 2.8.1
-      ws: 8.19.0
+      ws: 8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -4065,12 +4085,12 @@ snapshots:
       iceberg-js: 0.8.1
       tslib: 2.8.1
 
-  '@supabase/supabase-js@2.95.3':
+  '@supabase/supabase-js@2.95.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
       '@supabase/auth-js': 2.95.3
       '@supabase/functions-js': 2.95.3
       '@supabase/postgrest-js': 2.95.3
-      '@supabase/realtime-js': 2.95.3
+      '@supabase/realtime-js': 2.95.3(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       '@supabase/storage-js': 2.95.3
     transitivePeerDependencies:
       - bufferutil
@@ -4370,6 +4390,10 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ieee754: 1.2.1
+
+  bufferutil@4.1.0:
+    dependencies:
+      node-gyp-build: 4.8.4
 
   call-bind-apply-helpers@1.0.2:
     dependencies:
@@ -5482,9 +5506,9 @@ snapshots:
 
   object-hash@3.0.0: {}
 
-  openai@6.23.0(ws@8.19.0)(zod@3.25.76):
+  openai@6.23.0(ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(zod@3.25.76):
     optionalDependencies:
-      ws: 8.19.0
+      ws: 8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       zod: 3.25.76
 
   option@0.2.4: {}
@@ -6114,6 +6138,10 @@ snapshots:
     dependencies:
       react: 19.2.4
 
+  utf-8-validate@6.0.6:
+    dependencies:
+      node-gyp-build: 4.8.4
+
   util-deprecate@1.0.2: {}
 
   utrie@1.0.2:
@@ -6176,7 +6204,10 @@ snapshots:
 
   word@0.3.0: {}
 
-  ws@8.19.0: {}
+  ws@8.19.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+    optionalDependencies:
+      bufferutil: 4.1.0
+      utf-8-validate: 6.0.6
 
   xlsx@0.18.5:
     dependencies:
