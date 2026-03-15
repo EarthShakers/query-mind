@@ -5,7 +5,7 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { dashscopeProvider } from "@/lib/llm/llm";
-import { MODEL_LIGHT } from "@/lib/llm/models";
+import { getModelLight } from "@/lib/llm/model-config";
 
 const schema = z.object({
   complexity: z.enum(["simple", "complex"]),
@@ -48,7 +48,7 @@ export async function classifyComplexity(
 
   try {
     const { object } = await generateObject({
-      model: dashscopeProvider(MODEL_LIGHT),
+      model: dashscopeProvider(getModelLight()),
       schema,
       prompt,
       maxTokens: 256,

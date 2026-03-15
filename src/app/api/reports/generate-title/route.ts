@@ -1,6 +1,10 @@
 import { generateText } from "ai";
 import { dashscopeProvider } from "@/lib/llm/llm";
-import { MODEL_LIGHT } from "@/lib/llm/models";
+import {
+  getModelConfig,
+  runWithConfigAsync,
+  getModelLight,
+} from "@/lib/llm/model-config";
 
 /** POST /api/reports/generate-title — generate a short noun-phrase title from user message */
 export async function POST(req: Request) {
@@ -10,9 +14,11 @@ export async function POST(req: Request) {
     return Response.json({ title: "未命名报告" });
   }
 
+  const config = await getModelConfig();
+  return runWithConfigAsync(config, async () => {
   try {
     const { text } = await generateText({
-      model: dashscopeProvider(MODEL_LIGHT),
+      model: dashscopeProvider(getModelLight()),
       system:
         "你是一个标题生成器。根据用户的请求，生成一个简短的名词性报告标题（4-10个字），不要包含动词、标点符号或引号。直接输出标题文本，不要任何解释。",
       prompt: message,
@@ -30,4 +36,5 @@ export async function POST(req: Request) {
       .slice(0, 15) || "未命名报告";
     return Response.json({ title: fallback });
   }
+  });
 }

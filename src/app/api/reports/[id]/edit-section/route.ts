@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { buildEditSectionGraph } from "@/lib/langgraph/edit-section-graph";
 import { getUserTableSchemas, formatUserSchemas } from "@/lib/data/excel-parser";
 import type { ReportSection } from "@/lib/report-types";
+import { getModelConfig, runWithConfigAsync } from "@/lib/llm/model-config";
 
 export const maxDuration = 120;
 
@@ -87,12 +88,14 @@ export async function POST(
     edit_instruction: instruction,
   });
 
-  // Build and stream the LangGraph
+  // Build and stream the LangGraph（在配置上下文中执行，确保 getModelAgent 等生效）
+  const config = await getModelConfig();
   const graph = buildEditSectionGraph();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      await runWithConfigAsync(config, async () => {
       function send(event: string, data: unknown) {
         controller.enqueue(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
@@ -205,6 +208,7 @@ export async function POST(
       } finally {
         controller.close();
       }
+      });
     },
   });
 

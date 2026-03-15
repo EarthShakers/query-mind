@@ -7,7 +7,7 @@
  * Score = mean(similarities)
  */
 import { getDashScopeLLM } from "../../src/lib/llm/llm";
-import { MODEL_LIGHT } from "../../src/lib/llm/models";
+import { getModelLight } from "../../src/lib/llm/model-config";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import { batchEmbed, cosineSimilarity, clamp01 } from "../utils";
@@ -25,7 +25,7 @@ const GeneratedQuestionsSchema = z.object({
 
 /** Step 1: 根据 answer 反向生成问题 */
 async function generateQuestions(answer: string): Promise<string[]> {
-  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 300 });
+  const llm = getDashScopeLLM({ model: getModelLight(), maxTokens: 300 });
   const structured = llm.withStructuredOutput(GeneratedQuestionsSchema, { method: "jsonMode" });
   const prompt = ChatPromptTemplate.fromMessages([
     [

@@ -1,10 +1,12 @@
 /**
  * 快速诊断：测试几个 E2E 问题的检索结果
  * 用法：npx tsx eval/diagnose-retrieval.ts
+ * 模型配置：优先从 app_settings 读取，否则使用环境变量
  */
 import "dotenv/config";
 import { searchWithRagEnhanced } from "../src/lib/rag/rag-enhanced";
 import { searchDocuments } from "../src/lib/rag/rag";
+import { getModelConfig, runWithConfigAsync } from "../src/lib/llm/model-config";
 
 const QUESTIONS = [
   "出差住宿费的报销标准是多少？",
@@ -14,7 +16,10 @@ const QUESTIONS = [
 ];
 
 async function main() {
-  for (const q of QUESTIONS) {
+  const config = await getModelConfig();
+  await runWithConfigAsync(config, async () => {
+    console.log(`模型: chat=${config.modelChat} light=${config.modelLight} rerank=${config.modelRerank}\n`);
+    for (const q of QUESTIONS) {
     console.log(`\n${"=".repeat(60)}`);
     console.log(`问题: ${q}`);
     console.log("=".repeat(60));
@@ -48,6 +53,7 @@ async function main() {
     }
     console.log(`  共 ${enhanced.length} 条结果`);
   }
+  });
 }
 
 main().catch(console.error);

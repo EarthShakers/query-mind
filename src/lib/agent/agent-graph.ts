@@ -8,7 +8,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { getDashScopeLLM } from "@/lib/llm/llm";
 import { dashscopeProvider } from "@/lib/llm/llm";
-import { MODEL_CHAT, MODEL_LIGHT } from "@/lib/llm/models";
+import { getModelChat, getModelLight } from "@/lib/llm/model-config";
 import {
   AgentState,
   type AgentStateType,
@@ -43,7 +43,7 @@ async function planNode(state: AgentStateType) {
   );
 
   const llm = getDashScopeLLM({
-    model: MODEL_CHAT,
+    model: getModelChat(),
     temperature: 0.2,
     maxTokens: 2048,
   });
@@ -235,7 +235,7 @@ async function executeNode(state: AgentStateType) {
  */
 async function synthesizeNode(state: AgentStateType) {
   const llm = getDashScopeLLM({
-    model: MODEL_CHAT,
+    model: getModelChat(),
     temperature: 0.3,
     maxTokens: 2048,
   });
@@ -281,7 +281,7 @@ async function validateNode(state: AgentStateType) {
 
   try {
     const { object } = await generateObject({
-      model: dashscopeProvider(MODEL_LIGHT),
+      model: dashscopeProvider(getModelLight()),
       schema: z.object({
         coverage: z.number().min(0).max(100),
         dataConsistency: z.number().min(0).max(100),

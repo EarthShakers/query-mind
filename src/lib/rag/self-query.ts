@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { getDashScopeLLM } from "../llm/llm";
-import { MODEL_LIGHT } from "../llm/models";
+import { getModelLight } from "../llm/model-config";
 
 /** Self-Query 解析结果：从用户问题中提取检索 query 和元数据过滤条件 */
 export interface SelfQueryResult {
@@ -48,7 +48,10 @@ export async function parseSelfQuery(
   }
 
   try {
-    const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 150 });
+    const llm = getDashScopeLLM({
+      model: getModelLight(),
+      maxTokens: 150,
+    });
     const structuredLlm = llm.withStructuredOutput(SelfQuerySchema);
 
     const chain = SELF_QUERY_PROMPT.pipe(structuredLlm);

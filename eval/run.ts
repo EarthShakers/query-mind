@@ -8,6 +8,8 @@
  *   npx tsx eval/run.ts --e2e                      # E2E 模式（调用真实 RAG pipeline）
  *   npx tsx eval/run.ts --e2e --space <uuid>        # E2E 限定空间
  *   npx tsx eval/run.ts --metrics faithfulness,context_precision
+ *
+ * 模型配置：优先从 app_settings 读取，否则使用环境变量
  */
 import "dotenv/config";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -16,6 +18,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { EvalSample, EvalReport, MetricName } from "./types";
 import { evaluate } from "./evaluate";
 import { evaluateE2E } from "./e2e";
+import { getModelConfig, runWithConfigAsync } from "../src/lib/llm/model-config";
 
 const VALID_METRICS: MetricName[] = [
   "faithfulness",
@@ -85,12 +88,15 @@ function printSummary(summary: Record<MetricName, number>) {
 }
 
 async function main() {
-  const { datasetPath, e2e, metrics, spaceIds } = parseArgs();
+  const config = await getModelConfig();
+  await runWithConfigAsync(config, async () => {
+    const { datasetPath, e2e, metrics, spaceIds } = parseArgs();
 
-  console.log("RAG 评估系统 (RAGAS methodology)");
-  console.log("================================");
+    console.log("RAG 评估系统 (RAGAS methodology)");
+    console.log("================================");
+    console.log(`模型: chat=${config.modelChat} light=${config.modelLight} rerank=${config.modelRerank}`);
 
-  if (e2e) {
+    if (e2e) {
     console.log("模式: E2E（端到端）");
     if (spaceIds) console.log(`空间: ${spaceIds.join(", ")}`);
     const dataset = loadDataset(datasetPath);
@@ -136,6 +142,7 @@ async function main() {
     printSummary(report.summary);
     saveReport(report, false);
   }
+  });
 }
 
 function saveReport(report: EvalReport, isE2E = false) {

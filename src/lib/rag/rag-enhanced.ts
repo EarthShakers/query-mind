@@ -9,7 +9,7 @@
 import { searchDocuments, type DocResult, type SearchFilter } from "./rag";
 import { parseSelfQuery } from "./self-query";
 import { getDashScopeLLM } from "../llm/llm";
-import { MODEL_LIGHT, MODEL_RERANK } from "../llm/models";
+import { getModelLight, getModelRerank } from "../llm/model-config";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 
@@ -141,6 +141,7 @@ async function rerankDocs(
   query: string,
   docs: DocResult[]
 ): Promise<DocResult[]> {
+  const model = getModelRerank();
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey || docs.length === 0) {
     return docs.slice(0, TOP_K_FINAL);
@@ -161,7 +162,7 @@ async function rerankDocs(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: MODEL_RERANK,
+        model,
         input: { query, documents },
         parameters: { top_n: TOP_K_FINAL, return_documents: false },
       }),
@@ -210,7 +211,7 @@ async function multiQueryRetrieve(
   spaceIds: string[],
   filter?: SearchFilter
 ): Promise<DocResult[]> {
-  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 200 });
+  const llm = getDashScopeLLM({ model: getModelLight(), maxTokens: 200 });
   const structuredLlm = llm.withStructuredOutput(MultiQuerySchema);
   const prompt = ChatPromptTemplate.fromMessages([
     [

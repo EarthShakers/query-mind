@@ -7,7 +7,11 @@ import { buildSystemPrompt } from "@/lib/llm/prompt";
 import { getSpaceContext } from "@/lib/auth/auth";
 import { supabase } from "@/lib/supabase";
 import { dashscopeProvider } from "@/lib/llm/llm";
-import { MODEL_CHAT } from "@/lib/llm/models";
+import {
+  getModelConfig,
+  runWithConfigAsync,
+  getModelChat,
+} from "@/lib/llm/model-config";
 import {
   checkRateLimit,
   checkDailyBudget,
@@ -112,6 +116,10 @@ export async function POST(req: Request) {
 
   const isReportMode = reportId || isReportRequest;
 
+  // 加载动态模型配置，在请求上下文中执行后续逻辑
+  const config = await getModelConfig();
+
+  return runWithConfigAsync(config, async () => {
   // ── Phase 2: 手动开启 Agent 模式走 LangGraph Agent ──
   if (agentMode && !isReportMode) {
     try {
@@ -138,7 +146,7 @@ export async function POST(req: Request) {
 
   try {
     const result = await streamText({
-      model: dashscopeProvider(MODEL_CHAT),
+      model: dashscopeProvider(getModelChat()),
       abortSignal: abortController.signal,
       maxSteps: isReportMode ? 12 : 8,
       system: buildSystemPrompt(userSchemaStr, existingSections, !!agentMode),
@@ -470,4 +478,5 @@ export async function POST(req: Request) {
       }
     );
   }
+  });
 }

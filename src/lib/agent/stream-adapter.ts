@@ -6,7 +6,7 @@
 import { streamText, formatStreamPart, generateObject } from "ai";
 import { z } from "zod";
 import { dashscopeProvider } from "@/lib/llm/llm";
-import { MODEL_LIGHT } from "@/lib/llm/models";
+import { getModelLight } from "@/lib/llm/model-config";
 import { buildAgentGraph } from "@/lib/agent/agent-graph";
 import type { CoreMessage } from "ai";
 import type { SubTask } from "@/lib/agent/state";
@@ -23,7 +23,7 @@ async function judgeChunksRelevance(
     .join("\n");
   try {
     const { object } = await generateObject({
-      model: dashscopeProvider(MODEL_LIGHT),
+      model: dashscopeProvider(getModelLight()),
       schema: z.object({ relevant: z.boolean() }),
       prompt: `用户问题：${userQuery}\n\n检索到的片段：\n${summaries}\n\n这些片段与用户问题是否相关？回答 true 或 false。`,
       maxTokens: 16,
@@ -256,7 +256,7 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
 
       // ── Phase 3: 流式输出最终回答 ──
       const result = await streamText({
-        model: dashscopeProvider(MODEL_LIGHT),
+        model: dashscopeProvider(getModelLight()),
         system:
           "你是一个纯输出管道。用户会给你一段完整文本，你必须原样、逐字输出，禁止任何增删改。",
         prompt: `请原样输出以下内容，不要做任何修改：\n\n${finalAnswer}`,

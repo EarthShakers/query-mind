@@ -84,8 +84,12 @@ export async function middleware(req: NextRequest) {
     if (pathname.startsWith("/docs") && !isSuperAdmin) {
       return NextResponse.redirect(new URL("/", req.url));
     }
-    // /admin/* requires tenant admin
-    if (pathname.startsWith("/admin") && !isTenantAdmin) {
+    // /admin/models requires super admin; other /admin/* requires tenant admin
+    if (pathname.startsWith("/admin/models")) {
+      if (!isSuperAdmin) {
+        return NextResponse.redirect(new URL("/", req.url));
+      }
+    } else if (pathname.startsWith("/admin") && !isTenantAdmin) {
       return NextResponse.redirect(new URL("/", req.url));
     }
 

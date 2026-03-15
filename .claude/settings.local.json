@@ -13,7 +13,11 @@
       "Bash(jq:*)",
       "Bash(grep:*)",
       "Bash(git mv:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "WebSearch",
+      "WebFetch(domain:www.alibabacloud.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:help.aliyun.com)"
     ]
   }
 }

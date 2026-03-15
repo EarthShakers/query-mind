@@ -6,7 +6,7 @@
  * Score = supported_claims / total_claims
  */
 import { getDashScopeLLM } from "../../src/lib/llm/llm";
-import { MODEL_LIGHT } from "../../src/lib/llm/models";
+import { getModelLight } from "../../src/lib/llm/model-config";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { z } from "zod";
 import type { EvalSample, MetricTrace } from "../types";
@@ -30,7 +30,7 @@ const VerificationSchema = z.object({
 
 /** Step 1: 分解答案为原子声明 */
 async function decomposeClaims(answer: string): Promise<string[]> {
-  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 512 });
+  const llm = getDashScopeLLM({ model: getModelLight(), maxTokens: 512 });
   const structured = llm.withStructuredOutput(ClaimsSchema, { method: "jsonMode" });
   const prompt = ChatPromptTemplate.fromMessages([
     [
@@ -56,7 +56,7 @@ async function verifyClaims(
   claims: string[],
   contexts: string[]
 ): Promise<{ claim: string; supported: boolean }[]> {
-  const llm = getDashScopeLLM({ model: MODEL_LIGHT, maxTokens: 1024 });
+  const llm = getDashScopeLLM({ model: getModelLight(), maxTokens: 1024 });
   const structured = llm.withStructuredOutput(VerificationSchema, { method: "jsonMode" });
   const contextStr = contexts.join("\n\n---\n\n").slice(0, 6000);
 

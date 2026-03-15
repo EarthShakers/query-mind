@@ -1,9 +1,9 @@
 import { getDashScopeLLM } from "@/lib/llm/llm";
-import { MODEL_AGENT } from "@/lib/llm/models";
+import { getModelAgent } from "@/lib/llm/model-config";
 
 export function createDashScopeLLM() {
   return getDashScopeLLM({
-    model: MODEL_AGENT,
+    model: getModelAgent(),
     temperature: 0.3,
     maxTokens: 4096,
   });

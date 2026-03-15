@@ -124,13 +124,22 @@ export function NavAuth() {
             </Link>
           )}
           {user.role === "superAdmin" && (
-            <Link
-              href="/docs"
-              className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-              onClick={() => setOpen(false)}
-            >
-              管理文档
-            </Link>
+            <>
+              <Link
+                href="/admin/models"
+                className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                模型配置
+              </Link>
+              <Link
+                href="/docs"
+                className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                管理文档
+              </Link>
+            </>
           )}
           {user.tenantRole === "admin" && (
             <Link
