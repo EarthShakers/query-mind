@@ -28,7 +28,7 @@ const DEFAULT_CONFIG: ModelConfig = {
     process.env.EMBEDDING_DIMENSIONS || "1024",
     10
   ),
-  modelAsr: process.env.MODEL_ASR || "qwen-audio-asr-latest",
+  modelAsr: process.env.MODEL_ASR || "qwen3-asr-flash-realtime",
   modelTts: process.env.MODEL_TTS || "qwen-tts-latest",
   modelImageGen: process.env.MODEL_IMAGE_GEN || "qwen-image",
   modelVideoGen: process.env.MODEL_VIDEO_GEN || "wanx-v1",

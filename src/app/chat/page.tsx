@@ -104,31 +104,6 @@ export default function Page() {
     },
   });
   const [voiceMode, setVoiceMode] = useState(false);
-  const [holdState, setHoldState] = useState<"idle" | "recording" | "cancelling">("idle");
-  const touchStartYRef = useRef(0);
-
-  const handleHoldStart = useCallback(
-    (clientY: number) => {
-      touchStartYRef.current = clientY;
-      setHoldState("recording");
-      voiceInput.startRecording();
-    },
-    [voiceInput.startRecording]
-  );
-
-  const handleHoldMove = useCallback((clientY: number) => {
-    const diff = touchStartYRef.current - clientY;
-    setHoldState(diff > 50 ? "cancelling" : "recording");
-  }, []);
-
-  const handleHoldEnd = useCallback(() => {
-    if (holdState === "cancelling") {
-      voiceInput.cancelRecording();
-    } else {
-      voiceInput.stopRecording();
-    }
-    setHoldState("idle");
-  }, [holdState, voiceInput.stopRecording, voiceInput.cancelRecording]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
@@ -867,71 +842,50 @@ export default function Page() {
 
                 {/* 输入区域：文本模式 or 语音模式 */}
                 {voiceMode ? (
-                  /* ── 语音模式：按住说话 ── */
-                  voiceInput.isTranscribing ? (
+                  /* ── 语音模式：点击录音/停止 ── */
+                  <div className="relative flex-1 min-w-0">
+                    {/* 录音中浮层 */}
+                    {voiceInput.isRecording && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-5 py-3 rounded-2xl shadow-lg bg-red-500 text-white whitespace-nowrap text-sm font-medium flex items-center gap-2">
+                        <span className="relative flex h-3 w-3">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                          <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
+                        </span>
+                        正在录音，点击停止...
+                      </div>
+                    )}
                     <button
                       type="button"
-                      disabled
-                      className="flex-1 min-w-0 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 md:px-4 py-3 text-sm text-amber-600"
+                      disabled={voiceInput.isTranscribing}
+                      onClick={voiceInput.toggleRecording}
+                      className={`w-full rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
+                        voiceInput.isTranscribing
+                          ? "bg-amber-50 border-amber-200 text-amber-600"
+                          : voiceInput.isRecording
+                            ? "bg-red-50 border-red-300 text-red-600"
+                            : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
+                      }`}
                     >
-                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
-                      </svg>
-                      转写中...
-                    </button>
-                  ) : (
-                    <div className="relative flex-1 min-w-0">
-                      {/* 录音浮层提示 */}
-                      {holdState !== "idle" && (
-                        <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-5 py-3 rounded-2xl shadow-lg whitespace-nowrap text-sm font-medium flex items-center gap-2 transition-colors ${
-                          holdState === "cancelling"
-                            ? "bg-slate-500 text-white"
-                            : "bg-red-500 text-white"
-                        }`}>
-                          {holdState === "cancelling" ? (
-                            <>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" x2="6" y1="6" y2="18" />
-                                <line x1="6" x2="18" y1="6" y2="18" />
-                              </svg>
-                              松开 取消录音
-                            </>
-                          ) : (
-                            <>
-                              <span className="relative flex h-3 w-3">
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-                                <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
-                              </span>
-                              松开 发送，上划 取消
-                            </>
-                          )}
-                        </div>
+                      {voiceInput.isTranscribing ? (
+                        <span className="inline-flex items-center gap-2">
+                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
+                          </svg>
+                          转写中...
+                        </span>
+                      ) : voiceInput.isRecording ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="relative flex h-3 w-3">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                          </span>
+                          点击停止录音
+                        </span>
+                      ) : (
+                        "点击开始录音"
                       )}
-                      <button
-                        type="button"
-                        onMouseDown={(e) => handleHoldStart(e.clientY)}
-                        onMouseMove={(e) => { if (holdState !== "idle") handleHoldMove(e.clientY); }}
-                        onMouseUp={handleHoldEnd}
-                        onMouseLeave={() => { if (holdState !== "idle") handleHoldEnd(); }}
-                        onTouchStart={(e) => handleHoldStart(e.touches[0].clientY)}
-                        onTouchMove={(e) => { if (holdState !== "idle") handleHoldMove(e.touches[0].clientY); }}
-                        onTouchEnd={handleHoldEnd}
-                        className={`w-full select-none rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
-                          holdState === "cancelling"
-                            ? "bg-slate-100 border-slate-300 text-slate-500"
-                            : holdState === "recording"
-                              ? "bg-red-50 border-red-300 text-red-600"
-                              : "bg-white border-slate-200 text-slate-400 active:bg-red-50"
-                        }`}
-                      >
-                        {holdState === "cancelling"
-                          ? "松开 取消"
-                          : holdState === "recording"
-                            ? "松开 发送"
-                            : "按住说话"}
-                      </button>
-                    </div>
-                  )
+                    </button>
+                  </div>
                 ) : (
                   /* ── 文本模式：普通输入框 ── */
                   <input
@@ -946,6 +900,7 @@ export default function Page() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (voiceInput.isRecording) voiceInput.cancelRecording();
                     setVoiceMode((v) => !v);
                     voiceInput.reset();
                   }}

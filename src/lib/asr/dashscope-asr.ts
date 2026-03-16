@@ -1,10 +1,8 @@
 import WebSocket from "ws";
 import { randomUUID } from "crypto";
 
-const DASHSCOPE_WS_URL =
-  "wss://dashscope.aliyuncs.com/api-ws/v1/inference/";
-
-const FRAME_SIZE = 3200; // 100ms @ 16kHz 16bit mono
+const DASHSCOPE_BASE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
+const CHUNK_SIZE = 4800; // 300ms @ 16kHz 16bit mono = 9600 bytes, use ~150ms
 const TIMEOUT_MS = 30_000;
 
 export async function transcribeWithDashScope(
@@ -14,8 +12,9 @@ export async function transcribeWithDashScope(
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey) throw new Error("语音识别服务未配置");
 
+  const wsUrl = `${DASHSCOPE_BASE_URL}?model=${encodeURIComponent(model)}`;
+
   return new Promise<string>((resolve, reject) => {
-    const taskId = randomUUID().replace(/-/g, "");
     const sentences: string[] = [];
     let finished = false;
 
@@ -27,8 +26,11 @@ export async function transcribeWithDashScope(
       }
     }, TIMEOUT_MS);
 
-    const ws = new WebSocket(DASHSCOPE_WS_URL, {
-      headers: { Authorization: `bearer ${apiKey}` },
+    const ws = new WebSocket(wsUrl, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "OpenAI-Beta": "realtime=v1",
+      },
     });
 
     ws.on("error", () => {
@@ -50,83 +52,82 @@ export async function transcribeWithDashScope(
     ws.on("message", (raw: Buffer) => {
       try {
         const msg = JSON.parse(raw.toString());
-        const action = msg?.header?.action;
+        const type = msg?.type as string | undefined;
 
-        if (action === "task-started") {
-          // 开始发送 PCM 帧
-          sendPcmFrames(ws, pcmData, taskId);
-        } else if (action === "result-generated") {
-          const text =
-            msg?.payload?.output?.sentence?.text ??
-            msg?.payload?.output?.text ??
-            "";
+        if (type === "session.created") {
+          // 发送 session.update 配置转写参数
+          ws.send(
+            JSON.stringify({
+              event_id: `evt_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+              type: "session.update",
+              session: {
+                turn_detection: null, // Manual 模式
+                input_audio_format: "pcm",
+                input_audio_transcription: {
+                  model,
+                  language: "zh",
+                  prompt: "",
+                },
+              },
+            })
+          );
+        } else if (type === "session.updated") {
+          // 配置完成，开始发送音频
+          sendAudioChunks(ws, pcmData);
+        } else if (
+          type === "conversation.item.input_audio_transcription.completed"
+        ) {
+          const text = msg?.transcript ?? "";
           if (text) sentences.push(text);
-        } else if (action === "task-finished") {
+        } else if (type === "session.finished") {
           finished = true;
           clearTimeout(timer);
           ws.close();
           resolve(sentences.join(""));
-        } else if (action === "task-failed") {
+        } else if (type === "error") {
           finished = true;
           clearTimeout(timer);
           ws.close();
-          const errMsg =
-            msg?.header?.error_message ?? "语音识别失败";
-          reject(new Error(errMsg));
+          reject(new Error(msg?.error?.message ?? "语音识别失败"));
         }
       } catch {
         // ignore parse errors
       }
     });
-
-    ws.on("open", () => {
-      // 发送 run-task 指令
-      ws.send(
-        JSON.stringify({
-          header: {
-            action: "run-task",
-            task_id: taskId,
-            streaming: "duplex",
-          },
-          payload: {
-            model,
-            task_group: "audio",
-            task: "asr",
-            function: "recognition",
-            parameters: {
-              format: "pcm",
-              sample_rate: 16000,
-              language_hints: ["zh", "en"],
-            },
-            input: {},
-          },
-        })
-      );
-    });
   });
 }
 
-function sendPcmFrames(ws: WebSocket, pcmData: Buffer, taskId: string) {
+function sendAudioChunks(ws: WebSocket, pcmData: Buffer) {
   let offset = 0;
-  const send = () => {
-    while (offset < pcmData.length) {
-      if (ws.readyState !== WebSocket.OPEN) return;
-      const end = Math.min(offset + FRAME_SIZE, pcmData.length);
-      const frame = pcmData.subarray(offset, end);
-      ws.send(frame);
-      offset = end;
-    }
-    // 所有帧发送完毕，发送 finish-task
+
+  // 逐块发送 base64 编码的 PCM 音频
+  while (offset < pcmData.length) {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const end = Math.min(offset + CHUNK_SIZE, pcmData.length);
+    const chunk = pcmData.subarray(offset, end);
     ws.send(
       JSON.stringify({
-        header: {
-          action: "finish-task",
-          task_id: taskId,
-          streaming: "duplex",
-        },
-        payload: { input: {} },
+        event_id: `evt_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+        type: "input_audio_buffer.append",
+        audio: chunk.toString("base64"),
       })
     );
-  };
-  send();
+    offset = end;
+  }
+
+  // 发送 commit 表示音频结束（Manual 模式）
+  ws.send(
+    JSON.stringify({
+      event_id: `evt_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+      type: "input_audio_buffer.commit",
+    })
+  );
+
+  // 发送 session.finish
+  ws.send(
+    JSON.stringify({
+      event_id: `evt_${randomUUID().replace(/-/g, "").slice(0, 12)}`,
+      type: "session.finish",
+    })
+  );
 }
