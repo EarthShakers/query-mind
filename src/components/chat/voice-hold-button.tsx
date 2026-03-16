@@ -38,8 +38,18 @@ export function VoiceHoldButton({
     const el = containerRef.current;
     if (!el) return;
     const preventSelect = (e: Event) => e.preventDefault();
+    // touchstart preventDefault is the only reliable way to stop mobile
+    // browsers from hijacking the long-press for text selection / callout,
+    // which would fire pointercancel and kill the recording.
+    // Must use addEventListener (not React onTouchStart) so we can set
+    // { passive: false } — React registers touch listeners as passive.
+    const preventTouch = (e: TouchEvent) => e.preventDefault();
     el.addEventListener("selectstart", preventSelect);
-    return () => el.removeEventListener("selectstart", preventSelect);
+    el.addEventListener("touchstart", preventTouch, { passive: false });
+    return () => {
+      el.removeEventListener("selectstart", preventSelect);
+      el.removeEventListener("touchstart", preventTouch);
+    };
   }, []);
 
   const setIsCancelling = useCallback(

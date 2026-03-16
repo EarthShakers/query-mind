@@ -2,8 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 输入栏按钮：禁止长按选中文字、禁止系统菜单（voicetoto.md） */
-.input-bar button {
+/* 输入栏：禁止长按选中文字、禁止系统菜单 */
+.input-bar {
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
+}
+/* 文本输入框内仍允许选中 */
+.input-bar input,
+.input-bar textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
