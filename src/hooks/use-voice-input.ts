@@ -330,7 +330,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       const recorder = new RecordRTCModule(stream, {
         type: "audio",
         mimeType: "audio/wav",
-        recorderType: (RecordRTCModule as unknown as { StereoAudioRecorder: unknown }).StereoAudioRecorder,
+        recorderType: (RecordRTCModule as { StereoAudioRecorder: unknown }).StereoAudioRecorder as import("recordrtc").Recorder,
         timeSlice: 300,
         desiredSampRate: 16000,
         numberOfAudioChannels: 1,
