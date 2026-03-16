@@ -97,13 +97,17 @@ export default function Page() {
       setInput(lastInput.current);
     },
   });
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [partialText, setPartialText] = useState("");
   const voiceInput = useVoiceInput({
     onResult: (text) => {
+      setPartialText("");
       setInput((prev) => prev + text);
-      setVoiceMode(false);
+    },
+    onPartial: (text) => {
+      setPartialText(text);
     },
   });
-  const [voiceMode, setVoiceMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
@@ -842,8 +846,8 @@ export default function Page() {
 
                 {/* 输入区域：文本模式 or 语音模式 */}
                 {voiceMode ? (
-                  /* ── 语音模式：点击录音/停止 ── */
-                  <div className="relative flex-1 min-w-0">
+                  /* ── 语音模式 ── */
+                  <div className="relative flex-1 min-w-0 flex flex-col gap-1.5">
                     {/* 录音中浮层 */}
                     {voiceInput.isRecording && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-5 py-3 rounded-2xl shadow-lg bg-red-500 text-white whitespace-nowrap text-sm font-medium flex items-center gap-2">
@@ -854,10 +858,19 @@ export default function Page() {
                         正在录音，点击停止...
                       </div>
                     )}
+                    {/* 实时识别文字 */}
+                    {(voiceInput.isRecording || voiceInput.isTranscribing) && (input || partialText) && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 max-h-20 overflow-y-auto">
+                        {input}
+                        {partialText && (
+                          <span className="text-slate-400">{partialText}</span>
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
-                      disabled={voiceInput.isTranscribing}
                       onClick={voiceInput.toggleRecording}
+                      disabled={voiceInput.isTranscribing}
                       className={`w-full rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
                         voiceInput.isTranscribing
                           ? "bg-amber-50 border-amber-200 text-amber-600"

@@ -18,7 +18,8 @@
       "WebFetch(domain:www.alibabacloud.com)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:help.aliyun.com)",
-      "Bash(find \"/Users/zhuochaoli/code/ai/ai-sql-demo/src/app/api\" -type f -name \"*.ts\" -o -name \"*.tsx\" 2>/dev/null | head -20)"
+      "Bash(find \"/Users/zhuochaoli/code/ai/ai-sql-demo/src/app/api\" -type f -name \"*.ts\" -o -name \"*.tsx\" 2>/dev/null | head -20)",
+      "WebFetch(domain:www.opentypeless.com)"
     ]
   }
 }
