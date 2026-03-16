@@ -29,6 +29,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   const chunksRef = useRef<Int16Array[]>([]);
   const hasResultRef = useRef(false);
 
+  // Abort flag — set by stopRecording / cancelRecording so that an in-flight
+  // startRecording can bail out early at each await point.
+  const abortRef = useRef(false);
+
   /** 检查麦克风权限：granted=已授权，denied=已拒绝，prompt=未询问。API 不支持时返回 granted 以继续尝试 */
   const checkMicrophonePermission = useCallback(async (): Promise<"granted" | "denied" | "prompt"> => {
     try {
@@ -94,6 +98,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     setError(null);
     chunksRef.current = [];
     hasResultRef.current = false;
+    abortRef.current = false;
 
     try {
       if (!window.AudioWorkletNode) {
@@ -101,6 +106,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       }
 
       const perm = await checkMicrophonePermission();
+      if (abortRef.current) return;
       if (perm === "denied") {
         onError?.("麦克风权限已拒绝，请在浏览器设置中允许");
         return;
@@ -115,12 +121,17 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         return;
       }
 
+      // Permission granted — mark recording active immediately so the overlay
+      // appears without waiting for the heavy async setup below.
+      setIsRecording(true);
+
       // 1. 创建后端 ASR 会话
       const res = await fetch("/api/asr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "start" }),
       });
+      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "无法启动语音识别");
       const sessionId = data.sessionId as string;
@@ -165,14 +176,18 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         eventSourceRef.current = null;
       });
 
+      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
+
       // 3. 启动麦克风 + AudioWorklet（使用原生采样率，worklet 内降采样到 16kHz）
       const audioCtx = new AudioContext();
       audioCtxRef.current = audioCtx;
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
       mediaStreamRef.current = stream;
 
       await audioCtx.audioWorklet.addModule("/worklets/pcm-processor.js");
+      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
       const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor", {
         processorOptions: { sampleRate: audioCtx.sampleRate },
       });
@@ -193,11 +208,11 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         analyser.connect(workletNode);
         analyserRef.current = analyser;
 
-        const data = new Uint8Array(analyser.frequencyBinCount);
+        const data2 = new Uint8Array(analyser.frequencyBinCount);
         const tick = () => {
           if (!analyserRef.current) return;
-          analyserRef.current.getByteFrequencyData(data);
-          const avg = data.reduce((a, b) => a + b, 0) / data.length;
+          analyserRef.current.getByteFrequencyData(data2);
+          const avg = data2.reduce((a, b) => a + b, 0) / data2.length;
           onLevelChange(Math.min(1, avg / 128));
           levelRafRef.current = requestAnimationFrame(tick);
         };
@@ -208,10 +223,9 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       // 4. 定时推送音频 (每 300ms)
       pushIntervalRef.current = setInterval(flushChunks, 300);
-
-      setIsRecording(true);
     } catch (err) {
       cleanup();
+      setIsRecording(false);
       const msg =
         err instanceof DOMException && err.name === "NotAllowedError"
           ? "无法访问麦克风，请检查浏览器权限"
@@ -224,7 +238,15 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange, checkMicrophonePermission]);
 
   const stopRecording = useCallback(async () => {
+    // Signal any in-flight startRecording to abort
+    abortRef.current = true;
+
     setIsRecording(false);
+
+    // Only enter transcribing state if we actually created a session
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+
     setIsTranscribing(true);
 
     // 停止定时推送，最后 flush 一次
@@ -245,22 +267,22 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     await flushChunks();
 
     // 通知后端结束
-    const sid = sessionIdRef.current;
-    if (sid) {
-      try {
-        await fetch("/api/asr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "stop", sessionId: sid }),
-        });
-      } catch {
-        // ignore
-      }
+    try {
+      await fetch("/api/asr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop", sessionId: sid }),
+      });
+    } catch {
+      // ignore
     }
     // SSE 会收到 done 事件后自动关闭
   }, [flushChunks]);
 
   const cancelRecording = useCallback(() => {
+    // Signal any in-flight startRecording to abort
+    abortRef.current = true;
+
     setIsRecording(false);
     setIsTranscribing(false);
 
@@ -288,6 +310,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   }, [isRecording, startRecording, stopRecording]);
 
   const reset = useCallback(() => {
+    abortRef.current = true;
     setError(null);
     setIsRecording(false);
     setIsTranscribing(false);

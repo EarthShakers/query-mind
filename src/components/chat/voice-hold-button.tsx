@@ -34,6 +34,11 @@ export function VoiceHoldButton({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isCancelling, setIsCancellingState] = useState(false);
 
+  // Track press state locally via ref — immune to the stale-closure problem
+  // that plagues the `isRecording` prop (which is only set to true after the
+  // async startRecording finishes, long after pointerup may have fired).
+  const isActiveRef = useRef(false);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -68,6 +73,7 @@ export function VoiceHoldButton({
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       startYRef.current = e.clientY;
       setIsCancelling(false);
+      isActiveRef.current = true;
       if (navigator.vibrate) navigator.vibrate(50);
       onStart();
     },
@@ -76,18 +82,19 @@ export function VoiceHoldButton({
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isRecording) return;
+      if (!isActiveRef.current) return;
       const deltaY = startYRef.current - e.clientY;
       const cancelling = deltaY > CANCEL_THRESHOLD_PX;
       setIsCancelling(cancelling);
     },
-    [isRecording, setIsCancelling]
+    [setIsCancelling]
   );
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
-      if (!isRecording) return;
+      if (!isActiveRef.current) return;
+      isActiveRef.current = false;
       if (isCancellingRef.current) {
         onCancel();
       } else {
@@ -95,13 +102,16 @@ export function VoiceHoldButton({
       }
       setIsCancelling(false);
     },
-    [isRecording, onStop, onCancel, setIsCancelling]
+    [onStop, onCancel, setIsCancelling]
   );
 
   const handlePointerCancel = useCallback(() => {
-    if (isRecording) onCancel();
+    if (isActiveRef.current) {
+      isActiveRef.current = false;
+      onCancel();
+    }
     setIsCancelling(false);
-  }, [isRecording, onCancel, setIsCancelling]);
+  }, [onCancel, setIsCancelling]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
