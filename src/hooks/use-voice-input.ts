@@ -29,6 +29,16 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   const chunksRef = useRef<Int16Array[]>([]);
   const hasResultRef = useRef(false);
 
+  /** 检查麦克风权限：granted=已授权，denied=已拒绝，prompt=未询问 */
+  const checkMicrophonePermission = useCallback(async (): Promise<"granted" | "denied" | "prompt"> => {
+    try {
+      const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+      return result.state as "granted" | "denied" | "prompt";
+    } catch {
+      return "prompt";
+    }
+  }, []);
+
   const cleanup = useCallback(() => {
     if (levelRafRef.current) {
       cancelAnimationFrame(levelRafRef.current);
@@ -88,6 +98,21 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     try {
       if (!window.AudioWorkletNode) {
         throw new Error("当前浏览器不支持语音录制");
+      }
+
+      const perm = await checkMicrophonePermission();
+      if (perm === "denied") {
+        onError?.("麦克风权限已拒绝，请在浏览器设置中允许");
+        return;
+      }
+      if (perm === "prompt") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((t) => t.stop());
+        } catch {
+          onError?.("无法访问麦克风，请检查浏览器权限");
+        }
+        return;
       }
 
       // 1. 创建后端 ASR 会话
@@ -196,7 +221,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       onError?.(msg);
       setError(null);
     }
-  }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange]);
+  }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange, checkMicrophonePermission]);
 
   const stopRecording = useCallback(async () => {
     setIsRecording(false);
