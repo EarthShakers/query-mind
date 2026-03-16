@@ -18,6 +18,8 @@ import { AssistantTurn } from "@/components/chat/assistant-turn";
 import { SpacePicker } from "@/components/chat/space-picker";
 import { ChatUploadModal } from "@/components/chat/chat-upload-modal";
 import { ExportDropdown } from "@/components/chat/export-dropdown";
+import { VoiceRecordingOverlay } from "@/components/chat/voice-recording-overlay";
+import { VoiceHoldButton } from "@/components/chat/voice-hold-button";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 
 /* ─── Main page ─── */
@@ -98,6 +100,7 @@ export default function Page() {
     },
   });
   const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceCancelling, setVoiceCancelling] = useState(false);
   const [partialText, setPartialText] = useState("");
   const voiceInput = useVoiceInput({
     onResult: (text) => {
@@ -846,59 +849,47 @@ export default function Page() {
 
                 {/* 输入区域：文本模式 or 语音模式 */}
                 {voiceMode ? (
-                  /* ── 语音模式 ── */
-                  <div className="relative flex-1 min-w-0 flex flex-col gap-1.5">
-                    {/* 录音中浮层 */}
-                    {voiceInput.isRecording && (
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-5 py-3 rounded-2xl shadow-lg bg-red-500 text-white whitespace-nowrap text-sm font-medium flex items-center gap-2">
-                        <span className="relative flex h-3 w-3">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
-                          <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
-                        </span>
-                        正在录音，点击停止...
-                      </div>
-                    )}
-                    {/* 实时识别文字 */}
-                    {(voiceInput.isRecording || voiceInput.isTranscribing) && (input || partialText) && (
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 max-h-20 overflow-y-auto">
-                        {input}
-                        {partialText && (
-                          <span className="text-slate-400">{partialText}</span>
+                  /* ── 语音模式：长按录音、松手发送、上移取消（与 App 一致） ── */
+                  <VoiceHoldButton
+                    isRecording={voiceInput.isRecording}
+                    isTranscribing={voiceInput.isTranscribing}
+                    onStart={voiceInput.startRecording}
+                    onStop={voiceInput.stopRecording}
+                    onCancel={voiceInput.cancelRecording}
+                    onCancellingChange={setVoiceCancelling}
+                    className="flex-1 min-w-0"
+                  >
+                    {({ isRecording, isTranscribing }) => (
+                      <div
+                        className={`rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
+                          isTranscribing
+                            ? "bg-amber-50 border-amber-200 text-amber-600"
+                            : isRecording
+                              ? "bg-red-50 border-red-300 text-red-600"
+                              : "bg-white border-slate-200 text-slate-400"
+                        }`}
+                      >
+                        {isTranscribing ? (
+                          <span className="inline-flex items-center gap-2">
+                            <svg className="h-4 w-4 animate-spin shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
+                            </svg>
+                            转写中...
+                          </span>
+                        ) : isRecording ? (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="relative flex h-3 w-3 shrink-0">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                            </span>
+                            松手发送
+                          </span>
+                        ) : (
+                          "长按 说话"
                         )}
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={voiceInput.toggleRecording}
-                      disabled={voiceInput.isTranscribing}
-                      className={`w-full rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
-                        voiceInput.isTranscribing
-                          ? "bg-amber-50 border-amber-200 text-amber-600"
-                          : voiceInput.isRecording
-                            ? "bg-red-50 border-red-300 text-red-600"
-                            : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
-                      }`}
-                    >
-                      {voiceInput.isTranscribing ? (
-                        <span className="inline-flex items-center gap-2">
-                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
-                          </svg>
-                          转写中...
-                        </span>
-                      ) : voiceInput.isRecording ? (
-                        <span className="inline-flex items-center gap-2">
-                          <span className="relative flex h-3 w-3">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                          </span>
-                          点击停止录音
-                        </span>
-                      ) : (
-                        "点击开始录音"
-                      )}
-                    </button>
-                  </div>
+                  </VoiceHoldButton>
                 ) : (
                   /* ── 文本模式：普通输入框 ── */
                   <input
@@ -950,6 +941,20 @@ export default function Page() {
               </form>
               {voiceInput.error && (
                 <p className="text-xs text-red-500 mt-1 px-1">{voiceInput.error}</p>
+              )}
+
+              {/* 语音录制浮层：录音/转写时全屏展示识别文字，避免撑乱输入栏 */}
+              {voiceMode && (voiceInput.isRecording || voiceInput.isTranscribing) && (
+                <VoiceRecordingOverlay
+                  isRecording={voiceInput.isRecording}
+                  isTranscribing={voiceInput.isTranscribing}
+                  isCancelling={voiceCancelling}
+                  transcript={input}
+                  partialText={partialText}
+                  onStop={voiceInput.stopRecording}
+                  onCancel={voiceInput.cancelRecording}
+                  holdToSend
+                />
               )}
             </div>
           </div>
