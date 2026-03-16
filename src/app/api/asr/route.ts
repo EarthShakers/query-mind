@@ -14,9 +14,10 @@ import {
  * body: { action: "stop", sessionId } → { ok: true }
  */
 export async function POST(req: NextRequest) {
+  let action = "unknown";
   try {
     const body = await req.json();
-    const action = body.action as string;
+    action = body.action as string;
 
     if (action === "start") {
       const config = await getModelConfig();
@@ -29,8 +30,17 @@ export async function POST(req: NextRequest) {
       if (!sessionId || !audio) {
         return NextResponse.json({ error: "缺少参数" }, { status: 400 });
       }
-      await pushAudio(sessionId, audio);
-      return NextResponse.json({ ok: true });
+      try {
+        await pushAudio(sessionId, audio);
+        return NextResponse.json({ ok: true });
+      } catch (pushErr) {
+        const msg = pushErr instanceof Error ? pushErr.message : "";
+        // 会话已结束/不存在时返回 200，避免 500 风暴（服务端多实例或已 finish 时常见）
+        if (msg === "会话不存在" || msg === "连接已关闭") {
+          return NextResponse.json({ ok: false, dropped: true });
+        }
+        throw pushErr;
+      }
     }
 
     if (action === "stop") {
@@ -38,13 +48,22 @@ export async function POST(req: NextRequest) {
       if (!sessionId) {
         return NextResponse.json({ error: "缺少 sessionId" }, { status: 400 });
       }
-      finishSession(sessionId);
-      return NextResponse.json({ ok: true });
+      try {
+        const transcript = await finishSession(sessionId);
+        return NextResponse.json({ ok: true, transcript });
+      } catch (stopErr) {
+        const msg = stopErr instanceof Error ? stopErr.message : "";
+        if (msg === "转写超时" || msg.includes("会话")) {
+          return NextResponse.json({ ok: true, transcript: "" });
+        }
+        throw stopErr;
+      }
     }
 
     return NextResponse.json({ error: "未知 action" }, { status: 400 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "语音识别服务异常";
+    console.error("[ASR] API error:", action, message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -63,6 +82,7 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       let closed = false;
+      let unsub: (() => void) | null = null;
 
       const send = (event: string, data: string) => {
         if (closed) return;
@@ -72,11 +92,11 @@ export async function GET(req: NextRequest) {
       const close = () => {
         if (closed) return;
         closed = true;
-        unsub();
+        unsub?.();
         controller.close();
       };
 
-      const unsub = subscribe(sessionId, {
+      unsub = subscribe(sessionId, {
         onPartial: (text) => send("partial", JSON.stringify({ text })),
         onText: (text) => send("text", JSON.stringify({ text })),
         onError: (msg) => {

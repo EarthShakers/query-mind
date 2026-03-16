@@ -13,27 +13,92 @@ interface UseVoiceInputOptions {
   onLevelChange?: (level: number) => void;
 }
 
+/** 从 WAV blob 解析出 PCM Int16 和采样率 */
+async function parseWavToPcm(blob: Blob): Promise<{ pcm: Int16Array; sampleRate: number } | null> {
+  const ab = await blob.arrayBuffer();
+  const view = new DataView(ab);
+  if (ab.byteLength < 44) return null;
+  if (String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)) !== "RIFF") return null;
+  const sampleRate = view.getUint32(24, true);
+  let dataOffset = 44;
+  let dataSize = ab.byteLength - 44;
+  for (let i = 12; i < ab.byteLength - 8; i++) {
+    if (String.fromCharCode(view.getUint8(i), view.getUint8(i + 1), view.getUint8(i + 2), view.getUint8(i + 3)) === "data") {
+      dataOffset = i + 8;
+      dataSize = view.getUint32(i + 4, true);
+      break;
+    }
+  }
+  if (dataSize <= 0) return null;
+  const pcmBytes = ab.slice(dataOffset, dataOffset + dataSize);
+  const pcm = new Int16Array(pcmBytes);
+  return { pcm, sampleRate };
+}
+
+/** 内存保护：chunks 堆积上限，~18s @ 300ms/chunk */
+const MAX_CHUNKS_BUFFERED = 60;
+
+/** VAD：连续静音超过此时长则暂停发送，节省成本 */
+const VAD_SILENT_MS = 2000;
+const VAD_SILENT_CHUNKS = Math.ceil(VAD_SILENT_MS / 300); // 7 chunks
+const VAD_RMS_THRESHOLD = 400; // Int16 下环境底噪约 100-300，语音通常 >500
+
+/** 计算 Int16 PCM 的 RMS 能量 */
+function pcmRms(pcm: Int16Array): number {
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+  return Math.sqrt(sum / pcm.length);
+}
+
+/** AudioContext 单例，避免移动端频繁创建耗尽系统额度 */
+let sharedAudioContext: AudioContext | null = null;
+function getOrCreateAudioContext(): AudioContext {
+  if (sharedAudioContext && sharedAudioContext.state !== "closed") {
+    return sharedAudioContext;
+  }
+  sharedAudioContext = new AudioContext();
+  return sharedAudioContext;
+}
+
+/** 降采样 Int16 PCM 到 16kHz，线性插值比最近邻更平滑 */
+function resampleTo16k(pcm: Int16Array, fromRate: number): Int16Array {
+  if (fromRate <= 16000) return pcm;
+  const ratio = fromRate / 16000;
+  const outLen = Math.floor(pcm.length / ratio);
+  const out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcPos = i * ratio;
+    const srcIdx = Math.floor(srcPos);
+    const frac = srcPos - srcIdx;
+    const a = pcm[Math.min(srcIdx, pcm.length - 1)];
+    const b = pcm[Math.min(srcIdx + 1, pcm.length - 1)];
+    out[i] = Math.max(-0x8000, Math.min(0x7fff, Math.round(a + (b - a) * frac)));
+  }
+  return out;
+}
+
 export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: UseVoiceInputOptions) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
+  const recorderRef = useRef<{ startRecording: () => void; stopRecording: () => void } | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const levelRafRef = useRef<number | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const silentGainRef = useRef<GainNode | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunksRef = useRef<Int16Array[]>([]);
   const hasResultRef = useRef(false);
-
-  // Abort flag — set by stopRecording / cancelRecording so that an in-flight
-  // startRecording can bail out early at each await point.
   const abortRef = useRef(false);
+  const flushFailCountRef = useRef(0);
+  const vadSilentCountRef = useRef(0);
+  const vadPausedRef = useRef(false);
 
-  /** 检查麦克风权限：granted=已授权，denied=已拒绝，prompt=未询问。API 不支持时返回 granted 以继续尝试 */
   const checkMicrophonePermission = useCallback(async (): Promise<"granted" | "denied" | "prompt"> => {
     try {
       const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
@@ -44,36 +109,63 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   }, []);
 
   const cleanup = useCallback(() => {
-    if (levelRafRef.current) {
-      cancelAnimationFrame(levelRafRef.current);
-      levelRafRef.current = null;
-    }
     onLevelChange?.(0);
-    analyserRef.current = null;
     if (pushIntervalRef.current) {
       clearInterval(pushIntervalRef.current);
       pushIntervalRef.current = null;
     }
-    workletNodeRef.current?.disconnect();
-    workletNodeRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
+    if (levelRafRef.current) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = null;
+    }
+    sourceNodeRef.current?.disconnect();
+    sourceNodeRef.current = null;
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    silentGainRef.current?.disconnect();
+    silentGainRef.current = null;
+    recorderRef.current = null;
     audioCtxRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
+    vadSilentCountRef.current = 0;
+    vadPausedRef.current = false;
   }, [onLevelChange]);
 
-  /** 把累积的 PCM chunks 转为 base64 并 POST 到后端 */
+  /** 仅清理录音相关资源，保留 EventSource 以接收最终转写结果 */
+  const cleanupRecordingOnly = useCallback(() => {
+    onLevelChange?.(0);
+    if (pushIntervalRef.current) {
+      clearInterval(pushIntervalRef.current);
+      pushIntervalRef.current = null;
+    }
+    if (levelRafRef.current) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = null;
+    }
+    sourceNodeRef.current?.disconnect();
+    sourceNodeRef.current = null;
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    silentGainRef.current?.disconnect();
+    silentGainRef.current = null;
+    recorderRef.current = null;
+    audioCtxRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+    vadSilentCountRef.current = 0;
+    vadPausedRef.current = false;
+  }, [onLevelChange]);
+
   const flushChunks = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid || chunksRef.current.length === 0) return;
 
-    // 取出当前累积的 chunks
     const pending = chunksRef.current;
     chunksRef.current = [];
 
-    // 合并
     const totalLen = pending.reduce((s, c) => s + c.length, 0);
     const merged = new Int16Array(totalLen);
     let off = 0;
@@ -89,22 +181,26 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "push", sessionId: sid, audio: base64 }),
       });
+      flushFailCountRef.current = 0;
     } catch {
-      // 网络错误静默处理，SSE 会报错
+      flushFailCountRef.current += 1;
+      if (flushFailCountRef.current >= 5) {
+        onError?.("网络异常，请检查连接");
+        flushFailCountRef.current = 0;
+      }
     }
-  }, []);
+  }, [onError]);
 
   const startRecording = useCallback(async () => {
     setError(null);
     chunksRef.current = [];
     hasResultRef.current = false;
     abortRef.current = false;
+    flushFailCountRef.current = 0;
+    vadSilentCountRef.current = 0;
+    vadPausedRef.current = false;
 
     try {
-      if (!window.AudioWorkletNode) {
-        throw new Error("当前浏览器不支持语音录制");
-      }
-
       const perm = await checkMicrophonePermission();
       if (abortRef.current) return;
       if (perm === "denied") {
@@ -121,11 +217,8 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         return;
       }
 
-      // Permission granted — mark recording active immediately so the overlay
-      // appears without waiting for the heavy async setup below.
       setIsRecording(true);
 
-      // 1. 创建后端 ASR 会话
       const res = await fetch("/api/asr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,7 +230,6 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       const sessionId = data.sessionId as string;
       sessionIdRef.current = sessionId;
 
-      // 2. 打开 SSE 接收文本
       const es = new EventSource(`/api/asr?sessionId=${sessionId}`);
       eventSourceRef.current = es;
 
@@ -149,7 +241,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         const { text } = JSON.parse(e.data);
         if (text) {
           hasResultRef.current = true;
-          onResult(text);
+          // 不在此处调用 onResult，由 POST stop 响应统一处理，避免与 stopRecording 重复发送
+          setIsTranscribing(false);
+          eventSourceRef.current?.close();
+          eventSourceRef.current = null;
         }
       });
       es.addEventListener("error", (e) => {
@@ -157,14 +252,15 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
           const evt = e as MessageEvent;
           if (evt.data) {
             const { error: msg } = JSON.parse(evt.data);
-            if (msg) {
-              onError?.(msg);
-              setError(null);
-            }
+            if (msg) onError?.(msg);
           }
         } catch {
-          // connection error
+          // 连接断开等，无 data
         }
+        // 任何 error 都结束转写态，避免卡住
+        setIsTranscribing(false);
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
       });
       es.addEventListener("done", () => {
         setIsTranscribing(false);
@@ -178,50 +274,100 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       if (abortRef.current) { cleanup(); setIsRecording(false); return; }
 
-      // 3. 启动麦克风 + AudioWorklet（使用原生采样率，worklet 内降采样到 16kHz）
-      const audioCtx = new AudioContext();
-      audioCtxRef.current = audioCtx;
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 设备选择：优先 Built-in / Default，避免 Mac 虚拟设备
+      let stream: MediaStream;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter((d) => d.kind === "audioinput");
+        const preferred = audioInputs.find((d) => /built-in|default|internal|麦克风/i.test(d.label)) ?? audioInputs[0];
+        const constraints: MediaStreamConstraints = {
+          audio: {
+            ...(preferred?.deviceId ? { deviceId: { exact: preferred.deviceId } } : {}),
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+      }
       if (abortRef.current) { cleanup(); setIsRecording(false); return; }
       mediaStreamRef.current = stream;
 
-      await audioCtx.audioWorklet.addModule("/worklets/pcm-processor.js");
-      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
-      const workletNode = new AudioWorkletNode(audioCtx, "pcm-processor", {
-        processorOptions: { sampleRate: audioCtx.sampleRate },
-      });
-      workletNodeRef.current = workletNode;
-
-      workletNode.port.onmessage = (e: MessageEvent) => {
-        chunksRef.current.push(new Int16Array(e.data));
-      };
-
+      // 音量波形：AnalyserNode 独立于 RecordRTC，复用单例 AudioContext
+      const audioCtx = getOrCreateAudioContext();
+      audioCtxRef.current = audioCtx;
+      if (audioCtx.state === "suspended") await audioCtx.resume();
       const source = audioCtx.createMediaStreamSource(stream);
-      let nodeToConnect: AudioNode = workletNode;
+      sourceNodeRef.current = source;
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+      const silentGain = audioCtx.createGain();
+      silentGain.gain.value = 0.0001;
+      analyser.connect(silentGain);
+      silentGain.connect(audioCtx.destination);
+      analyserRef.current = analyser;
+      silentGainRef.current = silentGain;
 
-      if (onLevelChange) {
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.8;
-        source.connect(analyser);
-        analyser.connect(workletNode);
-        analyserRef.current = analyser;
-
-        const data2 = new Uint8Array(analyser.frequencyBinCount);
-        const tick = () => {
-          if (!analyserRef.current) return;
-          analyserRef.current.getByteFrequencyData(data2);
-          const avg = data2.reduce((a, b) => a + b, 0) / data2.length;
-          onLevelChange(Math.min(1, avg / 128));
-          levelRafRef.current = requestAnimationFrame(tick);
-        };
+      const dataArr = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArr);
+        const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
+        onLevelChange?.(Math.min(1, avg / 128));
         levelRafRef.current = requestAnimationFrame(tick);
-      } else {
-        source.connect(workletNode);
+      };
+      levelRafRef.current = requestAnimationFrame(tick);
+
+      // RecordRTC 采集
+      const RecordRTCModule = (await import("recordrtc")).default;
+      const recorder = new RecordRTCModule(stream, {
+        type: "audio",
+        mimeType: "audio/wav",
+        recorderType: (RecordRTCModule as unknown as { StereoAudioRecorder: unknown }).StereoAudioRecorder,
+        timeSlice: 300,
+        desiredSampRate: 16000,
+        numberOfAudioChannels: 1,
+        bufferSize: 4096,
+        disableLogs: true,
+        ondataavailable: async (blob: Blob) => {
+          if (!blob || blob.size < 44) return;
+          const parsed = await parseWavToPcm(blob);
+          if (!parsed) return;
+          const pcm = parsed.sampleRate === 16000 ? parsed.pcm : resampleTo16k(parsed.pcm, parsed.sampleRate);
+          if (pcm.length === 0) return;
+
+          const rms = pcmRms(pcm);
+          if (rms < VAD_RMS_THRESHOLD) {
+            vadSilentCountRef.current += 1;
+            if (vadSilentCountRef.current >= VAD_SILENT_CHUNKS) {
+              vadPausedRef.current = true;
+            }
+          } else {
+            vadSilentCountRef.current = 0;
+            vadPausedRef.current = false;
+          }
+
+          if (!vadPausedRef.current) {
+            const chunks = chunksRef.current;
+            if (chunks.length >= MAX_CHUNKS_BUFFERED) chunks.shift();
+            chunks.push(pcm);
+          }
+        },
+      });
+      recorderRef.current = recorder;
+      recorder.startRecording();
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[Voice] RecordRTC 已启动, 设备:", stream.getAudioTracks()[0]?.label);
       }
 
-      // 4. 定时推送音频 (每 300ms)
       pushIntervalRef.current = setInterval(flushChunks, 300);
     } catch (err) {
       cleanup();
@@ -238,55 +384,60 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange, checkMicrophonePermission]);
 
   const stopRecording = useCallback(async () => {
-    // Signal any in-flight startRecording to abort
     abortRef.current = true;
-
     setIsRecording(false);
 
-    // Only enter transcribing state if we actually created a session
     const sid = sessionIdRef.current;
     if (!sid) return;
 
     setIsTranscribing(true);
 
-    // 停止定时推送，最后 flush 一次
     if (pushIntervalRef.current) {
       clearInterval(pushIntervalRef.current);
       pushIntervalRef.current = null;
     }
 
-    // 断开音频
-    workletNodeRef.current?.disconnect();
-    workletNodeRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
+    if (recorderRef.current) {
+      recorderRef.current.stopRecording();
+      recorderRef.current = null;
+    }
+    // 不关闭 EventSource，需保持连接以接收 text/done 事件
+    cleanupRecordingOnly();
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
 
-    // 推送剩余音频
+    await new Promise((r) => setTimeout(r, 50));
     await flushChunks();
 
-    // 通知后端结束
     try {
-      await fetch("/api/asr", {
+      const res = await fetch("/api/asr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "stop", sessionId: sid }),
       });
+      const data = await res.json();
+      const transcript = (data?.transcript ?? "") as string;
+      if (transcript.trim()) {
+        hasResultRef.current = true;
+        onResult(transcript);
+      } else if (!hasResultRef.current) {
+        onError?.("未识别到语音内容");
+      }
     } catch {
-      // ignore
+      if (!hasResultRef.current) onError?.("转写失败");
+    } finally {
+      setIsTranscribing(false);
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+      sessionIdRef.current = null;
     }
-    // SSE 会收到 done 事件后自动关闭
-  }, [flushChunks]);
+  }, [cleanupRecordingOnly, flushChunks, onError]);
 
   const cancelRecording = useCallback(() => {
-    // Signal any in-flight startRecording to abort
     abortRef.current = true;
-
     setIsRecording(false);
     setIsTranscribing(false);
 
-    // 通知后端结束（不关心结果）
     const sid = sessionIdRef.current;
     if (sid) {
       fetch("/api/asr", {
@@ -331,12 +482,13 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   };
 }
 
-/** ArrayBuffer → base64 (browser) */
+/** 安全的 Buffer 转 Base64，分块处理避免栈溢出 */
 function bufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const chunkSize = 1024;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
   }
   return btoa(binary);
 }

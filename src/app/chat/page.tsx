@@ -18,8 +18,9 @@ import { AssistantTurn } from "@/components/chat/assistant-turn";
 import { SpacePicker } from "@/components/chat/space-picker";
 import { ChatUploadModal } from "@/components/chat/chat-upload-modal";
 import { ExportDropdown } from "@/components/chat/export-dropdown";
+import { AnimatePresence } from "framer-motion";
 import { VoiceRecordingOverlay } from "@/components/chat/voice-recording-overlay";
-import { VoiceHoldButton } from "@/components/chat/voice-hold-button";
+import { VoiceHoldButton, VoiceHoldButtonUI } from "@/components/chat/voice-hold-button";
 import { Toast } from "@/components/ui/toast";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 
@@ -108,7 +109,10 @@ export default function Page() {
   const voiceInput = useVoiceInput({
     onResult: (text) => {
       setPartialText("");
-      setInput((prev) => prev + text);
+      if (text.trim()) {
+        userScrolledUp.current = false;
+        append({ role: "user", content: text });
+      }
     },
     onPartial: (text) => {
       setPartialText(text);
@@ -862,43 +866,23 @@ export default function Page() {
                 {voiceMode ? (
                   /* ── 语音模式：长按录音、松手发送、上移取消（与 App 一致） ── */
                   <VoiceHoldButton
+                    key={`voice-${messages.length}`}
                     isRecording={voiceInput.isRecording}
                     isTranscribing={voiceInput.isTranscribing}
+                    audioLevel={audioLevel}
                     onStart={voiceInput.startRecording}
                     onStop={voiceInput.stopRecording}
                     onCancel={voiceInput.cancelRecording}
                     onCancellingChange={setVoiceCancelling}
                     className="flex-1 min-w-0"
                   >
-                    {({ isRecording, isTranscribing }) => (
-                      <div
-                        className={`rounded-xl border px-3 md:px-4 py-3 text-sm font-medium text-center transition-colors ${
-                          isTranscribing
-                            ? "bg-amber-50 border-amber-200 text-amber-600"
-                            : isRecording
-                              ? "bg-red-50 border-red-300 text-red-600"
-                              : "bg-white border-slate-200 text-slate-400"
-                        }`}
-                      >
-                        {isTranscribing ? (
-                          <span className="inline-flex items-center gap-2">
-                            <svg className="h-4 w-4 animate-spin shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
-                            </svg>
-                            转写中...
-                          </span>
-                        ) : isRecording ? (
-                          <span className="inline-flex items-center gap-2">
-                            <span className="relative flex h-3 w-3 shrink-0">
-                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
-                            </span>
-                            松手发送
-                          </span>
-                        ) : (
-                          "长按 说话"
-                        )}
-                      </div>
+                    {({ isRecording, isTranscribing, isCancelling, audioLevel: level }) => (
+                      <VoiceHoldButtonUI
+                        isRecording={isRecording}
+                        isTranscribing={isTranscribing}
+                        isCancelling={isCancelling}
+                        audioLevel={level}
+                      />
                     )}
                   </VoiceHoldButton>
                 ) : (
@@ -951,9 +935,11 @@ export default function Page() {
                 )}
               </form>
 
-              {/* 语音录制浮层：录音/转写时全屏展示识别文字，避免撑乱输入栏 */}
-              {voiceMode && (voiceInput.isRecording || voiceInput.isTranscribing) && (
-                <VoiceRecordingOverlay
+              {/* 语音录制浮层：录音/转写时全屏展示识别文字，AnimatePresence 支持淡出 */}
+              <AnimatePresence>
+                {voiceMode && (voiceInput.isRecording || voiceInput.isTranscribing) && (
+                  <VoiceRecordingOverlay
+                    key="voice-overlay"
                   isRecording={voiceInput.isRecording}
                   isTranscribing={voiceInput.isTranscribing}
                   isCancelling={voiceCancelling}
@@ -964,7 +950,8 @@ export default function Page() {
                   onCancel={voiceInput.cancelRecording}
                   holdToSend
                 />
-              )}
+                )}
+              </AnimatePresence>
 
               <Toast
                 message={toastMsg}

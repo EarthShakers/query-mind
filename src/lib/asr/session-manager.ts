@@ -15,6 +15,9 @@ interface AsrSession {
   timer: ReturnType<typeof setTimeout>;
   ready: boolean;
   readyPromise: Promise<void>;
+  /** 等待转写结束的 Promise，resolve 时带上最终文本（可能为空） */
+  finishPromise: Promise<string>;
+  resolveFinish: (text: string) => void;
 }
 
 const sessions = new Map<string, AsrSession>();
@@ -43,6 +46,10 @@ export async function createSession(model: string): Promise<string> {
   const readyPromise = new Promise<void>((r) => {
     resolveReady = r;
   });
+  let resolveFinish!: (text: string) => void;
+  const finishPromise = new Promise<string>((r) => {
+    resolveFinish = r;
+  });
 
   const session: AsrSession = {
     ws,
@@ -50,6 +57,8 @@ export async function createSession(model: string): Promise<string> {
     timer: setTimeout(() => destroySession(sessionId), SESSION_TTL_MS),
     ready: false,
     readyPromise,
+    finishPromise,
+    resolveFinish,
   };
   sessions.set(sessionId, session);
 
@@ -101,14 +110,18 @@ export async function createSession(model: string): Promise<string> {
           const text = msg?.transcript ?? "";
           console.log("[ASR] final text:", text);
           if (text) emitter.emit("text", text);
+          session.resolveFinish(text);
         } else if (
           type === "conversation.item.input_audio_transcription.text"
         ) {
-          const text = msg?.transcript ?? "";
+          // DashScope 中间结果：text 常为空，实际内容在 stash
+          const text = (msg?.stash ?? msg?.text ?? msg?.transcript ?? "") as string;
           console.log("[ASR] partial text:", text);
           if (text) emitter.emit("partial", text);
         } else if (type === "session.finished") {
           emitter.emit("done");
+          // 若 completed 未触发（无语音），此处兜底 resolve
+          session.resolveFinish("");
           ws.close();
         } else if (type === "error") {
           console.error("[ASR] error:", msg?.error?.message);
@@ -142,7 +155,9 @@ export async function pushAudio(
 
   // 检查音频内容是否有效（不全为零）
   const rawBuf = Buffer.from(audioBase64, "base64");
-  const samples = new Int16Array(rawBuf.buffer, rawBuf.byteOffset, rawBuf.byteLength / 2);
+  // 使用 slice 避免 Node Buffer 池导致的 byteOffset 问题，确保正确读取 Int16
+  const ab = rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength);
+  const samples = new Int16Array(ab);
   let maxAbs = 0;
   for (let i = 0; i < samples.length; i++) {
     const abs = Math.abs(samples[i]);
@@ -165,14 +180,24 @@ export async function pushAudio(
   console.log("[ASR] pushed audio chunk, base64 length:", audioBase64.length);
 }
 
-/** 结束会话 */
-export function finishSession(sessionId: string): void {
+/** 结束会话，返回转写完成后的最终文本（Promise） */
+export async function finishSession(sessionId: string): Promise<string> {
   const session = sessions.get(sessionId);
-  if (!session) return;
+  if (!session) return "";
 
   if (session.ws.readyState === WebSocket.OPEN) {
-    // VAD 模式下不需要 commit，直接 finish
     session.ws.send(JSON.stringify({ event_id: evtId(), type: "session.finish" }));
+  }
+
+  try {
+    return await Promise.race([
+      session.finishPromise,
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error("转写超时")), 15_000)
+      ),
+    ]);
+  } catch {
+    return "";
   }
 }
 
@@ -213,6 +238,7 @@ function destroySession(sessionId: string): void {
   if (!session) return;
   clearTimeout(session.timer);
   session.emitter.removeAllListeners();
+  session.resolveFinish(""); // 避免 finishPromise 永久挂起
   if (session.ws.readyState === WebSocket.OPEN) {
     session.ws.close();
   }
