@@ -29,13 +29,13 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   const chunksRef = useRef<Int16Array[]>([]);
   const hasResultRef = useRef(false);
 
-  /** 检查麦克风权限：granted=已授权，denied=已拒绝，prompt=未询问 */
+  /** 检查麦克风权限：granted=已授权，denied=已拒绝，prompt=未询问。API 不支持时返回 granted 以继续尝试 */
   const checkMicrophonePermission = useCallback(async (): Promise<"granted" | "denied" | "prompt"> => {
     try {
       const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
       return result.state as "granted" | "denied" | "prompt";
     } catch {
-      return "prompt";
+      return "granted";
     }
   }, []);
 
