@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 输入栏按钮：禁止长按选中文字、禁止系统菜单（voicetoto.md） */
+.input-bar button {
+  -webkit-touch-callout: none;
+  user-select: none;
+}

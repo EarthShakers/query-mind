@@ -7,9 +7,13 @@ interface UseVoiceInputOptions {
   onResult: (text: string) => void;
   /** 收到中间识别结果时调用（可选，实现边录边显） */
   onPartial?: (text: string) => void;
+  /** 错误时调用（用于 toast 等，不持久展示） */
+  onError?: (message: string) => void;
+  /** 录音时实时音量 0-1（用于波形展示） */
+  onLevelChange?: (level: number) => void;
 }
 
-export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
+export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: UseVoiceInputOptions) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +21,8 @@ export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const levelRafRef = useRef<number | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -24,24 +30,25 @@ export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
   const hasResultRef = useRef(false);
 
   const cleanup = useCallback(() => {
-    // 停止音频推送定时器
+    if (levelRafRef.current) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = null;
+    }
+    onLevelChange?.(0);
+    analyserRef.current = null;
     if (pushIntervalRef.current) {
       clearInterval(pushIntervalRef.current);
       pushIntervalRef.current = null;
     }
-    // 断开 AudioWorklet
     workletNodeRef.current?.disconnect();
     workletNodeRef.current = null;
-    // 关闭 AudioContext
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
-    // 停止麦克风
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
-    // 关闭 SSE
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
-  }, []);
+  }, [onLevelChange]);
 
   /** 把累积的 PCM chunks 转为 base64 并 POST 到后端 */
   const flushChunks = useCallback(async () => {
@@ -110,12 +117,14 @@ export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
         }
       });
       es.addEventListener("error", (e) => {
-        // SSE error event - could be connection error or server error
         try {
           const evt = e as MessageEvent;
           if (evt.data) {
             const { error: msg } = JSON.parse(evt.data);
-            if (msg) setError(msg);
+            if (msg) {
+              onError?.(msg);
+              setError(null);
+            }
           }
         } catch {
           // connection error
@@ -124,7 +133,8 @@ export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
       es.addEventListener("done", () => {
         setIsTranscribing(false);
         if (!hasResultRef.current) {
-          setError("未识别到语音内容");
+          onError?.("未识别到语音内容");
+          setError(null);
         }
         eventSourceRef.current?.close();
         eventSourceRef.current = null;
@@ -148,7 +158,28 @@ export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
       };
 
       const source = audioCtx.createMediaStreamSource(stream);
-      source.connect(workletNode);
+      let nodeToConnect: AudioNode = workletNode;
+
+      if (onLevelChange) {
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        source.connect(analyser);
+        analyser.connect(workletNode);
+        analyserRef.current = analyser;
+
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(data);
+          const avg = data.reduce((a, b) => a + b, 0) / data.length;
+          onLevelChange(Math.min(1, avg / 128));
+          levelRafRef.current = requestAnimationFrame(tick);
+        };
+        levelRafRef.current = requestAnimationFrame(tick);
+      } else {
+        source.connect(workletNode);
+      }
 
       // 4. 定时推送音频 (每 300ms)
       pushIntervalRef.current = setInterval(flushChunks, 300);
@@ -156,15 +187,16 @@ export function useVoiceInput({ onResult, onPartial }: UseVoiceInputOptions) {
       setIsRecording(true);
     } catch (err) {
       cleanup();
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
-        setError("无法访问麦克风，请检查浏览器权限");
-      } else if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("录音启动失败");
-      }
+      const msg =
+        err instanceof DOMException && err.name === "NotAllowedError"
+          ? "无法访问麦克风，请检查浏览器权限"
+          : err instanceof Error
+            ? err.message
+            : "录音启动失败";
+      onError?.(msg);
+      setError(null);
     }
-  }, [cleanup, flushChunks, onResult, onPartial]);
+  }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange]);
 
   const stopRecording = useCallback(async () => {
     setIsRecording(false);

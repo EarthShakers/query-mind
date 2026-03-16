@@ -92,6 +92,7 @@ export function VoiceHoldButton({
     <div
       role="button"
       tabIndex={0}
+      data-voice-hold
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

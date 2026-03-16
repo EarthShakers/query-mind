@@ -20,6 +20,7 @@ import { ChatUploadModal } from "@/components/chat/chat-upload-modal";
 import { ExportDropdown } from "@/components/chat/export-dropdown";
 import { VoiceRecordingOverlay } from "@/components/chat/voice-recording-overlay";
 import { VoiceHoldButton } from "@/components/chat/voice-hold-button";
+import { Toast } from "@/components/ui/toast";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 
 /* ─── Main page ─── */
@@ -102,6 +103,8 @@ export default function Page() {
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceCancelling, setVoiceCancelling] = useState(false);
   const [partialText, setPartialText] = useState("");
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
   const voiceInput = useVoiceInput({
     onResult: (text) => {
       setPartialText("");
@@ -110,6 +113,8 @@ export default function Page() {
     onPartial: (text) => {
       setPartialText(text);
     },
+    onError: (msg) => setToastMsg(msg),
+    onLevelChange: setAudioLevel,
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -765,7 +770,13 @@ export default function Page() {
               )}
             </div>
 
-            <div className="shrink-0 px-4 md:px-6 py-3 md:py-4 border-t border-slate-200 bg-white/60 backdrop-blur">
+            <div
+              className="input-bar shrink-0 px-4 md:px-6 py-3 md:py-4 border-t border-slate-200 bg-white/60 backdrop-blur"
+              onContextMenu={(e) => {
+                if ((e.target as HTMLElement).closest("button, [data-voice-hold]"))
+                  e.preventDefault();
+              }}
+            >
               <form
                 onSubmit={(e) => {
                   lastInput.current = input;
@@ -939,9 +950,6 @@ export default function Page() {
                   </button>
                 )}
               </form>
-              {voiceInput.error && (
-                <p className="text-xs text-red-500 mt-1 px-1">{voiceInput.error}</p>
-              )}
 
               {/* 语音录制浮层：录音/转写时全屏展示识别文字，避免撑乱输入栏 */}
               {voiceMode && (voiceInput.isRecording || voiceInput.isTranscribing) && (
@@ -951,11 +959,17 @@ export default function Page() {
                   isCancelling={voiceCancelling}
                   transcript={input}
                   partialText={partialText}
+                  audioLevel={audioLevel}
                   onStop={voiceInput.stopRecording}
                   onCancel={voiceInput.cancelRecording}
                   holdToSend
                 />
               )}
+
+              <Toast
+                message={toastMsg}
+                onDismiss={() => setToastMsg(null)}
+              />
             </div>
           </div>
 
