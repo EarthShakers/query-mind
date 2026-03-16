@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect } from "react";
 
 const CANCEL_THRESHOLD_PX = 50;
 
@@ -31,7 +31,16 @@ export function VoiceHoldButton({
 }: VoiceHoldButtonProps) {
   const startYRef = useRef(0);
   const isCancellingRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isCancelling, setIsCancellingState] = useState(false);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const preventSelect = (e: Event) => e.preventDefault();
+    el.addEventListener("selectstart", preventSelect);
+    return () => el.removeEventListener("selectstart", preventSelect);
+  }, []);
 
   const setIsCancelling = useCallback(
     (v: boolean) => {
@@ -90,6 +99,7 @@ export function VoiceHoldButton({
 
   return (
     <div
+      ref={containerRef}
       role="button"
       tabIndex={0}
       data-voice-hold
@@ -101,9 +111,10 @@ export function VoiceHoldButton({
       style={{
         touchAction: "none",
         WebkitTouchCallout: "none",
+        WebkitUserSelect: "none",
         userSelect: "none",
       }}
-      className={`select-none touch-manipulation ${className}`}
+      className={`select-none touch-manipulation [&_*]:select-none ${className}`}
     >
       {children({ isRecording, isTranscribing })}
     </div>
