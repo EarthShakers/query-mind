@@ -54,11 +54,14 @@ export function ThinkingDetails({
   allTools,
   intermediateTexts,
   spaceId,
+  isInterrupted,
 }: {
   allTools: any[];
   intermediateTexts: string[];
   /** 空间 ID，用于预览知识库文档 */
   spaceId?: string;
+  /** 用户已打断，不显示进行中的 loading */
+  isInterrupted?: boolean;
 }) {
   const [previewChunk, setPreviewChunk] = useState<{ title: string; content: string } | null>(null);
   return (
@@ -70,6 +73,7 @@ export function ThinkingDetails({
       ))}
       {allTools.map((tool) => {
         if (tool.state !== "result") {
+          if (isInterrupted) return null;
           return (
             <div
               key={tool.toolCallId}

@@ -141,6 +141,7 @@ export function AssistantTurn({
   isAgentMode = false,
   streamData,
   onScrollNeeded,
+  interruptedMessageIds,
 }: {
   assistantMessages: any[];
   userContent?: string;
@@ -152,6 +153,8 @@ export function AssistantTurn({
   /** useChat 的 data 流，用于实时 agent 进度 */
   streamData?: any;
   onScrollNeeded: () => void;
+  /** 被打断的 assistant 消息 ID 集合 */
+  interruptedMessageIds?: Set<string>;
 }) {
   const [acceptedChartIds, setAcceptedChartIds] = useState<Set<string>>(
     () => new Set()
@@ -225,8 +228,11 @@ export function AssistantTurn({
     ? toolErrors[toolErrors.length - 1]?.result?.error
     : "";
 
+  const hasInterrupted = assistantMessages.some((m) =>
+    interruptedMessageIds?.has(m.id)
+  );
   const showThinking = isStreaming || hasThinkingContent;
-  const isStillThinking = isStreaming;
+  const isStillThinking = isStreaming && !hasInterrupted;
 
   const toolNames = useMemo(
     () => [
@@ -266,6 +272,7 @@ export function AssistantTurn({
                 <AgentProgress
                   userQuery={userContent}
                   isActive={isStillThinking}
+                  isInterrupted={hasInterrupted}
                   progressEvents={agentProgressEvents}
                   executionTools={allTools
                     .filter((t) => t.state === "result")
@@ -330,6 +337,7 @@ export function AssistantTurn({
                     allTools={allTools}
                     intermediateTexts={thinkingTexts}
                     spaceId={spaceId}
+                    isInterrupted={hasInterrupted}
                   />
                 </details>
               )}
@@ -381,6 +389,23 @@ export function AssistantTurn({
                 onAccept={() => handleAcceptChart(tool.toolCallId)}
               />
             ))}
+
+          {/* 被打断时标注 */}
+          {hasInterrupted && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-400">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="shrink-0"
+                >
+                  <rect x="6" y="5" width="3" height="14" rx="1" />
+                  <rect x="15" y="5" width="3" height="14" rx="1" />
+                </svg>
+                <span>你已让系统停止这条回答</span>
+              </div>
+            )}
         </div>
       </div>
 

@@ -58,8 +58,11 @@ export function VoiceRecordingOverlay({
           WebkitBackdropFilter: "blur(12px)",
         }}
       >
-        {/* 顶部：识别文字 */}
-        <div className="pt-12 pb-4 flex-1 min-h-0 flex flex-col items-center">
+        {/* 顶部：识别文字（pointer-events: none 让松手事件穿透到「长按说话」） */}
+        <div
+          className="pt-12 pb-4 flex-1 min-h-0 flex flex-col items-center"
+          style={{ pointerEvents: "none" }}
+        >
           <div
             ref={scrollRef}
             className="w-full max-w-lg flex-1 min-h-[80px] max-h-[35vh] overflow-y-auto rounded-2xl bg-white/95 shadow-xl border border-slate-200/50 px-4 py-3 text-slate-700 text-base leading-relaxed"
@@ -78,10 +81,13 @@ export function VoiceRecordingOverlay({
             )}
           </div>
 
-          {/* 操作按钮：上移，避免挡住「长按说话」 */}
+          {/* 操作按钮：仅转写时可点击，其余时间穿透以不阻挡松手发送 */}
           <div
             className="flex gap-3 mt-4 justify-center"
-            style={{ pointerEvents: isTranscribing ? "auto" : "none" }}
+            style={{
+              pointerEvents:
+                isTranscribing || (!holdToSend && isRecording) ? "auto" : "none",
+            }}
           >
             {!holdToSend && isRecording && onCancel && (
               <button
@@ -105,11 +111,12 @@ export function VoiceRecordingOverlay({
           </div>
         </div>
 
-        {/* 底部：渐变蓝 + 声波 + 松手提示 */}
+        {/* 底部：渐变蓝 + 声波 + 松手提示（pointer-events: none 让松手穿透） */}
         <div
           className="shrink-0 pb-8 pt-4"
           style={{
             paddingBottom: "max(env(safe-area-inset-bottom, 0px), 2rem)",
+            pointerEvents: "none",
           }}
         >
           {isRecording && (

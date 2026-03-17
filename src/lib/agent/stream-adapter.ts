@@ -251,6 +251,17 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       }
 
       finalAnswer = finalAnswer?.trim() || "抱歉，处理时遇到问题，请稍后重试。";
+      // 兜底：若回答过短且以冒号结尾，且像未完成的引导语（如「让我尝试...」），追加说明
+      const looksIncomplete =
+        finalAnswer.length < 100 &&
+        (finalAnswer.endsWith("：") || finalAnswer.endsWith(":")) &&
+        /让我尝试|正在搜索|正在查询|正在分析/.test(finalAnswer) &&
+        !finalAnswer.includes("未找到") &&
+        !finalAnswer.includes("抱歉");
+      if (looksIncomplete) {
+        finalAnswer +=
+          "\n\n知识库中未找到与您问题相关的文档。建议您：1) 上传相关文档到知识库；2) 换种方式或更具体地描述问题。";
+      }
 
       // Phase 2 已移至 execute 节点完成时实时推送，此处不再重复注入
 

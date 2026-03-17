@@ -228,6 +228,35 @@ async function executeNode(state: AgentStateType) {
 }
 
 /**
+ * 将 toolResults 格式化为 LLM 易读的摘要，突出空结果/错误
+ */
+function formatToolResultsSummary(toolResults: Record<string, unknown>): string {
+  const lines: string[] = [];
+  for (const [taskId, result] of Object.entries(toolResults)) {
+    if (result == null) continue;
+    const r = result as Record<string, unknown>;
+    if (r.results && Array.isArray(r.results)) {
+      const count = r.results.length;
+      const q = r.query ?? "";
+      const fallbackNote = r._fallback ? "（数据查询失败后的回退搜索）" : "";
+      lines.push(
+        `[${taskId}] search_knowledge 查询「${q}」${fallbackNote}：${count === 0 ? "未找到相关文档" : `找到 ${count} 条相关片段`}`
+      );
+    } else if (r.data && Array.isArray(r.data) && !r._fallback) {
+      const count = r.data.length;
+      const err = r.error;
+      lines.push(
+        `[${taskId}] execute_query：${err ? `执行失败（${err}）` : `返回 ${count} 条记录`}`
+      );
+    }
+  }
+  if (lines.length > 0) {
+    return "工具执行摘要：\n" + lines.join("\n") + "\n\n完整 JSON：\n";
+  }
+  return "";
+}
+
+/**
  * 综合节点：用 LLM 合并所有工具结果，生成最终回答
  *
  * 输入：state.toolResults（各子任务结果）
@@ -240,9 +269,13 @@ async function synthesizeNode(state: AgentStateType) {
     maxTokens: 2048,
   });
 
+  const summary = formatToolResultsSummary(state.toolResults ?? {});
+  const toolResultsStr =
+    summary + JSON.stringify(state.toolResults, null, 2);
+
   const response = await synthesizePrompt.pipe(llm).invoke({
     userMessage: state.userMessage,
-    toolResults: JSON.stringify(state.toolResults, null, 2),
+    toolResults: toolResultsStr,
     validationFeedback: "",
   });
   const text = typeof response.content === "string" ? response.content : "";

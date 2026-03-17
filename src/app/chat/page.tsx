@@ -90,6 +90,7 @@ export default function Page() {
     setInput,
     append,
     setMessages,
+    stop: stopStream,
     data: streamData,
   } = useChat({
     body: {
@@ -103,6 +104,9 @@ export default function Page() {
   });
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceCancelling, setVoiceCancelling] = useState(false);
+  const [interruptedMessageIds, setInterruptedMessageIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [partialText, setPartialText] = useState("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -760,6 +764,7 @@ export default function Page() {
                           : currentSession?.streamDataByTurn?.[turn.id]
                       }
                       onScrollNeeded={scrollToBottom}
+                      interruptedMessageIds={interruptedMessageIds}
                     />
                   </div>
                 );
@@ -783,6 +788,17 @@ export default function Page() {
             >
               <form
                 onSubmit={(e) => {
+                  if (isLoading) {
+                    const lastAssistant = messages
+                      .filter((m) => m.role === "assistant")
+                      .pop();
+                    if (lastAssistant?.id) {
+                      setInterruptedMessageIds((prev) =>
+                        new Set(prev).add(lastAssistant.id)
+                      );
+                    }
+                    stopStream();
+                  }
                   lastInput.current = input;
                   userScrolledUp.current = false;
                   pendingAgentMode.current = agentMode;
@@ -866,11 +882,24 @@ export default function Page() {
                 {voiceMode ? (
                   /* ── 语音模式：长按录音、松手发送、上移取消（与 App 一致） ── */
                   <VoiceHoldButton
-                    key={`voice-${messages.length}`}
+                    key="voice-hold"
                     isRecording={voiceInput.isRecording}
                     isTranscribing={voiceInput.isTranscribing}
                     audioLevel={audioLevel}
-                    onStart={voiceInput.startRecording}
+                    onStart={() => {
+                      if (isLoading) {
+                        const lastAssistant = messages
+                          .filter((m) => m.role === "assistant")
+                          .pop();
+                        if (lastAssistant?.id) {
+                          setInterruptedMessageIds((prev) =>
+                            new Set(prev).add(lastAssistant.id)
+                          );
+                        }
+                        stopStream();
+                      }
+                      voiceInput.startRecording();
+                    }}
                     onStop={voiceInput.stopRecording}
                     onCancel={voiceInput.cancelRecording}
                     onCancellingChange={setVoiceCancelling}
@@ -923,12 +952,11 @@ export default function Page() {
                   )}
                 </button>
 
-                {/* 发送按钮：仅文本模式且有内容时显示 */}
+                {/* 发送按钮：仅文本模式且有内容时显示，LLM 回复期间也可发送（会打断当前回复） */}
                 {!voiceMode && input.trim() && (
                   <button
                     type="submit"
-                    disabled={isLoading}
-                    className="shrink-0 px-4 md:px-5 py-3 bg-indigo-500 text-white text-sm font-medium rounded-xl hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                    className="shrink-0 px-4 md:px-5 py-3 bg-indigo-500 text-white text-sm font-medium rounded-xl hover:bg-indigo-600 transition-colors shadow-sm"
                   >
                     发送
                   </button>

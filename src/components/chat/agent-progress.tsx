@@ -71,6 +71,8 @@ interface LogItem {
 interface AgentProgressProps {
   userQuery?: string;
   isActive?: boolean;
+  /** 用户已打断该条回答，隐藏所有 loading 状态 */
+  isInterrupted?: boolean;
   /** 后端实时推送的进度事件 */
   progressEvents?: ProgressEvent[];
   /** 完成后的 tool 结果（用于展示知识库 chunks），toolCallId 用于与计划映射 */
@@ -308,12 +310,16 @@ function buildLogsFromTools(
 export function AgentProgress({
   userQuery = "",
   isActive = false,
+  isInterrupted = false,
   progressEvents = [],
   executionTools,
 }: AgentProgressProps) {
   const nodesRef = useRef<HTMLDivElement[]>([]);
   const linesRef = useRef<HTMLDivElement[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  /** 被打断时不再显示任何 loading 状态 */
+  const effectiveIsActive = isActive && !isInterrupted;
 
   // ── 从事件推导当前步骤 ──
   const completedNodes = useMemo(() => {
@@ -329,9 +335,9 @@ export function AgentProgress({
       const idx = NODE_TO_STEP[node];
       if (idx !== undefined && idx > maxDone) maxDone = idx;
     }
-    if (!isActive) return maxDone >= 0 ? maxDone : 3; // 完成时全部 done
+    if (!effectiveIsActive) return maxDone >= 0 ? maxDone : 3; // 完成或被打断时全部 done
     return Math.min(maxDone + 1, 3); // 正在进行下一步
-  }, [completedNodes, isActive]);
+  }, [completedNodes, effectiveIsActive]);
 
   // ── 从事件构建日志（保留所有，不合并）──
   const logs = useMemo<LogItem[]>(() => {
@@ -342,14 +348,14 @@ export function AgentProgress({
     if (progressEvents.length > 0) {
       const eventLogs = buildLogsFromEvents(progressEvents);
       // 已有 toolComplete 时不再追加 executionTools，避免重复展示且无 chunksRelevant
-      if (!isActive && executionTools?.length && !hasToolComplete) {
+      if (!effectiveIsActive && executionTools?.length && !hasToolComplete) {
         const planMap = buildPlanMap(progressEvents);
         const toolLogs = buildLogsFromTools(executionTools, planMap);
         return [...eventLogs, ...toolLogs];
       }
       return eventLogs;
     }
-    if (!isActive && executionTools?.length && !hasToolComplete) {
+    if (!effectiveIsActive && executionTools?.length && !hasToolComplete) {
       const toolLogs = buildLogsFromTools(executionTools);
       return [
         { ts, msg: "已解析用户问题，拆解子任务。" },
@@ -359,7 +365,7 @@ export function AgentProgress({
       ];
     }
     return [{ ts, msg: "正在启动深度分析..." }];
-  }, [progressEvents, isActive, executionTools]);
+  }, [progressEvents, effectiveIsActive, executionTools]);
 
   // ── GSAP: 节点入场动画 ──
   useEffect(() => {
@@ -399,7 +405,7 @@ export function AgentProgress({
   // ── GSAP: 步骤切换脉冲 ──
   useEffect(() => {
     const node = nodesRef.current[currentStep];
-    if (!node || !isActive) return;
+    if (!node || !effectiveIsActive) return;
     const tl = gsap.timeline();
     tl.to(node, {
       scale: 1.05,
@@ -415,7 +421,7 @@ export function AgentProgress({
     return () => {
       tl.kill();
     };
-  }, [currentStep, isActive]);
+  }, [currentStep, effectiveIsActive]);
 
   // ── GSAP: ✓ 出现动画 ──
   const prevStepRef = useRef(currentStep);
@@ -471,12 +477,12 @@ export function AgentProgress({
         </span>
         <span
           className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium border ${
-            isActive
+            effectiveIsActive
               ? "bg-indigo-500/10 text-indigo-400 border-indigo-400/50"
               : "bg-emerald-500/10 text-emerald-400 border-emerald-400/50"
           }`}
         >
-          {isActive ? (
+          {effectiveIsActive ? (
             <>
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
@@ -535,9 +541,9 @@ export function AgentProgress({
         >
           <div className="flex items-center gap-3 w-full max-w-lg">
             {STEPS.map((step, i) => {
-              const isRunning = isActive && i === currentStep;
+              const isRunning = effectiveIsActive && i === currentStep;
               const isDone =
-                completedNodes.has(step.id) || (!isActive && i <= currentStep);
+                completedNodes.has(step.id) || (!effectiveIsActive && i <= currentStep);
               const hasBadge = isRunning || isDone;
               return (
                 <div key={step.id} className="flex items-center flex-1 min-w-0">
@@ -714,7 +720,7 @@ export function AgentProgress({
                 )}
               </div>
             ))}
-            {isActive && logs.length > 0 && (
+            {effectiveIsActive && logs.length > 0 && (
               <div className="flex items-center gap-2 pl-3 py-1 text-slate-500">
                 <span className="inline-block w-3 h-3 border-2 border-slate-500 border-t-indigo-400 rounded-full animate-spin" />
                 <span className="text-xs">等待下一步...</span>
