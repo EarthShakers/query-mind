@@ -77,6 +77,32 @@ export function VoiceRecordingOverlay({
               </p>
             )}
           </div>
+
+          {/* 操作按钮：上移，避免挡住「长按说话」 */}
+          <div
+            className="flex gap-3 mt-4 justify-center"
+            style={{ pointerEvents: isTranscribing ? "auto" : "none" }}
+          >
+            {!holdToSend && isRecording && onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white/90 text-slate-600 text-sm font-medium hover:bg-slate-50"
+              >
+                取消
+              </button>
+            )}
+            {(!holdToSend || isTranscribing) && (
+              <button
+                type="button"
+                onClick={isTranscribing ? onCancel : onStop}
+                disabled={isTranscribing && !onCancel}
+                className="px-6 py-2.5 rounded-xl text-sm font-medium bg-slate-200 text-slate-600 hover:bg-slate-300"
+              >
+                {isTranscribing ? "取消转写" : "停止"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 底部：渐变蓝 + 声波 + 松手提示 */}
@@ -188,32 +214,6 @@ export function VoiceRecordingOverlay({
                 <span>转写中...</span>
               </div>
             ) : null}
-          </div>
-
-          {/* 操作按钮：转写时可取消 */}
-          <div
-            className="flex gap-3 mt-4 justify-center"
-            style={{ pointerEvents: isTranscribing ? "auto" : "none" }}
-          >
-            {!holdToSend && isRecording && onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white/90 text-slate-600 text-sm font-medium hover:bg-slate-50"
-              >
-                取消
-              </button>
-            )}
-            {(!holdToSend || isTranscribing) && (
-              <button
-                type="button"
-                onClick={isTranscribing ? onCancel : onStop}
-                disabled={isTranscribing && !onCancel}
-                className="px-6 py-2.5 rounded-xl text-sm font-medium bg-slate-200 text-slate-600 hover:bg-slate-300"
-              >
-                {isTranscribing ? "取消转写" : "停止"}
-              </button>
-            )}
           </div>
         </div>
     </motion.div>
