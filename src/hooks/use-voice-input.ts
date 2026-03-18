@@ -62,12 +62,65 @@ const CHUNK_INTERVAL_MS = 100;
 const VAD_SILENT_CHUNKS = Math.ceil(VAD_SILENT_MS / CHUNK_INTERVAL_MS);
 const VAD_RMS_THRESHOLD = 260;
 const PREAMBLE_SILENCE_SAMPLES = 3200;
+/** 初始底噪估计（Int16 幅度） */
+const DENOISE_FLOOR_DEFAULT = 120;
+/** AGC 起始增益，后续按每帧平滑更新 */
+const AGC_GAIN_DEFAULT = 1;
+/** AGC 目标 RMS，值越大整体声音越“靠前” */
+const AGC_TARGET_RMS = 2200;
 
 /** 计算 Int16 PCM 的 RMS 能量 */
 function pcmRms(pcm: Int16Array): number {
   let sum = 0;
   for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
   return Math.sqrt(sum / pcm.length);
+}
+
+function preprocessPcm(
+  pcm: Int16Array,
+  noiseFloor: number,
+  prevGain: number
+): { pcm: Int16Array; noiseFloor: number; gain: number } {
+  let absSum = 0;
+  for (let i = 0; i < pcm.length; i++) absSum += Math.abs(pcm[i]);
+  const avgAbs = absSum / pcm.length;
+
+  // 底噪自适应：慢速跟踪环境噪声，避免被偶发大音量“拉飞”
+  const boundedAvg = Math.min(avgAbs, noiseFloor * 1.6 + 80);
+  const nextNoiseFloor = Math.max(
+    60,
+    Math.min(2200, noiseFloor * 0.92 + boundedAvg * 0.08)
+  );
+  const gate = Math.max(140, Math.min(2400, nextNoiseFloor * 2.2));
+  const attenuate = 0.22;
+
+  // 降噪：对门限以下的样本做衰减而非硬截断，减少机械感
+  const denoised = new Int16Array(pcm.length);
+  let sumSq = 0;
+  for (let i = 0; i < pcm.length; i++) {
+    const v = pcm[i];
+    const av = Math.abs(v);
+    let out = v;
+    if (av < gate) {
+      out = Math.round(v * attenuate);
+    }
+    denoised[i] = out;
+    sumSq += out * out;
+  }
+
+  const rms = Math.sqrt(sumSq / Math.max(1, denoised.length));
+  // AGC：把当前帧 RMS 拉向目标值，使用平滑增益避免音量泵动
+  const desiredGain =
+    rms > 1 ? Math.max(0.8, Math.min(6, AGC_TARGET_RMS / rms)) : prevGain;
+  const nextGain = prevGain * 0.8 + desiredGain * 0.2;
+
+  const normalized = new Int16Array(denoised.length);
+  for (let i = 0; i < denoised.length; i++) {
+    const scaled = Math.round(denoised[i] * nextGain);
+    normalized[i] = Math.max(-0x8000, Math.min(0x7fff, scaled));
+  }
+
+  return { pcm: normalized, noiseFloor: nextNoiseFloor, gain: nextGain };
 }
 
 function isAbortLikeError(err: unknown): boolean {
@@ -427,6 +480,8 @@ export function useVoiceInput({
   const vadSilentCountRef = useRef(0);
   const vadPausedRef = useRef(false);
   const preambleSentRef = useRef(false);
+  const denoiseFloorRef = useRef(DENOISE_FLOOR_DEFAULT);
+  const agcGainRef = useRef(AGC_GAIN_DEFAULT);
 
   const cleanup = useCallback(() => {
     onLevelChange?.(0);
@@ -469,6 +524,8 @@ export function useVoiceInput({
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
     preambleSentRef.current = false;
+    denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
+    agcGainRef.current = AGC_GAIN_DEFAULT;
   }, [onLevelChange]);
 
   /** 仅清理录音相关资源，保留 transport 以接收最终转写结果 */
@@ -511,6 +568,8 @@ export function useVoiceInput({
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
     preambleSentRef.current = false;
+    denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
+    agcGainRef.current = AGC_GAIN_DEFAULT;
   }, [onLevelChange]);
 
   const flushChunks = useCallback(() => {
@@ -544,6 +603,8 @@ export function useVoiceInput({
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
     preambleSentRef.current = false;
+    denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
+    agcGainRef.current = AGC_GAIN_DEFAULT;
 
     try {
       if (abortRef.current) return;
@@ -614,10 +675,6 @@ export function useVoiceInput({
         },
         onDone: () => {
           setIsTranscribing(false);
-          if (!hasResultRef.current) {
-            onError?.("未识别到语音内容");
-            setError(null);
-          }
         },
       };
 
@@ -701,8 +758,17 @@ export function useVoiceInput({
               ? parsed.pcm
               : resampleTo16k(parsed.pcm, parsed.sampleRate);
           if (pcm.length === 0) return;
+          // 先做 PCM 级降噪+AGC，再进入 VAD 与上行发送
+          const processed = preprocessPcm(
+            pcm,
+            denoiseFloorRef.current,
+            agcGainRef.current
+          );
+          denoiseFloorRef.current = processed.noiseFloor;
+          agcGainRef.current = processed.gain;
+          const processedPcm = processed.pcm;
 
-          const rms = pcmRms(pcm);
+          const rms = pcmRms(processedPcm);
           if (rms < VAD_RMS_THRESHOLD) {
             vadSilentCountRef.current += 1;
             if (vadSilentCountRef.current >= VAD_SILENT_CHUNKS) {
@@ -716,7 +782,7 @@ export function useVoiceInput({
           if (!vadPausedRef.current) {
             const chunks = chunksRef.current;
             if (chunks.length >= MAX_CHUNKS_BUFFERED) chunks.shift();
-            chunks.push(pcm);
+            chunks.push(processedPcm);
           }
         },
       });
