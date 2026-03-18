@@ -3,6 +3,24 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useChat } from "ai/react";
+
+/** crypto.randomUUID polyfill — 微信 WebView 等环境可能不支持 */
+function uuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // fallback: 用 crypto.getRandomValues 手动拼 v4 UUID
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const buf = new Uint8Array(16);
+    crypto.getRandomValues(buf);
+    buf[6] = (buf[6] & 0x0f) | 0x40; // version 4
+    buf[8] = (buf[8] & 0x3f) | 0x80; // variant 1
+    const hex = Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  // last resort
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useReport } from "@/hooks/use-report";
@@ -36,7 +54,7 @@ export default function Page() {
 
   // ── Chat history ──
   const chatHistory = useChatHistory();
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const [sessionId, setSessionId] = useState(() => uuid());
 
   // ── Report / Canvas state ──
   const [reportId, setReportId] = useState<string | null>(null);
@@ -270,7 +288,7 @@ export default function Page() {
     setVersionPanelOpen(false);
     creatingReport.current = false;
     userScrolledUp.current = false;
-    const newId = crypto.randomUUID();
+    const newId = uuid();
     setSessionId(newId);
     chatHistory.setActiveSessionId(null);
   }, [setMessages, report, chatHistory]);

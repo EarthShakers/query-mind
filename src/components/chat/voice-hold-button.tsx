@@ -126,22 +126,92 @@ export function VoiceHoldButton({
   // that plagues the `isRecording` prop (which is only set to true after the
   // async startRecording finishes, long after pointerup may have fired).
   const isActiveRef = useRef(false);
+  // 标记 pointer events 是否正常工作，用于 touch fallback 判断
+  const pointerWorkedRef = useRef(false);
+
+  // 将回调存入 ref，避免 useEffect 依赖变化导致反复绑定/解绑
+  const onStartRef = useRef(onStart);
+  const onStopRef = useRef(onStop);
+  const onCancelRef = useRef(onCancel);
+  const onCancellingChangeRef = useRef(onCancellingChange);
+  const isTranscribingRef = useRef(isTranscribing);
+  useEffect(() => { onStartRef.current = onStart; }, [onStart]);
+  useEffect(() => { onStopRef.current = onStop; }, [onStop]);
+  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+  useEffect(() => { onCancellingChangeRef.current = onCancellingChange; }, [onCancellingChange]);
+  useEffect(() => { isTranscribingRef.current = isTranscribing; }, [isTranscribing]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const preventSelect = (e: Event) => e.preventDefault();
-    // touchstart preventDefault is the only reliable way to stop mobile
-    // browsers from hijacking the long-press for text selection / callout,
-    // which would fire pointercancel and kill the recording.
-    // Must use addEventListener (not React onTouchStart) so we can set
-    // { passive: false } — React registers touch listeners as passive.
-    const preventTouch = (e: TouchEvent) => e.preventDefault();
+
+    // --- Touch event fallback for WeChat WebView ---
+    // 微信内置浏览器可能不能正确触发 pointer events，或在长按后立即
+    // 触发 pointercancel。使用 touch events 作为 fallback：如果
+    // pointerdown 已正常触发（pointerWorkedRef=true），则不重复处理。
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault(); // 阻止文本选择 / 系统菜单
+      if (pointerWorkedRef.current) return; // pointer events 正常，跳过
+      if (isTranscribingRef.current) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      startYRef.current = touch.clientY;
+      isCancellingRef.current = false;
+      setIsCancellingState(false);
+      onCancellingChangeRef.current?.(false);
+      isActiveRef.current = true;
+      if (navigator.vibrate) navigator.vibrate(50);
+      onStartRef.current();
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      if (pointerWorkedRef.current || !isActiveRef.current) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const deltaY = startYRef.current - touch.clientY;
+      const cancelling = deltaY > CANCEL_THRESHOLD_PX;
+      if (cancelling !== isCancellingRef.current) {
+        isCancellingRef.current = cancelling;
+        setIsCancellingState(cancelling);
+        onCancellingChangeRef.current?.(cancelling);
+      }
+    };
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (pointerWorkedRef.current) return;
+      e.preventDefault();
+      if (!isActiveRef.current) return;
+      isActiveRef.current = false;
+      if (isCancellingRef.current) {
+        onCancelRef.current();
+      } else {
+        onStopRef.current();
+      }
+      isCancellingRef.current = false;
+      setIsCancellingState(false);
+      onCancellingChangeRef.current?.(false);
+    };
+    const handleTouchCancel = () => {
+      if (pointerWorkedRef.current) return;
+      if (isActiveRef.current) {
+        isActiveRef.current = false;
+        onCancelRef.current();
+      }
+      isCancellingRef.current = false;
+      setIsCancellingState(false);
+      onCancellingChangeRef.current?.(false);
+    };
+
     el.addEventListener("selectstart", preventSelect);
-    el.addEventListener("touchstart", preventTouch, { passive: false });
+    el.addEventListener("touchstart", handleTouchStart, { passive: false });
+    el.addEventListener("touchmove", handleTouchMove, { passive: false });
+    el.addEventListener("touchend", handleTouchEnd, { passive: false });
+    el.addEventListener("touchcancel", handleTouchCancel);
     return () => {
       el.removeEventListener("selectstart", preventSelect);
-      el.removeEventListener("touchstart", preventTouch);
+      el.removeEventListener("touchstart", handleTouchStart);
+      el.removeEventListener("touchmove", handleTouchMove);
+      el.removeEventListener("touchend", handleTouchEnd);
+      el.removeEventListener("touchcancel", handleTouchCancel);
     };
   }, []);
 
@@ -158,6 +228,8 @@ export function VoiceHoldButton({
     (e: React.PointerEvent) => {
       e.preventDefault();
       if (isTranscribing) return;
+      // 标记 pointer events 正常工作，touch fallback 不再介入
+      pointerWorkedRef.current = true;
       containerRef.current?.setPointerCapture?.(e.pointerId);
       startYRef.current = e.clientY;
       setIsCancelling(false);

@@ -56,8 +56,37 @@ function getOrCreateAudioContext(): AudioContext {
   if (sharedAudioContext && sharedAudioContext.state !== "closed") {
     return sharedAudioContext;
   }
-  sharedAudioContext = new AudioContext();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+  sharedAudioContext = new Ctor();
   return sharedAudioContext;
+}
+
+/**
+ * 兼容 getUserMedia：优先 navigator.mediaDevices.getUserMedia，
+ * 回退到旧版 navigator.getUserMedia（微信 WebView 等环境）。
+ */
+function getCompatUserMedia(constraints: MediaStreamConstraints): Promise<MediaStream> {
+  if (navigator.mediaDevices?.getUserMedia) {
+    return navigator.mediaDevices.getUserMedia(constraints);
+  }
+  // 旧版 API fallback
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const legacyGetUserMedia = (navigator as any).getUserMedia
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    || (navigator as any).webkitGetUserMedia
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    || (navigator as any).mozGetUserMedia;
+  if (legacyGetUserMedia) {
+    return new Promise((resolve, reject) => {
+      legacyGetUserMedia.call(navigator, constraints, resolve, reject);
+    });
+  }
+  const isHTTP = typeof location !== "undefined" && location.protocol === "http:";
+  const hint = isHTTP
+    ? "录音功能需要 HTTPS，请使用 HTTPS 访问本站"
+    : "当前浏览器不支持录音功能";
+  return Promise.reject(new Error(hint));
 }
 
 /** 降采样 Int16 PCM 到 16kHz，线性插值比最近邻更平滑 */
@@ -98,15 +127,6 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   const flushFailCountRef = useRef(0);
   const vadSilentCountRef = useRef(0);
   const vadPausedRef = useRef(false);
-
-  const checkMicrophonePermission = useCallback(async (): Promise<"granted" | "denied" | "prompt"> => {
-    try {
-      const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
-      return result.state as "granted" | "denied" | "prompt";
-    } catch {
-      return "granted";
-    }
-  }, []);
 
   const cleanup = useCallback(() => {
     onLevelChange?.(0);
@@ -201,21 +221,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     vadPausedRef.current = false;
 
     try {
-      const perm = await checkMicrophonePermission();
       if (abortRef.current) return;
-      if (perm === "denied") {
-        onError?.("麦克风权限已拒绝，请在浏览器设置中允许");
-        return;
-      }
-      if (perm === "prompt") {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          stream.getTracks().forEach((t) => t.stop());
-        } catch {
-          onError?.("无法访问麦克风，请检查浏览器权限");
-        }
-        return;
-      }
 
       setIsRecording(true);
 
@@ -275,9 +281,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       if (abortRef.current) { cleanup(); setIsRecording(false); return; }
 
       // 设备选择：优先 Built-in / Default，避免 Mac 虚拟设备
+      // 微信 WebView 对 enumerateDevices / exact deviceId 支持有限，多层 fallback
       let stream: MediaStream;
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
+        const devices = await navigator.mediaDevices?.enumerateDevices?.() ?? [];
         const audioInputs = devices.filter((d) => d.kind === "audioinput");
         const preferred = audioInputs.find((d) => /built-in|default|internal|麦克风/i.test(d.label)) ?? audioInputs[0];
         const constraints: MediaStreamConstraints = {
@@ -289,11 +296,17 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
             autoGainControl: true,
           },
         };
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await getCompatUserMedia(constraints);
       } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-        });
+        // exact deviceId 失败时降级为基础约束
+        try {
+          stream = await getCompatUserMedia({
+            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+          });
+        } catch {
+          // 最终 fallback：仅请求 audio: true（兼容微信等受限 WebView）
+          stream = await getCompatUserMedia({ audio: true });
+        }
       }
       if (abortRef.current) { cleanup(); setIsRecording(false); return; }
       mediaStreamRef.current = stream;
@@ -381,7 +394,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       onError?.(msg);
       setError(null);
     }
-  }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange, checkMicrophonePermission]);
+  }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange]);
 
   const stopRecording = useCallback(async () => {
     abortRef.current = true;
