@@ -80,10 +80,10 @@ async function start() {
     console.log(`[dev] Using port ${port}.`);
   }
 
-  const child = spawn("next", ["dev", "-p", String(port)], {
+  const child = spawn("node", ["server.mjs"], {
     stdio: "inherit",
     shell: true,
-    env: process.env,
+    env: { ...process.env, PORT: String(port) },
   });
 
   child.on("exit", (code, signal) => {

@@ -114,6 +114,223 @@ async function getRecordRTC() {
   return cachedRecordRTC;
 }
 
+/** 构造 WebSocket URL：ws:// 或 wss:// 根据当前页面协议 */
+function buildWsUrl(path: string): string {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${location.host}${path}`;
+}
+
+/** 安全的 Buffer 转 Base64，分块处理避免栈溢出 */
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 1024;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+  }
+  return btoa(binary);
+}
+
+// ── Transport abstraction ──
+
+interface AsrTransport {
+  /** Send audio chunk (base64 or binary) */
+  pushAudio(pcmBuffer: ArrayBuffer): void;
+  /** Signal end of recording; returns final transcript */
+  stop(): Promise<string>;
+  /** Tear down the connection */
+  close(): void;
+}
+
+/** WebSocket-based transport */
+function createWsTransport(opts: {
+  onPartial?: (text: string) => void;
+  onText?: (text: string) => void;
+  onError?: (msg: string) => void;
+  onDone?: () => void;
+}): Promise<AsrTransport> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(buildWsUrl("/api/asr-ws"));
+    let finalText = "";
+    let stopResolve: ((text: string) => void) | null = null;
+    let done = false;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "start" }));
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data as string);
+        if (msg.type === "started") {
+          resolve({
+            pushAudio(pcmBuffer: ArrayBuffer) {
+              if (ws.readyState !== WebSocket.OPEN) return;
+              // Send as binary frame — no base64 overhead
+              ws.send(pcmBuffer);
+            },
+            stop() {
+              return new Promise<string>((res) => {
+                stopResolve = res;
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "stop" }));
+                }
+                // Timeout fallback
+                setTimeout(() => {
+                  if (stopResolve) {
+                    stopResolve(finalText);
+                    stopResolve = null;
+                  }
+                }, 15_000);
+              });
+            },
+            close() {
+              done = true;
+              if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                ws.close();
+              }
+            },
+          });
+        } else if (msg.type === "partial") {
+          if (msg.text) opts.onPartial?.(msg.text);
+        } else if (msg.type === "text") {
+          if (msg.text) {
+            finalText = msg.text;
+            opts.onText?.(msg.text);
+          }
+        } else if (msg.type === "done") {
+          done = true;
+          opts.onDone?.();
+          if (stopResolve) {
+            stopResolve(finalText);
+            stopResolve = null;
+          }
+        } else if (msg.type === "error") {
+          opts.onError?.(msg.error || "语音识别失败");
+          if (stopResolve) {
+            stopResolve(finalText);
+            stopResolve = null;
+          }
+        }
+      } catch { /* ignore */ }
+    };
+
+    ws.onerror = () => {
+      if (!done) reject(new Error("WebSocket 连接失败"));
+    };
+
+    ws.onclose = () => {
+      if (!done) {
+        opts.onDone?.();
+        if (stopResolve) {
+          stopResolve(finalText);
+          stopResolve = null;
+        }
+      }
+    };
+
+    // Connection timeout
+    setTimeout(() => {
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.close();
+        reject(new Error("WebSocket 连接超时"));
+      }
+    }, 5000);
+  });
+}
+
+/** HTTP POST + SSE fallback transport */
+function createHttpTransport(opts: {
+  onPartial?: (text: string) => void;
+  onText?: (text: string) => void;
+  onError?: (msg: string) => void;
+  onDone?: () => void;
+}): Promise<AsrTransport> {
+  return (async () => {
+    const res = await fetch("/api/asr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "start" }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "无法启动语音识别");
+    const sessionId = data.sessionId as string;
+
+    // SSE for results
+    const es = new EventSource(`/api/asr?sessionId=${sessionId}`);
+    let finalText = "";
+
+    es.addEventListener("partial", (e) => {
+      const { text } = JSON.parse(e.data);
+      if (text) opts.onPartial?.(text);
+    });
+    es.addEventListener("text", (e) => {
+      const { text } = JSON.parse(e.data);
+      if (text) {
+        finalText = text;
+        opts.onText?.(text);
+      }
+    });
+    es.addEventListener("error", (e) => {
+      try {
+        const evt = e as MessageEvent;
+        if (evt.data) {
+          const { error: msg } = JSON.parse(evt.data);
+          if (msg) opts.onError?.(msg);
+        }
+      } catch { /* ignore */ }
+    });
+    es.addEventListener("done", () => {
+      opts.onDone?.();
+      es.close();
+    });
+
+    let flushFailCount = 0;
+
+    return {
+      pushAudio(pcmBuffer: ArrayBuffer) {
+        const base64 = bufferToBase64(pcmBuffer);
+        fetch("/api/asr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "push", sessionId, audio: base64 }),
+        }).then(() => {
+          flushFailCount = 0;
+        }).catch(() => {
+          flushFailCount += 1;
+          if (flushFailCount >= 5) {
+            opts.onError?.("网络异常，请检查连接");
+            flushFailCount = 0;
+          }
+        });
+      },
+      async stop() {
+        try {
+          const stopRes = await fetch("/api/asr", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "stop", sessionId }),
+          });
+          const stopData = await stopRes.json();
+          const transcript = (stopData?.transcript ?? "") as string;
+          if (transcript.trim()) finalText = transcript;
+        } catch { /* ignore */ }
+        es.close();
+        return finalText;
+      },
+      close() {
+        es.close();
+        // Fire-and-forget stop to clean up server session
+        fetch("/api/asr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "stop", sessionId }),
+        }).catch(() => {});
+      },
+    } satisfies AsrTransport;
+  })();
+}
+
 export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: UseVoiceInputOptions) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -126,13 +343,11 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   const levelRafRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const transportRef = useRef<AsrTransport | null>(null);
   const pushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunksRef = useRef<Int16Array[]>([]);
   const hasResultRef = useRef(false);
   const abortRef = useRef(false);
-  const flushFailCountRef = useRef(0);
   const vadSilentCountRef = useRef(0);
   const vadPausedRef = useRef(false);
 
@@ -152,12 +367,11 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     analyserRef.current = null;
     silentGainRef.current?.disconnect();
     silentGainRef.current = null;
-    // 彻底销毁 RecordRTC，清理内部 ScriptProcessorNode
     if (recorderRef.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
       recorderRef.current = null;
     }
-    // 关闭 AudioContext，下次录音创建新的，避免旧节点残留
     if (audioCtxRef.current) {
       try { audioCtxRef.current.close(); } catch { /* ignore */ }
       audioCtxRef.current = null;
@@ -165,13 +379,13 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
-    eventSourceRef.current?.close();
-    eventSourceRef.current = null;
+    transportRef.current?.close();
+    transportRef.current = null;
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
   }, [onLevelChange]);
 
-  /** 仅清理录音相关资源，保留 EventSource 以接收最终转写结果 */
+  /** 仅清理录音相关资源，保留 transport 以接收最终转写结果 */
   const cleanupRecordingOnly = useCallback(() => {
     onLevelChange?.(0);
     if (pushIntervalRef.current) {
@@ -189,6 +403,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     silentGainRef.current?.disconnect();
     silentGainRef.current = null;
     if (recorderRef.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
       recorderRef.current = null;
     }
@@ -203,9 +418,9 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     vadPausedRef.current = false;
   }, [onLevelChange]);
 
-  const flushChunks = useCallback(async () => {
-    const sid = sessionIdRef.current;
-    if (!sid || chunksRef.current.length === 0) return;
+  const flushChunks = useCallback(() => {
+    const transport = transportRef.current;
+    if (!transport || chunksRef.current.length === 0) return;
 
     const pending = chunksRef.current;
     chunksRef.current = [];
@@ -218,29 +433,14 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       off += c.length;
     }
 
-    const base64 = bufferToBase64(merged.buffer);
-    try {
-      await fetch("/api/asr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "push", sessionId: sid, audio: base64 }),
-      });
-      flushFailCountRef.current = 0;
-    } catch {
-      flushFailCountRef.current += 1;
-      if (flushFailCountRef.current >= 5) {
-        onError?.("网络异常，请检查连接");
-        flushFailCountRef.current = 0;
-      }
-    }
-  }, [onError]);
+    transport.pushAudio(merged.buffer);
+  }, []);
 
   const startRecording = useCallback(async () => {
     setError(null);
     chunksRef.current = [];
     hasResultRef.current = false;
     abortRef.current = false;
-    flushFailCountRef.current = 0;
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
 
@@ -249,7 +449,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       setIsRecording(true);
 
-      // ── 音频采集 & RecordRTC 加载 & API 会话创建 三者并行 ──
+      // ── 音频采集 & RecordRTC 加载 & ASR transport 创建 三者并行 ──
 
       // 1) 获取麦克风流
       const streamPromise = (async () => {
@@ -282,17 +482,34 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       // 2) 加载 RecordRTC（使用缓存，首次后秒加载）
       const recordRTCPromise = getRecordRTC();
 
-      // 3) 创建 ASR 会话
-      const sessionPromise = (async () => {
-        const res = await fetch("/api/asr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "start" }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "无法启动语音识别");
-        return data.sessionId as string;
-      })();
+      // 3) 创建 ASR transport — 优先 WebSocket，失败回退 HTTP
+      const transportHandlers = {
+        onPartial: (text: string) => { if (text) onPartial?.(text); },
+        onText: (text: string) => {
+          if (text) {
+            hasResultRef.current = true;
+            setIsTranscribing(false);
+          }
+        },
+        onError: (msg: string) => {
+          onError?.(msg);
+          setIsTranscribing(false);
+        },
+        onDone: () => {
+          setIsTranscribing(false);
+          if (!hasResultRef.current) {
+            onError?.("未识别到语音内容");
+            setError(null);
+          }
+        },
+      };
+
+      const transportPromise = createWsTransport(transportHandlers).catch((wsErr) => {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[Voice] WebSocket failed, falling back to HTTP:", wsErr.message);
+        }
+        return createHttpTransport(transportHandlers);
+      });
 
       // ── 等待音频流 + RecordRTC 就绪 ──
       const [stream, RecordRTCModule] = await Promise.all([streamPromise, recordRTCPromise]);
@@ -326,7 +543,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       };
       levelRafRef.current = requestAnimationFrame(tick);
 
-      // RecordRTC 录音 —— 立即启动，不等 session
+      // RecordRTC 录音 —— 立即启动，不等 transport
       const recorder = new RecordRTCModule(stream, {
         type: "audio",
         mimeType: "audio/wav",
@@ -371,50 +588,14 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       // 启动 chunk 推送
       pushIntervalRef.current = setInterval(flushChunks, 300);
 
-      // ── 等待 session 就绪 ──
-      const sessionId = await sessionPromise;
-      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
-      sessionIdRef.current = sessionId;
+      // ── 等待 transport 就绪 ──
+      const transport = await transportPromise;
+      if (abortRef.current) { transport.close(); cleanup(); setIsRecording(false); return; }
+      transportRef.current = transport;
 
-      const es = new EventSource(`/api/asr?sessionId=${sessionId}`);
-      eventSourceRef.current = es;
-
-      es.addEventListener("partial", (e) => {
-        const { text } = JSON.parse(e.data);
-        if (text) onPartial?.(text);
-      });
-      es.addEventListener("text", (e) => {
-        const { text } = JSON.parse(e.data);
-        if (text) {
-          hasResultRef.current = true;
-          setIsTranscribing(false);
-          eventSourceRef.current?.close();
-          eventSourceRef.current = null;
-        }
-      });
-      es.addEventListener("error", (e) => {
-        try {
-          const evt = e as MessageEvent;
-          if (evt.data) {
-            const { error: msg } = JSON.parse(evt.data);
-            if (msg) onError?.(msg);
-          }
-        } catch {
-          // 连接断开等，无 data
-        }
-        setIsTranscribing(false);
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-      });
-      es.addEventListener("done", () => {
-        setIsTranscribing(false);
-        if (!hasResultRef.current) {
-          onError?.("未识别到语音内容");
-          setError(null);
-        }
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-      });
+      if (process.env.NODE_ENV === "development") {
+        console.log("[Voice] ASR transport ready");
+      }
     } catch (err) {
       cleanup();
       setIsRecording(false);
@@ -433,8 +614,8 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     abortRef.current = true;
     setIsRecording(false);
 
-    const sid = sessionIdRef.current;
-    if (!sid) return;
+    const transport = transportRef.current;
+    if (!transport) return;
 
     setIsTranscribing(true);
 
@@ -445,25 +626,20 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
     if (recorderRef.current) {
       recorderRef.current.stopRecording();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
       recorderRef.current = null;
     }
-    // 不关闭 EventSource，需保持连接以接收 text/done 事件
     cleanupRecordingOnly();
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
 
+    // Flush remaining chunks
     await new Promise((r) => setTimeout(r, 50));
-    await flushChunks();
+    flushChunks();
 
     try {
-      const res = await fetch("/api/asr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "stop", sessionId: sid }),
-      });
-      const data = await res.json();
-      const transcript = (data?.transcript ?? "") as string;
+      const transcript = await transport.stop();
       if (transcript.trim()) {
         hasResultRef.current = true;
         onResult(transcript);
@@ -474,29 +650,16 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       if (!hasResultRef.current) onError?.("转写失败");
     } finally {
       setIsTranscribing(false);
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
-      sessionIdRef.current = null;
+      transportRef.current = null;
     }
-  }, [cleanupRecordingOnly, flushChunks, onError]);
+  }, [cleanupRecordingOnly, flushChunks, onResult, onError]);
 
   const cancelRecording = useCallback(() => {
     abortRef.current = true;
     setIsRecording(false);
     setIsTranscribing(false);
-
-    const sid = sessionIdRef.current;
-    if (sid) {
-      fetch("/api/asr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "stop", sessionId: sid }),
-      }).catch(() => {});
-    }
-
     cleanup();
     chunksRef.current = [];
-    sessionIdRef.current = null;
   }, [cleanup]);
 
   const toggleRecording = useCallback(() => {
@@ -514,7 +677,6 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     setIsTranscribing(false);
     cleanup();
     chunksRef.current = [];
-    sessionIdRef.current = null;
   }, [cleanup]);
 
   return {
@@ -527,15 +689,4 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     toggleRecording,
     reset,
   };
-}
-
-/** 安全的 Buffer 转 Base64，分块处理避免栈溢出 */
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 1024;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
-  }
-  return btoa(binary);
 }
