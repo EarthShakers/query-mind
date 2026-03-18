@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
 
     if (action === "start") {
       const config = await getModelConfig();
+      console.log("[ASR] 使用模型:", config.modelAsr);
       const sessionId = await createSession(config.modelAsr);
       return NextResponse.json({ sessionId });
     }

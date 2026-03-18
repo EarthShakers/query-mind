@@ -70,7 +70,6 @@ function getCompatUserMedia(constraints: MediaStreamConstraints): Promise<MediaS
   if (navigator.mediaDevices?.getUserMedia) {
     return navigator.mediaDevices.getUserMedia(constraints);
   }
-  // 旧版 API fallback
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const legacyGetUserMedia = (navigator as any).getUserMedia
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,6 +103,15 @@ function resampleTo16k(pcm: Int16Array, fromRate: number): Int16Array {
     out[i] = Math.max(-0x8000, Math.min(0x7fff, Math.round(a + (b - a) * frac)));
   }
   return out;
+}
+
+/** 缓存 RecordRTC 模块，避免重复动态导入 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let cachedRecordRTC: any = null;
+async function getRecordRTC() {
+  if (cachedRecordRTC) return cachedRecordRTC;
+  cachedRecordRTC = (await import("recordrtc")).default;
+  return cachedRecordRTC;
 }
 
 export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: UseVoiceInputOptions) {
@@ -144,8 +152,17 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     analyserRef.current = null;
     silentGainRef.current?.disconnect();
     silentGainRef.current = null;
-    recorderRef.current = null;
-    audioCtxRef.current = null;
+    // 彻底销毁 RecordRTC，清理内部 ScriptProcessorNode
+    if (recorderRef.current) {
+      try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
+      recorderRef.current = null;
+    }
+    // 关闭 AudioContext，下次录音创建新的，避免旧节点残留
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch { /* ignore */ }
+      audioCtxRef.current = null;
+      sharedAudioContext = null;
+    }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     eventSourceRef.current?.close();
@@ -171,8 +188,15 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     analyserRef.current = null;
     silentGainRef.current?.disconnect();
     silentGainRef.current = null;
-    recorderRef.current = null;
-    audioCtxRef.current = null;
+    if (recorderRef.current) {
+      try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
+      recorderRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch { /* ignore */ }
+      audioCtxRef.current = null;
+      sharedAudioContext = null;
+    }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     vadSilentCountRef.current = 0;
@@ -225,12 +249,9 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       setIsRecording(true);
 
-      // ── 关键优化：音频采集 & API 会话创建并行执行 ──
-      // getUserMedia + RecordRTC 动态导入同时进行，让麦克风尽早开始录音，
-      // 避免用户按下后前几个字丢失。
-      // chunks 会缓存在 chunksRef 中，等 sessionId 就绪后由 flushChunks 发送。
+      // ── 音频采集 & RecordRTC 加载 & API 会话创建 三者并行 ──
 
-      // 1) 获取麦克风流（与 API 请求并行）
+      // 1) 获取麦克风流
       const streamPromise = (async () => {
         let stream: MediaStream;
         try {
@@ -258,10 +279,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         return stream;
       })();
 
-      // 2) 动态导入 RecordRTC（与上面并行）
-      const recordRTCPromise = import("recordrtc").then((m) => m.default);
+      // 2) 加载 RecordRTC（使用缓存，首次后秒加载）
+      const recordRTCPromise = getRecordRTC();
 
-      // 3) 创建 ASR 会话（与上面并行）
+      // 3) 创建 ASR 会话
       const sessionPromise = (async () => {
         const res = await fetch("/api/asr", {
           method: "POST",
@@ -273,12 +294,12 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         return data.sessionId as string;
       })();
 
-      // ── 等待音频流 + RecordRTC 就绪，立即开始录音 ──
+      // ── 等待音频流 + RecordRTC 就绪 ──
       const [stream, RecordRTCModule] = await Promise.all([streamPromise, recordRTCPromise]);
       if (abortRef.current) { stream.getTracks().forEach((t) => t.stop()); cleanup(); setIsRecording(false); return; }
       mediaStreamRef.current = stream;
 
-      // 音量波形：AnalyserNode 独立于 RecordRTC，复用单例 AudioContext
+      // 音量波形
       const audioCtx = getOrCreateAudioContext();
       audioCtxRef.current = audioCtx;
       if (audioCtx.state === "suspended") await audioCtx.resume();
@@ -305,7 +326,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       };
       levelRafRef.current = requestAnimationFrame(tick);
 
-      // RecordRTC 采集 —— 立即启动，不等 session
+      // RecordRTC 录音 —— 立即启动，不等 session
       const recorder = new RecordRTCModule(stream, {
         type: "audio",
         mimeType: "audio/wav",
@@ -347,10 +368,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         console.log("[Voice] RecordRTC 已启动, 设备:", stream.getAudioTracks()[0]?.label);
       }
 
-      // 启动 chunk 推送定时器（flushChunks 会检查 sessionId，为空时跳过）
+      // 启动 chunk 推送
       pushIntervalRef.current = setInterval(flushChunks, 300);
 
-      // ── 等待 session 就绪，设置 sessionId 和 EventSource ──
+      // ── 等待 session 就绪 ──
       const sessionId = await sessionPromise;
       if (abortRef.current) { cleanup(); setIsRecording(false); return; }
       sessionIdRef.current = sessionId;
@@ -424,6 +445,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
     if (recorderRef.current) {
       recorderRef.current.stopRecording();
+      try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
       recorderRef.current = null;
     }
     // 不关闭 EventSource，需保持连接以接收 text/done 事件

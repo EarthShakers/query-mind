@@ -3,6 +3,8 @@
  * 支持实时流式音频推送和文本结果回调
  */
 import WebSocket from "ws";
+import { writeFile, appendFile, mkdir } from "fs/promises";
+import { join } from "path";
 import { randomUUID } from "crypto";
 import { EventEmitter } from "events";
 
@@ -115,7 +117,10 @@ export async function createSession(model: string): Promise<string> {
           type === "conversation.item.input_audio_transcription.text"
         ) {
           // DashScope 中间结果：text 常为空，实际内容在 stash
-          const text = (msg?.stash ?? msg?.text ?? msg?.transcript ?? "") as string;
+          const text = (msg?.stash ??
+            msg?.text ??
+            msg?.transcript ??
+            "") as string;
           console.log("[ASR] partial text:", text);
           if (text) emitter.emit("partial", text);
         } else if (type === "session.finished") {
@@ -153,10 +158,25 @@ export async function pushAudio(
   clearTimeout(session.timer);
   session.timer = setTimeout(() => destroySession(sessionId), SESSION_TTL_MS);
 
+  // ── DEBUG: 将 PCM 数据追加到本地文件，用于排查音频质量 ──
+  // if (process.env.NODE_ENV === "development") {
+  //   const debugDir = join(process.cwd(), "tmp");
+  //   const debugFile = join(debugDir, `asr-debug-${sessionId.slice(0, 8)}.pcm`);
+  //   try {
+  //     await mkdir(debugDir, { recursive: true });
+  //     await appendFile(debugFile, Buffer.from(audioBase64, "base64"));
+  //   } catch {
+  //     /* ignore */
+  //   }
+  // }
+
   // 检查音频内容是否有效（不全为零）
   const rawBuf = Buffer.from(audioBase64, "base64");
   // 使用 slice 避免 Node Buffer 池导致的 byteOffset 问题，确保正确读取 Int16
-  const ab = rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength);
+  const ab = rawBuf.buffer.slice(
+    rawBuf.byteOffset,
+    rawBuf.byteOffset + rawBuf.byteLength
+  );
   const samples = new Int16Array(ab);
   let maxAbs = 0;
   for (let i = 0; i < samples.length; i++) {
@@ -164,10 +184,14 @@ export async function pushAudio(
     if (abs > maxAbs) maxAbs = abs;
   }
   console.log(
-    "[ASR] pushed chunk, base64:", audioBase64.length,
-    "bytes:", rawBuf.length,
-    "samples:", samples.length,
-    "peak:", maxAbs
+    "[ASR] pushed chunk, base64:",
+    audioBase64.length,
+    "bytes:",
+    rawBuf.length,
+    "samples:",
+    samples.length,
+    "peak:",
+    maxAbs
   );
 
   session.ws.send(
@@ -186,7 +210,9 @@ export async function finishSession(sessionId: string): Promise<string> {
   if (!session) return "";
 
   if (session.ws.readyState === WebSocket.OPEN) {
-    session.ws.send(JSON.stringify({ event_id: evtId(), type: "session.finish" }));
+    session.ws.send(
+      JSON.stringify({ event_id: evtId(), type: "session.finish" })
+    );
   }
 
   try {

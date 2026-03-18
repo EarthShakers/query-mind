@@ -18,3 +18,4 @@ next-env.d.ts
 # eval reports
 
 report-*.json
+tmp

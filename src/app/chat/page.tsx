@@ -42,6 +42,11 @@ import { VoiceHoldButton, VoiceHoldButtonUI } from "@/components/chat/voice-hold
 import { Toast } from "@/components/ui/toast";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 
+// 移动端调试：开发环境自动加载 vConsole
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+  import("vconsole").then((m) => new m.default());
+}
+
 /* ─── Main page ─── */
 export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
