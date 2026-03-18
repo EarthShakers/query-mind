@@ -292,9 +292,11 @@ function createHttpTransport(opts: {
     });
 
     let flushFailCount = 0;
+    let sessionDead = false;
 
     return {
       pushAudio(pcmBuffer: ArrayBuffer) {
+        if (sessionDead) return;
         const base64 = bufferToBase64(pcmBuffer);
         fetch("/api/asr", {
           method: "POST",
@@ -304,7 +306,9 @@ function createHttpTransport(opts: {
           .then(async (res) => {
             const data = await res.json().catch(() => ({}));
             if (data?.dropped) {
+              sessionDead = true;
               opts.onError?.("会话已断开，请重新开始");
+              opts.onDone?.();
             } else {
               flushFailCount = 0;
             }
@@ -312,7 +316,9 @@ function createHttpTransport(opts: {
           .catch(() => {
             flushFailCount += 1;
             if (flushFailCount >= 5) {
+              sessionDead = true;
               opts.onError?.("网络异常，请检查连接");
+              opts.onDone?.();
               flushFailCount = 0;
             }
           });

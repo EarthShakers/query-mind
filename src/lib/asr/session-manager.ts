@@ -76,8 +76,8 @@ export async function createSession(model: string): Promise<string> {
     });
 
     ws.on("close", () => {
-      // session.finished 已经 emit done，这里只做清理
-      sessions.delete(sessionId);
+      // 统一走 destroySession：resolve finishPromise、清理 timer/emitter
+      destroySession(sessionId);
     });
 
     ws.on("message", (raw: Buffer) => {

@@ -142,8 +142,13 @@ function handleAsrWebSocket(clientWs) {
     });
 
     dashWs.on("close", () => {
-      // DashScope closed — if we haven't sent "done" yet, send it
+      const wasReady = ready;
       dashWs = null;
+      // DashScope 意外断开时通知客户端，避免客户端继续发送音频
+      if (wasReady && clientWs.readyState === WebSocket.OPEN) {
+        sendToClient("done");
+        cleanup();
+      }
     });
 
     dashWs.on("message", (raw) => {
