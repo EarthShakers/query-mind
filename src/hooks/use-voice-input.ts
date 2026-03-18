@@ -5,6 +5,7 @@ import { useState, useRef, useCallback } from "react";
 interface UseVoiceInputOptions {
   /** 收到完整句子（最终结果）时调用 */
   onResult: (text: string) => void;
+  onCorrected?: (text: string) => void;
   /** 收到中间识别结果时调用（可选，实现边录边显） */
   onPartial?: (text: string) => void;
   /** 错误时调用（用于 toast 等，不持久展示） */
@@ -14,16 +15,33 @@ interface UseVoiceInputOptions {
 }
 
 /** 从 WAV blob 解析出 PCM Int16 和采样率 */
-async function parseWavToPcm(blob: Blob): Promise<{ pcm: Int16Array; sampleRate: number } | null> {
+async function parseWavToPcm(
+  blob: Blob
+): Promise<{ pcm: Int16Array; sampleRate: number } | null> {
   const ab = await blob.arrayBuffer();
   const view = new DataView(ab);
   if (ab.byteLength < 44) return null;
-  if (String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)) !== "RIFF") return null;
+  if (
+    String.fromCharCode(
+      view.getUint8(0),
+      view.getUint8(1),
+      view.getUint8(2),
+      view.getUint8(3)
+    ) !== "RIFF"
+  )
+    return null;
   const sampleRate = view.getUint32(24, true);
   let dataOffset = 44;
   let dataSize = ab.byteLength - 44;
   for (let i = 12; i < ab.byteLength - 8; i++) {
-    if (String.fromCharCode(view.getUint8(i), view.getUint8(i + 1), view.getUint8(i + 2), view.getUint8(i + 3)) === "data") {
+    if (
+      String.fromCharCode(
+        view.getUint8(i),
+        view.getUint8(i + 1),
+        view.getUint8(i + 2),
+        view.getUint8(i + 3)
+      ) === "data"
+    ) {
       dataOffset = i + 8;
       dataSize = view.getUint32(i + 4, true);
       break;
@@ -40,15 +58,25 @@ const MAX_CHUNKS_BUFFERED = 60;
 
 /** VAD：连续静音超过此时长则暂停发送，节省成本 */
 const VAD_SILENT_MS = 1500;
-const CHUNK_INTERVAL_MS = 200;
+const CHUNK_INTERVAL_MS = 100;
 const VAD_SILENT_CHUNKS = Math.ceil(VAD_SILENT_MS / CHUNK_INTERVAL_MS);
-const VAD_RMS_THRESHOLD = 400; // Int16 下环境底噪约 100-300，语音通常 >500
+const VAD_RMS_THRESHOLD = 260;
+const PREAMBLE_SILENCE_SAMPLES = 3200;
 
 /** 计算 Int16 PCM 的 RMS 能量 */
 function pcmRms(pcm: Int16Array): number {
   let sum = 0;
   for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
   return Math.sqrt(sum / pcm.length);
+}
+
+function isAbortLikeError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  if (err instanceof Error) {
+    const msg = err.message.toLowerCase();
+    return msg.includes("aborted") || msg.includes("aborterror");
+  }
+  return false;
 }
 
 /** AudioContext 单例，避免移动端频繁创建耗尽系统额度 */
@@ -67,22 +95,26 @@ function getOrCreateAudioContext(): AudioContext {
  * 兼容 getUserMedia：优先 navigator.mediaDevices.getUserMedia，
  * 回退到旧版 navigator.getUserMedia（微信 WebView 等环境）。
  */
-function getCompatUserMedia(constraints: MediaStreamConstraints): Promise<MediaStream> {
+function getCompatUserMedia(
+  constraints: MediaStreamConstraints
+): Promise<MediaStream> {
   if (navigator.mediaDevices?.getUserMedia) {
     return navigator.mediaDevices.getUserMedia(constraints);
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const legacyGetUserMedia = (navigator as any).getUserMedia
+  const legacyGetUserMedia =
+    (navigator as any).getUserMedia ||
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    || (navigator as any).webkitGetUserMedia
+    (navigator as any).webkitGetUserMedia ||
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    || (navigator as any).mozGetUserMedia;
+    (navigator as any).mozGetUserMedia;
   if (legacyGetUserMedia) {
     return new Promise((resolve, reject) => {
       legacyGetUserMedia.call(navigator, constraints, resolve, reject);
     });
   }
-  const isHTTP = typeof location !== "undefined" && location.protocol === "http:";
+  const isHTTP =
+    typeof location !== "undefined" && location.protocol === "http:";
   const hint = isHTTP
     ? "录音功能需要 HTTPS，请使用 HTTPS 访问本站"
     : "当前浏览器不支持录音功能";
@@ -101,7 +133,10 @@ function resampleTo16k(pcm: Int16Array, fromRate: number): Int16Array {
     const frac = srcPos - srcIdx;
     const a = pcm[Math.min(srcIdx, pcm.length - 1)];
     const b = pcm[Math.min(srcIdx + 1, pcm.length - 1)];
-    out[i] = Math.max(-0x8000, Math.min(0x7fff, Math.round(a + (b - a) * frac)));
+    out[i] = Math.max(
+      -0x8000,
+      Math.min(0x7fff, Math.round(a + (b - a) * frac))
+    );
   }
   return out;
 }
@@ -127,7 +162,10 @@ function bufferToBase64(buffer: ArrayBuffer): string {
   let binary = "";
   const chunkSize = 1024;
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+    binary += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + chunkSize))
+    );
   }
   return btoa(binary);
 }
@@ -147,6 +185,7 @@ interface AsrTransport {
 function createWsTransport(opts: {
   onPartial?: (text: string) => void;
   onText?: (text: string) => void;
+  onCorrected?: (text: string) => void;
   onError?: (msg: string) => void;
   onDone?: () => void;
 }): Promise<AsrTransport> {
@@ -187,7 +226,10 @@ function createWsTransport(opts: {
             },
             close() {
               done = true;
-              if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+              if (
+                ws.readyState === WebSocket.OPEN ||
+                ws.readyState === WebSocket.CONNECTING
+              ) {
                 ws.close();
               }
             },
@@ -202,7 +244,7 @@ function createWsTransport(opts: {
         } else if (msg.type === "text_corrected") {
           if (msg.text) {
             finalText = msg.text;
-            opts.onText?.(msg.text);
+            opts.onCorrected?.(msg.text);
           }
         } else if (msg.type === "done") {
           done = true;
@@ -218,7 +260,9 @@ function createWsTransport(opts: {
             stopResolve = null;
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
 
     ws.onerror = () => {
@@ -284,7 +328,9 @@ function createHttpTransport(opts: {
           const { error: msg } = JSON.parse(evt.data);
           if (msg) opts.onError?.(msg);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     });
     es.addEventListener("done", () => {
       opts.onDone?.();
@@ -333,7 +379,9 @@ function createHttpTransport(opts: {
           const stopData = await stopRes.json();
           const transcript = (stopData?.transcript ?? "") as string;
           if (transcript.trim()) finalText = transcript;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         es.close();
         return finalText;
       },
@@ -350,12 +398,21 @@ function createHttpTransport(opts: {
   })();
 }
 
-export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: UseVoiceInputOptions) {
+export function useVoiceInput({
+  onResult,
+  onCorrected,
+  onPartial,
+  onError,
+  onLevelChange,
+}: UseVoiceInputOptions) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const recorderRef = useRef<{ startRecording: () => void; stopRecording: () => void } | null>(null);
+  const recorderRef = useRef<{
+    startRecording: () => void;
+    stopRecording: () => void;
+  } | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -369,6 +426,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
   const abortRef = useRef(false);
   const vadSilentCountRef = useRef(0);
   const vadPausedRef = useRef(false);
+  const preambleSentRef = useRef(false);
 
   const cleanup = useCallback(() => {
     onLevelChange?.(0);
@@ -388,11 +446,19 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     silentGainRef.current = null;
     if (recorderRef.current) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
+      try {
+        (recorderRef.current as any).destroy?.();
+      } catch {
+        /* ignore */
+      }
       recorderRef.current = null;
     }
     if (audioCtxRef.current) {
-      try { audioCtxRef.current.close(); } catch { /* ignore */ }
+      try {
+        audioCtxRef.current.close();
+      } catch {
+        /* ignore */
+      }
       audioCtxRef.current = null;
       sharedAudioContext = null;
     }
@@ -402,6 +468,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     transportRef.current = null;
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
+    preambleSentRef.current = false;
   }, [onLevelChange]);
 
   /** 仅清理录音相关资源，保留 transport 以接收最终转写结果 */
@@ -423,11 +490,19 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     silentGainRef.current = null;
     if (recorderRef.current) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
+      try {
+        (recorderRef.current as any).destroy?.();
+      } catch {
+        /* ignore */
+      }
       recorderRef.current = null;
     }
     if (audioCtxRef.current) {
-      try { audioCtxRef.current.close(); } catch { /* ignore */ }
+      try {
+        audioCtxRef.current.close();
+      } catch {
+        /* ignore */
+      }
       audioCtxRef.current = null;
       sharedAudioContext = null;
     }
@@ -435,11 +510,17 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     mediaStreamRef.current = null;
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
+    preambleSentRef.current = false;
   }, [onLevelChange]);
 
   const flushChunks = useCallback(() => {
     const transport = transportRef.current;
     if (!transport || chunksRef.current.length === 0) return;
+    if (!preambleSentRef.current) {
+      const preamble = new Int16Array(PREAMBLE_SILENCE_SAMPLES);
+      transport.pushAudio(preamble.buffer);
+      preambleSentRef.current = true;
+    }
 
     const pending = chunksRef.current;
     chunksRef.current = [];
@@ -462,6 +543,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     abortRef.current = false;
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
+    preambleSentRef.current = false;
 
     try {
       if (abortRef.current) return;
@@ -474,12 +556,18 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       const streamPromise = (async () => {
         let stream: MediaStream;
         try {
-          const devices = await navigator.mediaDevices?.enumerateDevices?.() ?? [];
+          const devices =
+            (await navigator.mediaDevices?.enumerateDevices?.()) ?? [];
           const audioInputs = devices.filter((d) => d.kind === "audioinput");
-          const preferred = audioInputs.find((d) => /built-in|default|internal|麦克风/i.test(d.label)) ?? audioInputs[0];
+          const preferred =
+            audioInputs.find((d) =>
+              /built-in|default|internal|麦克风/i.test(d.label)
+            ) ?? audioInputs[0];
           stream = await getCompatUserMedia({
             audio: {
-              ...(preferred?.deviceId ? { deviceId: { exact: preferred.deviceId } } : {}),
+              ...(preferred?.deviceId
+                ? { deviceId: { exact: preferred.deviceId } }
+                : {}),
               channelCount: 1,
               echoCancellation: true,
               noiseSuppression: true,
@@ -489,7 +577,11 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         } catch {
           try {
             stream = await getCompatUserMedia({
-              audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+              audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+              },
             });
           } catch {
             stream = await getCompatUserMedia({ audio: true });
@@ -503,14 +595,20 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       // 3) 创建 ASR transport — 优先 WebSocket，失败回退 HTTP
       const transportHandlers = {
-        onPartial: (text: string) => { if (text) onPartial?.(text); },
+        onPartial: (text: string) => {
+          if (text) onPartial?.(text);
+        },
         onText: (text: string) => {
           if (text) {
             hasResultRef.current = true;
             setIsTranscribing(false);
           }
         },
+        onCorrected: (text: string) => {
+          if (text) onCorrected?.(text);
+        },
         onError: (msg: string) => {
+          if (/aborted|abort/i.test(msg)) return;
           onError?.(msg);
           setIsTranscribing(false);
         },
@@ -523,21 +621,37 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         },
       };
 
-      const transportPromise = createWsTransport(transportHandlers).catch((wsErr) => {
-        if (process.env.NODE_ENV === "development") {
-          console.warn("[Voice] WebSocket failed, retrying...", wsErr.message);
-        }
-        return createWsTransport(transportHandlers).catch((retryErr) => {
+      const transportPromise = createWsTransport(transportHandlers).catch(
+        (wsErr) => {
           if (process.env.NODE_ENV === "development") {
-            console.warn("[Voice] WebSocket retry failed, falling back to HTTP:", retryErr.message);
+            console.warn(
+              "[Voice] WebSocket failed, retrying...",
+              wsErr.message
+            );
           }
-          return createHttpTransport(transportHandlers);
-        });
-      });
+          return createWsTransport(transportHandlers).catch((retryErr) => {
+            if (process.env.NODE_ENV === "development") {
+              console.warn(
+                "[Voice] WebSocket retry failed, falling back to HTTP:",
+                retryErr.message
+              );
+            }
+            return createHttpTransport(transportHandlers);
+          });
+        }
+      );
 
       // ── 等待音频流 + RecordRTC 就绪 ──
-      const [stream, RecordRTCModule] = await Promise.all([streamPromise, recordRTCPromise]);
-      if (abortRef.current) { stream.getTracks().forEach((t) => t.stop()); cleanup(); setIsRecording(false); return; }
+      const [stream, RecordRTCModule] = await Promise.all([
+        streamPromise,
+        recordRTCPromise,
+      ]);
+      if (abortRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        cleanup();
+        setIsRecording(false);
+        return;
+      }
       mediaStreamRef.current = stream;
 
       // 音量波形
@@ -571,8 +685,9 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       const recorder = new RecordRTCModule(stream, {
         type: "audio",
         mimeType: "audio/wav",
-        recorderType: (RecordRTCModule as { StereoAudioRecorder: unknown }).StereoAudioRecorder as import("recordrtc").Recorder,
-        timeSlice: 300,
+        recorderType: (RecordRTCModule as { StereoAudioRecorder: unknown })
+          .StereoAudioRecorder as import("recordrtc").Recorder,
+        timeSlice: 120,
         desiredSampRate: 16000,
         numberOfAudioChannels: 1,
         bufferSize: 4096,
@@ -581,7 +696,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
           if (!blob || blob.size < 44) return;
           const parsed = await parseWavToPcm(blob);
           if (!parsed) return;
-          const pcm = parsed.sampleRate === 16000 ? parsed.pcm : resampleTo16k(parsed.pcm, parsed.sampleRate);
+          const pcm =
+            parsed.sampleRate === 16000
+              ? parsed.pcm
+              : resampleTo16k(parsed.pcm, parsed.sampleRate);
           if (pcm.length === 0) return;
 
           const rms = pcmRms(pcm);
@@ -606,7 +724,10 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       recorder.startRecording();
 
       if (process.env.NODE_ENV === "development") {
-        console.log("[Voice] RecordRTC 已启动, 设备:", stream.getAudioTracks()[0]?.label);
+        console.log(
+          "[Voice] RecordRTC 已启动, 设备:",
+          stream.getAudioTracks()[0]?.label
+        );
       }
 
       // 启动 chunk 推送
@@ -614,7 +735,12 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       // ── 等待 transport 就绪 ──
       const transport = await transportPromise;
-      if (abortRef.current) { transport.close(); cleanup(); setIsRecording(false); return; }
+      if (abortRef.current) {
+        transport.close();
+        cleanup();
+        setIsRecording(false);
+        return;
+      }
       transportRef.current = transport;
 
       if (process.env.NODE_ENV === "development") {
@@ -623,16 +749,27 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     } catch (err) {
       cleanup();
       setIsRecording(false);
+      if (abortRef.current || isAbortLikeError(err)) {
+        return;
+      }
       const msg =
         err instanceof DOMException && err.name === "NotAllowedError"
           ? "无法访问麦克风，请检查浏览器权限"
           : err instanceof Error
-            ? err.message
-            : "录音启动失败";
+          ? err.message
+          : "录音启动失败";
       onError?.(msg);
       setError(null);
     }
-  }, [cleanup, flushChunks, onResult, onPartial, onError, onLevelChange]);
+  }, [
+    cleanup,
+    flushChunks,
+    onResult,
+    onCorrected,
+    onPartial,
+    onError,
+    onLevelChange,
+  ]);
 
   const stopRecording = useCallback(async () => {
     abortRef.current = true;
@@ -651,7 +788,11 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
     if (recorderRef.current) {
       recorderRef.current.stopRecording();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { (recorderRef.current as any).destroy?.(); } catch { /* ignore */ }
+      try {
+        (recorderRef.current as any).destroy?.();
+      } catch {
+        /* ignore */
+      }
       recorderRef.current = null;
     }
     cleanupRecordingOnly();

@@ -133,13 +133,29 @@ export default function Page() {
   const [partialText, setPartialText] = useState("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const lastVoiceRawRef = useRef<string | null>(null);
   const voiceInput = useVoiceInput({
     onResult: (text) => {
       setPartialText("");
       if (text.trim()) {
+        lastVoiceRawRef.current = text;
         userScrolledUp.current = false;
         append({ role: "user", content: text });
       }
+    },
+    onCorrected: (text) => {
+      const raw = lastVoiceRawRef.current;
+      const corrected = text.trim();
+      if (!raw || !corrected || corrected === raw) return;
+      setMessages((prev) => {
+        const index = [...prev].reverse().findIndex((m: any) => m.role === "user" && m.content === raw);
+        if (index < 0) return prev;
+        const targetIndex = prev.length - 1 - index;
+        const next = [...prev];
+        next[targetIndex] = { ...next[targetIndex], content: corrected };
+        return next;
+      });
+      lastVoiceRawRef.current = corrected;
     },
     onPartial: (text) => {
       setPartialText(text);

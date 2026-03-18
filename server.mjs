@@ -20,8 +20,8 @@ const handle = app.getRequestHandler();
 const DASHSCOPE_BASE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
 const DASHSCOPE_CHAT_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const SESSION_TTL_MS = 120_000;
+const ASYNC_CORRECT_TIMEOUT_MS = 3500;
 
-/** LLM 纠错：使用 getModelConfig().modelLight */
 async function correctAsrText(rawText) {
   if (!rawText?.trim()) return rawText;
   const apiKey = process.env.DASHSCOPE_API_KEY;
@@ -72,7 +72,8 @@ function handleAsrWebSocket(clientWs) {
   let dashWs = null;
   let timer = null;
   let ready = false;
-  /** 最后一次 ASR 完整输出，用于 session.finished 时 LLM 纠错 */
+  let cleaned = false;
+  let finalized = false;
   let lastCompletedText = "";
   /** Queue of messages received before DashScope is ready */
   const pendingQueue = [];
@@ -92,6 +93,8 @@ function handleAsrWebSocket(clientWs) {
   };
 
   const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
     if (timer) clearTimeout(timer);
     timer = null;
     if (dashWs && dashWs.readyState === WebSocket.OPEN) {
@@ -110,6 +113,36 @@ function handleAsrWebSocket(clientWs) {
       handleClientMessage(msg);
     }
     pendingQueue.length = 0;
+  };
+
+  const finalizeSession = () => {
+    if (finalized) return;
+    finalized = true;
+    sendToClient("done");
+    const doLlmCorrect = process.env.ASR_LLM_CORRECT !== "false";
+    if (!doLlmCorrect || !lastCompletedText.trim()) {
+      cleanup();
+      return;
+    }
+
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => resolve(lastCompletedText), ASYNC_CORRECT_TIMEOUT_MS);
+    });
+
+    Promise.race([correctAsrText(lastCompletedText), timeoutPromise])
+      .then((corrected) => {
+        if (
+          typeof corrected === "string" &&
+          corrected.trim() &&
+          corrected !== lastCompletedText &&
+          clientWs.readyState === WebSocket.OPEN
+        ) {
+          sendToClient("text_corrected", { text: corrected });
+        }
+      })
+      .finally(() => {
+        cleanup();
+      });
   };
 
   /** Connect to DashScope Realtime ASR */
@@ -146,8 +179,7 @@ function handleAsrWebSocket(clientWs) {
       dashWs = null;
       // DashScope 意外断开时通知客户端，避免客户端继续发送音频
       if (wasReady && clientWs.readyState === WebSocket.OPEN) {
-        sendToClient("done");
-        cleanup();
+        finalizeSession();
       }
     });
 
@@ -184,22 +216,7 @@ function handleAsrWebSocket(clientWs) {
           const text = (msg?.stash ?? msg?.text ?? msg?.transcript ?? "");
           if (text) sendToClient("partial", { text });
         } else if (type === "session.finished") {
-          const doLlmCorrect = process.env.ASR_LLM_CORRECT !== "false";
-          if (doLlmCorrect && lastCompletedText.trim()) {
-            (async () => {
-              try {
-                const corrected = await correctAsrText(lastCompletedText);
-                if (corrected && corrected !== lastCompletedText) {
-                  sendToClient("text_corrected", { text: corrected });
-                }
-              } catch { /* ignore */ }
-              sendToClient("done");
-              cleanup();
-            })();
-          } else {
-            sendToClient("done");
-            cleanup();
-          }
+          finalizeSession();
           return;
         } else if (type === "error") {
           console.error("[ASR-WS] DashScope error event:", msg?.error?.message);
