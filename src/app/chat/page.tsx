@@ -6,7 +6,10 @@ import { useChat } from "ai/react";
 
 /** crypto.randomUUID polyfill — 微信 WebView 等环境可能不支持 */
 function uuid(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   // fallback: 用 crypto.getRandomValues 手动拼 v4 UUID
@@ -15,11 +18,18 @@ function uuid(): string {
     crypto.getRandomValues(buf);
     buf[6] = (buf[6] & 0x0f) | 0x40; // version 4
     buf[8] = (buf[8] & 0x3f) | 0x80; // variant 1
-    const hex = Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    const hex = Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join(
+      ""
+    );
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(
+      12,
+      16
+    )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
   // last resort
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
 }
 import { NavAuth } from "@/components/nav-auth";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -38,7 +48,10 @@ import { ChatUploadModal } from "@/components/chat/chat-upload-modal";
 import { ExportDropdown } from "@/components/chat/export-dropdown";
 import { AnimatePresence } from "framer-motion";
 import { VoiceRecordingOverlay } from "@/components/chat/voice-recording-overlay";
-import { VoiceHoldButton, VoiceHoldButtonUI } from "@/components/chat/voice-hold-button";
+import {
+  VoiceHoldButton,
+  VoiceHoldButtonUI,
+} from "@/components/chat/voice-hold-button";
 import { Toast } from "@/components/ui/toast";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 
@@ -52,7 +65,9 @@ export default function Page() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [agentMode, setAgentMode] = useState(false);
-  const [agentModeTurnIds, setAgentModeTurnIds] = useState<Set<string>>(new Set());
+  const [agentModeTurnIds, setAgentModeTurnIds] = useState<Set<string>>(
+    new Set()
+  );
   const pendingAgentMode = useRef(false);
   const { user } = useAuth();
   const lastInput = useRef("");
@@ -127,35 +142,51 @@ export default function Page() {
   });
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceCancelling, setVoiceCancelling] = useState(false);
-  const [interruptedMessageIds, setInterruptedMessageIds] = useState<Set<string>>(
-    () => new Set()
-  );
+  const [interruptedMessageIds, setInterruptedMessageIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [partialText, setPartialText] = useState("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
-  const lastVoiceRawRef = useRef<string | null>(null);
+  const voiceMessageBindingsRef = useRef<Array<{ id: string; raw: string }>>(
+    []
+  );
   const voiceInput = useVoiceInput({
-    onResult: (text) => {
+    onResult: async (text) => {
       setPartialText("");
       if (text.trim()) {
-        lastVoiceRawRef.current = text;
         userScrolledUp.current = false;
-        append({ role: "user", content: text });
+        const messageId = await append({ role: "user", content: text });
+        if (typeof messageId === "string" && messageId) {
+          const next = [
+            ...voiceMessageBindingsRef.current,
+            { id: messageId, raw: text },
+          ];
+          voiceMessageBindingsRef.current = next.slice(-20);
+        }
       }
     },
-    onCorrected: (text) => {
-      const raw = lastVoiceRawRef.current;
+    onCorrected: (text, sourceText) => {
       const corrected = text.trim();
-      if (!raw || !corrected || corrected === raw) return;
+      if (!corrected) return;
+      const bindings = voiceMessageBindingsRef.current;
+      const target =
+        (sourceText
+          ? [...bindings].reverse().find((b) => b.raw === sourceText)
+          : undefined) ?? bindings[bindings.length - 1];
+      if (!target) return;
       setMessages((prev) => {
-        const index = [...prev].reverse().findIndex((m: any) => m.role === "user" && m.content === raw);
+        const index = prev.findIndex(
+          (m: any) => m.role === "user" && m.id === target.id
+        );
         if (index < 0) return prev;
-        const targetIndex = prev.length - 1 - index;
         const next = [...prev];
-        next[targetIndex] = { ...next[targetIndex], content: corrected };
+        next[index] = { ...next[index], content: corrected };
         return next;
       });
-      lastVoiceRawRef.current = corrected;
+      voiceMessageBindingsRef.current = bindings.map((b) =>
+        b.id === target.id ? { ...b, raw: corrected } : b
+      );
     },
     onPartial: (text) => {
       setPartialText(text);
@@ -181,7 +212,9 @@ export default function Page() {
     // isLoading 从 false→true（新请求开始）：快照当前累积长度
     if (isLoading && !wasLoadingRef.current) {
       const flat = streamData
-        ? (Array.isArray(streamData) ? streamData.flat(2) : [streamData])
+        ? Array.isArray(streamData)
+          ? streamData.flat(2)
+          : [streamData]
         : [];
       turnStreamStartRef.current = flat.length;
       lastStreamDataRef.current = null;
@@ -821,7 +854,9 @@ export default function Page() {
             <div
               className="input-bar shrink-0 px-4 md:px-6 py-3 md:py-4 border-t border-slate-200 bg-white/60 backdrop-blur"
               onContextMenu={(e) => {
-                if ((e.target as HTMLElement).closest("button, [data-voice-hold]"))
+                if (
+                  (e.target as HTMLElement).closest("button, [data-voice-hold]")
+                )
                   e.preventDefault();
               }}
             >
@@ -944,7 +979,12 @@ export default function Page() {
                     onCancellingChange={setVoiceCancelling}
                     className="flex-1 min-w-0"
                   >
-                    {({ isRecording, isTranscribing, isCancelling, audioLevel: level }) => (
+                    {({
+                      isRecording,
+                      isTranscribing,
+                      isCancelling,
+                      audioLevel: level,
+                    }) => (
                       <VoiceHoldButtonUI
                         isRecording={isRecording}
                         isTranscribing={isTranscribing}
@@ -977,13 +1017,31 @@ export default function Page() {
                 >
                   {voiceMode ? (
                     /* 键盘图标 */
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <rect x="2" y="4" width="20" height="16" rx="2" />
                       <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
                     </svg>
                   ) : (
                     /* 麦克风图标 */
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <rect x="9" y="2" width="6" height="11" rx="3" />
                       <path d="M5 10a7 7 0 0 0 14 0" />
                       <line x1="12" x2="12" y1="17" y2="22" />
@@ -1004,26 +1062,24 @@ export default function Page() {
 
               {/* 语音录制浮层：录音/转写时全屏展示识别文字，AnimatePresence 支持淡出 */}
               <AnimatePresence>
-                {voiceMode && (voiceInput.isRecording || voiceInput.isTranscribing) && (
-                  <VoiceRecordingOverlay
-                    key="voice-overlay"
-                  isRecording={voiceInput.isRecording}
-                  isTranscribing={voiceInput.isTranscribing}
-                  isCancelling={voiceCancelling}
-                  transcript={input}
-                  partialText={partialText}
-                  audioLevel={audioLevel}
-                  onStop={voiceInput.stopRecording}
-                  onCancel={voiceInput.cancelRecording}
-                  holdToSend
-                />
-                )}
+                {voiceMode &&
+                  (voiceInput.isRecording || voiceInput.isTranscribing) && (
+                    <VoiceRecordingOverlay
+                      key="voice-overlay"
+                      isRecording={voiceInput.isRecording}
+                      isTranscribing={voiceInput.isTranscribing}
+                      isCancelling={voiceCancelling}
+                      transcript={input}
+                      partialText={partialText}
+                      audioLevel={audioLevel}
+                      onStop={voiceInput.stopRecording}
+                      onCancel={voiceInput.cancelRecording}
+                      holdToSend
+                    />
+                  )}
               </AnimatePresence>
 
-              <Toast
-                message={toastMsg}
-                onDismiss={() => setToastMsg(null)}
-              />
+              <Toast message={toastMsg} onDismiss={() => setToastMsg(null)} />
             </div>
           </div>
 

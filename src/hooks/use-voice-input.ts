@@ -5,7 +5,7 @@ import { useState, useRef, useCallback } from "react";
 interface UseVoiceInputOptions {
   /** 收到完整句子（最终结果）时调用 */
   onResult: (text: string) => void;
-  onCorrected?: (text: string) => void;
+  onCorrected?: (text: string, sourceText?: string) => void;
   /** 收到中间识别结果时调用（可选，实现边录边显） */
   onPartial?: (text: string) => void;
   /** 错误时调用（用于 toast 等，不持久展示） */
@@ -60,14 +60,17 @@ const MAX_CHUNKS_BUFFERED = 60;
 const VAD_SILENT_MS = 1500;
 const CHUNK_INTERVAL_MS = 100;
 const VAD_SILENT_CHUNKS = Math.ceil(VAD_SILENT_MS / CHUNK_INTERVAL_MS);
-const VAD_RMS_THRESHOLD = 260;
+const VAD_RMS_THRESHOLD = 180;
+const RAW_VAD_RMS_THRESHOLD = 90;
 const PREAMBLE_SILENCE_SAMPLES = 3200;
+const CLIENT_VAD_PAUSE_ENABLED = false;
+const INPUT_PREAMP_GAIN = 4.5;
 /** 初始底噪估计（Int16 幅度） */
 const DENOISE_FLOOR_DEFAULT = 120;
 /** AGC 起始增益，后续按每帧平滑更新 */
 const AGC_GAIN_DEFAULT = 1;
 /** AGC 目标 RMS，值越大整体声音越“靠前” */
-const AGC_TARGET_RMS = 2200;
+const AGC_TARGET_RMS = 3200;
 
 /** 计算 Int16 PCM 的 RMS 能量 */
 function pcmRms(pcm: Int16Array): number {
@@ -91,8 +94,8 @@ function preprocessPcm(
     60,
     Math.min(2200, noiseFloor * 0.92 + boundedAvg * 0.08)
   );
-  const gate = Math.max(140, Math.min(2400, nextNoiseFloor * 2.2));
-  const attenuate = 0.22;
+  const gate = Math.max(60, Math.min(1200, nextNoiseFloor * 1.2));
+  const attenuate = 0.7;
 
   // 降噪：对门限以下的样本做衰减而非硬截断，减少机械感
   const denoised = new Int16Array(pcm.length);
@@ -111,8 +114,8 @@ function preprocessPcm(
   const rms = Math.sqrt(sumSq / Math.max(1, denoised.length));
   // AGC：把当前帧 RMS 拉向目标值，使用平滑增益避免音量泵动
   const desiredGain =
-    rms > 1 ? Math.max(0.8, Math.min(6, AGC_TARGET_RMS / rms)) : prevGain;
-  const nextGain = prevGain * 0.8 + desiredGain * 0.2;
+    rms > 1 ? Math.max(0.8, Math.min(16, AGC_TARGET_RMS / rms)) : prevGain;
+  const nextGain = prevGain * 0.65 + desiredGain * 0.35;
 
   const normalized = new Int16Array(denoised.length);
   for (let i = 0; i < denoised.length; i++) {
@@ -238,7 +241,7 @@ interface AsrTransport {
 function createWsTransport(opts: {
   onPartial?: (text: string) => void;
   onText?: (text: string) => void;
-  onCorrected?: (text: string) => void;
+  onCorrected?: (text: string, sourceText?: string) => void;
   onError?: (msg: string) => void;
   onDone?: () => void;
 }): Promise<AsrTransport> {
@@ -297,7 +300,7 @@ function createWsTransport(opts: {
         } else if (msg.type === "text_corrected") {
           if (msg.text) {
             finalText = msg.text;
-            opts.onCorrected?.(msg.text);
+            opts.onCorrected?.(msg.text, msg.sourceText);
           }
         } else if (msg.type === "done") {
           done = true;
@@ -469,6 +472,8 @@ export function useVoiceInput({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const preampGainRef = useRef<GainNode | null>(null);
+  const recordDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const levelRafRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
@@ -482,6 +487,7 @@ export function useVoiceInput({
   const preambleSentRef = useRef(false);
   const denoiseFloorRef = useRef(DENOISE_FLOOR_DEFAULT);
   const agcGainRef = useRef(AGC_GAIN_DEFAULT);
+  const hasPartialRef = useRef(false);
 
   const cleanup = useCallback(() => {
     onLevelChange?.(0);
@@ -495,6 +501,10 @@ export function useVoiceInput({
     }
     sourceNodeRef.current?.disconnect();
     sourceNodeRef.current = null;
+    preampGainRef.current?.disconnect();
+    preampGainRef.current = null;
+    recordDestRef.current?.disconnect();
+    recordDestRef.current = null;
     analyserRef.current?.disconnect();
     analyserRef.current = null;
     silentGainRef.current?.disconnect();
@@ -526,6 +536,7 @@ export function useVoiceInput({
     preambleSentRef.current = false;
     denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
     agcGainRef.current = AGC_GAIN_DEFAULT;
+    hasPartialRef.current = false;
   }, [onLevelChange]);
 
   /** 仅清理录音相关资源，保留 transport 以接收最终转写结果 */
@@ -541,6 +552,10 @@ export function useVoiceInput({
     }
     sourceNodeRef.current?.disconnect();
     sourceNodeRef.current = null;
+    preampGainRef.current?.disconnect();
+    preampGainRef.current = null;
+    recordDestRef.current?.disconnect();
+    recordDestRef.current = null;
     analyserRef.current?.disconnect();
     analyserRef.current = null;
     silentGainRef.current?.disconnect();
@@ -570,6 +585,7 @@ export function useVoiceInput({
     preambleSentRef.current = false;
     denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
     agcGainRef.current = AGC_GAIN_DEFAULT;
+    hasPartialRef.current = false;
   }, [onLevelChange]);
 
   const flushChunks = useCallback(() => {
@@ -605,6 +621,7 @@ export function useVoiceInput({
     preambleSentRef.current = false;
     denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
     agcGainRef.current = AGC_GAIN_DEFAULT;
+    hasPartialRef.current = false;
 
     try {
       if (abortRef.current) return;
@@ -630,9 +647,9 @@ export function useVoiceInput({
                 ? { deviceId: { exact: preferred.deviceId } }
                 : {}),
               channelCount: 1,
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
             },
           });
         } catch {
@@ -642,6 +659,7 @@ export function useVoiceInput({
                 channelCount: 1,
                 echoCancellation: true,
                 noiseSuppression: true,
+                autoGainControl: true,
               },
             });
           } catch {
@@ -657,7 +675,10 @@ export function useVoiceInput({
       // 3) 创建 ASR transport — 优先 WebSocket，失败回退 HTTP
       const transportHandlers = {
         onPartial: (text: string) => {
-          if (text) onPartial?.(text);
+          if (text) {
+            hasPartialRef.current = true;
+            onPartial?.(text);
+          }
         },
         onText: (text: string) => {
           if (text) {
@@ -665,8 +686,8 @@ export function useVoiceInput({
             setIsTranscribing(false);
           }
         },
-        onCorrected: (text: string) => {
-          if (text) onCorrected?.(text);
+        onCorrected: (text: string, sourceText?: string) => {
+          if (text) onCorrected?.(text, sourceText);
         },
         onError: (msg: string) => {
           if (/aborted|abort/i.test(msg)) return;
@@ -717,10 +738,17 @@ export function useVoiceInput({
       if (audioCtx.state === "suspended") await audioCtx.resume();
       const source = audioCtx.createMediaStreamSource(stream);
       sourceNodeRef.current = source;
+      const preamp = audioCtx.createGain();
+      preamp.gain.value = INPUT_PREAMP_GAIN;
+      preampGainRef.current = preamp;
+      const recordDest = audioCtx.createMediaStreamDestination();
+      recordDestRef.current = recordDest;
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.5;
       source.connect(analyser);
+      source.connect(preamp);
+      preamp.connect(recordDest);
       const silentGain = audioCtx.createGain();
       silentGain.gain.value = 0.0001;
       analyser.connect(silentGain);
@@ -739,7 +767,11 @@ export function useVoiceInput({
       levelRafRef.current = requestAnimationFrame(tick);
 
       // RecordRTC 录音 —— 立即启动，不等 transport
-      const recorder = new RecordRTCModule(stream, {
+      const recorderStream = recordDestRef.current?.stream?.getAudioTracks()
+        ?.length
+        ? recordDestRef.current.stream
+        : stream;
+      const recorder = new RecordRTCModule(recorderStream, {
         type: "audio",
         mimeType: "audio/wav",
         recorderType: (RecordRTCModule as { StereoAudioRecorder: unknown })
@@ -768,11 +800,17 @@ export function useVoiceInput({
           agcGainRef.current = processed.gain;
           const processedPcm = processed.pcm;
 
-          const rms = pcmRms(processedPcm);
-          if (rms < VAD_RMS_THRESHOLD) {
-            vadSilentCountRef.current += 1;
-            if (vadSilentCountRef.current >= VAD_SILENT_CHUNKS) {
-              vadPausedRef.current = true;
+          if (CLIENT_VAD_PAUSE_ENABLED) {
+            const rms = pcmRms(processedPcm);
+            const rawRms = pcmRms(pcm);
+            if (rms < VAD_RMS_THRESHOLD && rawRms < RAW_VAD_RMS_THRESHOLD) {
+              vadSilentCountRef.current += 1;
+              if (vadSilentCountRef.current >= VAD_SILENT_CHUNKS) {
+                vadPausedRef.current = true;
+              }
+            } else {
+              vadSilentCountRef.current = 0;
+              vadPausedRef.current = false;
             }
           } else {
             vadSilentCountRef.current = 0;
@@ -875,10 +913,14 @@ export function useVoiceInput({
         hasResultRef.current = true;
         onResult(transcript);
       } else if (!hasResultRef.current) {
-        onError?.("未识别到语音内容");
+        await new Promise((r) => setTimeout(r, 800));
+        if (!hasResultRef.current && !hasPartialRef.current) {
+          onError?.("未识别到语音内容");
+        }
       }
-    } catch {
-      if (!hasResultRef.current) onError?.("转写失败");
+    } catch (err) {
+      if (!hasResultRef.current && !isAbortLikeError(err))
+        onError?.("转写失败");
     } finally {
       setIsTranscribing(false);
       transportRef.current = null;

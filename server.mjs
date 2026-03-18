@@ -18,7 +18,8 @@ const handle = app.getRequestHandler();
 
 // ── DashScope ASR constants ──
 const DASHSCOPE_BASE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
-const DASHSCOPE_CHAT_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+const DASHSCOPE_CHAT_URL =
+  "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const SESSION_TTL_MS = 120_000;
 const ASYNC_CORRECT_TIMEOUT_MS = 3500;
 
@@ -98,7 +99,11 @@ function handleAsrWebSocket(clientWs) {
     if (timer) clearTimeout(timer);
     timer = null;
     if (dashWs && dashWs.readyState === WebSocket.OPEN) {
-      try { dashWs.close(); } catch { /* ignore */ }
+      try {
+        dashWs.close();
+      } catch {
+        /* ignore */
+      }
     }
     dashWs = null;
     ready = false;
@@ -137,7 +142,10 @@ function handleAsrWebSocket(clientWs) {
           corrected !== lastCompletedText &&
           clientWs.readyState === WebSocket.OPEN
         ) {
-          sendToClient("text_corrected", { text: corrected });
+          sendToClient("text_corrected", {
+            text: corrected,
+            sourceText: lastCompletedText,
+          });
         }
       })
       .finally(() => {
@@ -189,40 +197,57 @@ function handleAsrWebSocket(clientWs) {
         const type = msg?.type;
 
         if (dev) {
-          console.log("[ASR-WS] DashScope event:", type, JSON.stringify(msg).slice(0, 300));
+          console.log(
+            "[ASR-WS] DashScope event:",
+            type,
+            JSON.stringify(msg).slice(0, 300)
+          );
         }
 
         if (type === "session.created") {
-          dashWs.send(JSON.stringify({
-            event_id: evtId(),
-            type: "session.update",
-            session: {
-              input_audio_transcription: { model: process.env.MODEL_ASR || "qwen3-asr-flash-realtime", language: "zh" },
-            },
-          }));
+          dashWs.send(
+            JSON.stringify({
+              event_id: evtId(),
+              type: "session.update",
+              session: {
+                input_audio_transcription: {
+                  model: process.env.MODEL_ASR || "qwen3-asr-flash-realtime",
+                  language: "zh",
+                },
+              },
+            })
+          );
         } else if (type === "session.updated") {
           ready = true;
           resetTimer();
           sendToClient("started", { sessionId: randomUUID() });
           flushPending();
-        } else if (type === "conversation.item.input_audio_transcription.completed") {
+        } else if (
+          type === "conversation.item.input_audio_transcription.completed"
+        ) {
           const text = msg?.transcript ?? "";
           if (dev) console.log("[ASR-WS] final text:", text);
           if (text) {
             lastCompletedText = text;
             sendToClient("text", { text });
           }
-        } else if (type === "conversation.item.input_audio_transcription.text") {
-          const text = (msg?.stash ?? msg?.text ?? msg?.transcript ?? "");
+        } else if (
+          type === "conversation.item.input_audio_transcription.text"
+        ) {
+          const text = msg?.stash ?? msg?.text ?? msg?.transcript ?? "";
           if (text) sendToClient("partial", { text });
         } else if (type === "session.finished") {
           finalizeSession();
           return;
         } else if (type === "error") {
           console.error("[ASR-WS] DashScope error event:", msg?.error?.message);
-          sendToClient("error", { error: msg?.error?.message ?? "语音识别失败" });
+          sendToClient("error", {
+            error: msg?.error?.message ?? "语音识别失败",
+          });
         }
-      } catch { /* ignore parse errors */ }
+      } catch {
+        /* ignore parse errors */
+      }
     });
   };
 
@@ -241,25 +266,31 @@ function handleAsrWebSocket(clientWs) {
     if (msg.type === "push") {
       if (!dashWs || dashWs.readyState !== WebSocket.OPEN) return;
       resetTimer();
-      dashWs.send(JSON.stringify({
-        event_id: evtId(),
-        type: "input_audio_buffer.append",
-        audio: msg.audio,
-      }));
+      dashWs.send(
+        JSON.stringify({
+          event_id: evtId(),
+          type: "input_audio_buffer.append",
+          audio: msg.audio,
+        })
+      );
     } else if (msg.type === "push_binary") {
       // Binary audio path: msg.pcmBuffer is an ArrayBuffer/Buffer
       if (!dashWs || dashWs.readyState !== WebSocket.OPEN) return;
       resetTimer();
       // Convert binary PCM to base64 for DashScope
       const base64 = Buffer.from(msg.pcmBuffer).toString("base64");
-      dashWs.send(JSON.stringify({
-        event_id: evtId(),
-        type: "input_audio_buffer.append",
-        audio: base64,
-      }));
+      dashWs.send(
+        JSON.stringify({
+          event_id: evtId(),
+          type: "input_audio_buffer.append",
+          audio: base64,
+        })
+      );
     } else if (msg.type === "stop") {
       if (dashWs && dashWs.readyState === WebSocket.OPEN) {
-        dashWs.send(JSON.stringify({ event_id: evtId(), type: "session.finish" }));
+        dashWs.send(
+          JSON.stringify({ event_id: evtId(), type: "session.finish" })
+        );
       }
     }
   };
@@ -282,8 +313,12 @@ function handleAsrWebSocket(clientWs) {
     // Client disconnected — tear down DashScope connection
     if (dashWs && dashWs.readyState === WebSocket.OPEN) {
       try {
-        dashWs.send(JSON.stringify({ event_id: evtId(), type: "session.finish" }));
-      } catch { /* ignore */ }
+        dashWs.send(
+          JSON.stringify({ event_id: evtId(), type: "session.finish" })
+        );
+      } catch {
+        /* ignore */
+      }
     }
     if (timer) clearTimeout(timer);
     timer = null;
