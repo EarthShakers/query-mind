@@ -225,90 +225,57 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       setIsRecording(true);
 
-      const res = await fetch("/api/asr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
-      });
-      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "无法启动语音识别");
-      const sessionId = data.sessionId as string;
-      sessionIdRef.current = sessionId;
+      // ── 关键优化：音频采集 & API 会话创建并行执行 ──
+      // getUserMedia + RecordRTC 动态导入同时进行，让麦克风尽早开始录音，
+      // 避免用户按下后前几个字丢失。
+      // chunks 会缓存在 chunksRef 中，等 sessionId 就绪后由 flushChunks 发送。
 
-      const es = new EventSource(`/api/asr?sessionId=${sessionId}`);
-      eventSourceRef.current = es;
-
-      es.addEventListener("partial", (e) => {
-        const { text } = JSON.parse(e.data);
-        if (text) onPartial?.(text);
-      });
-      es.addEventListener("text", (e) => {
-        const { text } = JSON.parse(e.data);
-        if (text) {
-          hasResultRef.current = true;
-          // 不在此处调用 onResult，由 POST stop 响应统一处理，避免与 stopRecording 重复发送
-          setIsTranscribing(false);
-          eventSourceRef.current?.close();
-          eventSourceRef.current = null;
-        }
-      });
-      es.addEventListener("error", (e) => {
+      // 1) 获取麦克风流（与 API 请求并行）
+      const streamPromise = (async () => {
+        let stream: MediaStream;
         try {
-          const evt = e as MessageEvent;
-          if (evt.data) {
-            const { error: msg } = JSON.parse(evt.data);
-            if (msg) onError?.(msg);
-          }
-        } catch {
-          // 连接断开等，无 data
-        }
-        // 任何 error 都结束转写态，避免卡住
-        setIsTranscribing(false);
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-      });
-      es.addEventListener("done", () => {
-        setIsTranscribing(false);
-        if (!hasResultRef.current) {
-          onError?.("未识别到语音内容");
-          setError(null);
-        }
-        eventSourceRef.current?.close();
-        eventSourceRef.current = null;
-      });
-
-      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
-
-      // 设备选择：优先 Built-in / Default，避免 Mac 虚拟设备
-      // 微信 WebView 对 enumerateDevices / exact deviceId 支持有限，多层 fallback
-      let stream: MediaStream;
-      try {
-        const devices = await navigator.mediaDevices?.enumerateDevices?.() ?? [];
-        const audioInputs = devices.filter((d) => d.kind === "audioinput");
-        const preferred = audioInputs.find((d) => /built-in|default|internal|麦克风/i.test(d.label)) ?? audioInputs[0];
-        const constraints: MediaStreamConstraints = {
-          audio: {
-            ...(preferred?.deviceId ? { deviceId: { exact: preferred.deviceId } } : {}),
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        };
-        stream = await getCompatUserMedia(constraints);
-      } catch {
-        // exact deviceId 失败时降级为基础约束
-        try {
+          const devices = await navigator.mediaDevices?.enumerateDevices?.() ?? [];
+          const audioInputs = devices.filter((d) => d.kind === "audioinput");
+          const preferred = audioInputs.find((d) => /built-in|default|internal|麦克风/i.test(d.label)) ?? audioInputs[0];
           stream = await getCompatUserMedia({
-            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+            audio: {
+              ...(preferred?.deviceId ? { deviceId: { exact: preferred.deviceId } } : {}),
+              channelCount: 1,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
           });
         } catch {
-          // 最终 fallback：仅请求 audio: true（兼容微信等受限 WebView）
-          stream = await getCompatUserMedia({ audio: true });
+          try {
+            stream = await getCompatUserMedia({
+              audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+            });
+          } catch {
+            stream = await getCompatUserMedia({ audio: true });
+          }
         }
-      }
-      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
+        return stream;
+      })();
+
+      // 2) 动态导入 RecordRTC（与上面并行）
+      const recordRTCPromise = import("recordrtc").then((m) => m.default);
+
+      // 3) 创建 ASR 会话（与上面并行）
+      const sessionPromise = (async () => {
+        const res = await fetch("/api/asr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "start" }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "无法启动语音识别");
+        return data.sessionId as string;
+      })();
+
+      // ── 等待音频流 + RecordRTC 就绪，立即开始录音 ──
+      const [stream, RecordRTCModule] = await Promise.all([streamPromise, recordRTCPromise]);
+      if (abortRef.current) { stream.getTracks().forEach((t) => t.stop()); cleanup(); setIsRecording(false); return; }
       mediaStreamRef.current = stream;
 
       // 音量波形：AnalyserNode 独立于 RecordRTC，复用单例 AudioContext
@@ -338,8 +305,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       };
       levelRafRef.current = requestAnimationFrame(tick);
 
-      // RecordRTC 采集
-      const RecordRTCModule = (await import("recordrtc")).default;
+      // RecordRTC 采集 —— 立即启动，不等 session
       const recorder = new RecordRTCModule(stream, {
         type: "audio",
         mimeType: "audio/wav",
@@ -381,7 +347,53 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
         console.log("[Voice] RecordRTC 已启动, 设备:", stream.getAudioTracks()[0]?.label);
       }
 
+      // 启动 chunk 推送定时器（flushChunks 会检查 sessionId，为空时跳过）
       pushIntervalRef.current = setInterval(flushChunks, 300);
+
+      // ── 等待 session 就绪，设置 sessionId 和 EventSource ──
+      const sessionId = await sessionPromise;
+      if (abortRef.current) { cleanup(); setIsRecording(false); return; }
+      sessionIdRef.current = sessionId;
+
+      const es = new EventSource(`/api/asr?sessionId=${sessionId}`);
+      eventSourceRef.current = es;
+
+      es.addEventListener("partial", (e) => {
+        const { text } = JSON.parse(e.data);
+        if (text) onPartial?.(text);
+      });
+      es.addEventListener("text", (e) => {
+        const { text } = JSON.parse(e.data);
+        if (text) {
+          hasResultRef.current = true;
+          setIsTranscribing(false);
+          eventSourceRef.current?.close();
+          eventSourceRef.current = null;
+        }
+      });
+      es.addEventListener("error", (e) => {
+        try {
+          const evt = e as MessageEvent;
+          if (evt.data) {
+            const { error: msg } = JSON.parse(evt.data);
+            if (msg) onError?.(msg);
+          }
+        } catch {
+          // 连接断开等，无 data
+        }
+        setIsTranscribing(false);
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+      });
+      es.addEventListener("done", () => {
+        setIsTranscribing(false);
+        if (!hasResultRef.current) {
+          onError?.("未识别到语音内容");
+          setError(null);
+        }
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+      });
     } catch (err) {
       cleanup();
       setIsRecording(false);
