@@ -19,7 +19,22 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:help.aliyun.com)",
       "Bash(find \"/Users/zhuochaoli/code/ai/ai-sql-demo/src/app/api\" -type f -name \"*.ts\" -o -name \"*.tsx\" 2>/dev/null | head -20)",
-      "WebFetch(domain:www.opentypeless.com)"
+      "WebFetch(domain:www.opentypeless.com)",
+      "Bash(npx next:*)",
+      "Bash(find /Users/zhuochaoli/code/ai/ai-sql-demo/src/lib -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) 2>/dev/null | head -20)",
+      "Bash(git status:*)",
+      "Bash(node -e \"\nconst { createClient } = require\\('@supabase/supabase-js'\\);\nconst url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;\nconst key = process.env.SUPABASE_SERVICE_ROLE_KEY;\nif \\(!url || !key\\) { console.log\\('缺少 Supabase 环境变量'\\); process.exit\\(0\\); }\nconst sb = createClient\\(url, key\\);\nsb.from\\('app_settings'\\).select\\('*'\\).eq\\('key', 'model_config'\\).single\\(\\).then\\(\\({data, error}\\) => {\n  if \\(error\\) console.log\\('DB error:', error.message\\);\n  else if \\(data\\) console.log\\(JSON.stringify\\(data.value, null, 2\\)\\);\n  else console.log\\('app_settings 中没有 model_config 记录'\\);\n}\\);\n\" 2>&1)",
+      "Bash(node -e 'require\\(\"dotenv\"\\).config\\({path:\".env\"}\\); const {createClient}=require\\(\"@supabase/supabase-js\"\\); const url=process.env.NEXT_PUBLIC_SUPABASE_URL; const key=process.env.SUPABASE_SERVICE_ROLE_KEY; if\\(!url||!key\\){console.log\\(\"缺少环境变量\",{url:!!url,key:!!key}\\);process.exit\\(0\\);} const sb=createClient\\(url,key\\); sb.from\\(\"app_settings\"\\).select\\(\"*\"\\).eq\\(\"key\",\"model_config\"\\).single\\(\\).then\\(\\({data,error}\\)=>{if\\(error\\)console.log\\(\"DB error:\",error.message\\);else if\\(data\\)console.log\\(JSON.stringify\\(data.value,null,2\\)\\);else console.log\\(\"无记录\"\\);}\\)')",
+      "Bash(node -e '\nconst fs = require\\(\"fs\"\\);\nconst buf = fs.readFileSync\\(\"tmp/asr-debug-b621e851.pcm\"\\);\nconst samples = new Int16Array\\(buf.buffer, buf.byteOffset, buf.byteLength / 2\\);\nlet max = 0, nonZero = 0;\nfor \\(let i = 0; i < samples.length; i++\\) {\n  const abs = Math.abs\\(samples[i]\\);\n  if \\(abs > max\\) max = abs;\n  if \\(abs > 0\\) nonZero++;\n}\nconsole.log\\(\"总样本数:\", samples.length\\);\nconsole.log\\(\"非零样本:\", nonZero, \"\\(\" + \\(nonZero/samples.length*100\\).toFixed\\(1\\) + \"%\\)\"\\);\nconsole.log\\(\"最大振幅:\", max, \"/ 32768\"\\);\nconsole.log\\(\"前20个样本:\", Array.from\\(samples.slice\\(0, 20\\)\\)\\);\n')",
+      "Bash(ffmpeg -y -f s16le -ar 16000 -ac 1 -i tmp/asr-debug-b621e851.pcm tmp/debug-output.wav 2>&1 | tail -3 && ls -la tmp/debug-output.wav)",
+      "Bash(open tmp/debug-output.wav)",
+      "Bash(npm ls:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm ls:*)",
+      "Bash(find /Users/zhuochaoli/code/ai/ai-sql-demo/node_modules/next/dist -name \"standalone*\" -type f 2>/dev/null | head -5)",
+      "Bash(find /Users/zhuochaoli/code/ai/ai-sql-demo/node_modules/next/dist -name \"required-server-files*\" -type f 2>/dev/null | head -5)",
+      "Bash(node -e \"import\\('./server.mjs'\\).catch\\(e => { if \\(e.code === 'ERR_MODULE_NOT_FOUND'\\) { console.log\\('Import check: missing module:', e.message.split\\(\\\\\"'\\\\\"\\)[1]\\); } else { console.log\\('Syntax OK \\(runtime error expected\\):', e.message?.slice\\(0, 80\\)\\); } }\\)\")"
     ]
   }
 }

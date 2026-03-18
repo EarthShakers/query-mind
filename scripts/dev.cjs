@@ -80,7 +80,7 @@ async function start() {
     console.log(`[dev] Using port ${port}.`);
   }
 
-  const child = spawn("node", ["server.mjs"], {
+  const child = spawn("pnpm", ["exec", "tsx", "server.mjs"], {
     stdio: "inherit",
     shell: true,
     env: { ...process.env, PORT: String(port) },

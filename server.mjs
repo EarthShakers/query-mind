@@ -18,7 +18,46 @@ const handle = app.getRequestHandler();
 
 // ── DashScope ASR constants ──
 const DASHSCOPE_BASE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
+const DASHSCOPE_CHAT_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const SESSION_TTL_MS = 120_000;
+
+/** LLM 纠错：使用 getModelConfig().modelLight */
+async function correctAsrText(rawText) {
+  if (!rawText?.trim()) return rawText;
+  const apiKey = process.env.DASHSCOPE_API_KEY;
+  if (!apiKey) return rawText;
+  try {
+    const { getModelConfig } = await import("./src/lib/llm/model-config.ts");
+    const config = await getModelConfig();
+    const model = config.modelLight;
+    const res = await fetch(DASHSCOPE_CHAT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是语音识别纠错助手。将用户输入的语音识别文本进行纠错（同音字、漏字、标点等），只输出纠错后的文本，不要解释或多余内容。若无明显错误则原样输出。",
+          },
+          { role: "user", content: rawText },
+        ],
+        max_tokens: 256,
+        temperature: 0.1,
+      }),
+    });
+    const data = await res.json();
+    const corrected = data?.choices?.[0]?.message?.content?.trim();
+    return corrected || rawText;
+  } catch (err) {
+    if (dev) console.warn("[ASR-WS] LLM 纠错失败:", err.message);
+    return rawText;
+  }
+}
 
 function evtId() {
   return `evt_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -33,6 +72,8 @@ function handleAsrWebSocket(clientWs) {
   let dashWs = null;
   let timer = null;
   let ready = false;
+  /** 最后一次 ASR 完整输出，用于 session.finished 时 LLM 纠错 */
+  let lastCompletedText = "";
   /** Queue of messages received before DashScope is ready */
   const pendingQueue = [];
 
@@ -130,13 +171,31 @@ function handleAsrWebSocket(clientWs) {
         } else if (type === "conversation.item.input_audio_transcription.completed") {
           const text = msg?.transcript ?? "";
           if (dev) console.log("[ASR-WS] final text:", text);
-          if (text) sendToClient("text", { text });
+          if (text) {
+            lastCompletedText = text;
+            sendToClient("text", { text });
+          }
         } else if (type === "conversation.item.input_audio_transcription.text") {
           const text = (msg?.stash ?? msg?.text ?? msg?.transcript ?? "");
           if (text) sendToClient("partial", { text });
         } else if (type === "session.finished") {
-          sendToClient("done");
-          cleanup();
+          const doLlmCorrect = process.env.ASR_LLM_CORRECT !== "false";
+          if (doLlmCorrect && lastCompletedText.trim()) {
+            (async () => {
+              try {
+                const corrected = await correctAsrText(lastCompletedText);
+                if (corrected && corrected !== lastCompletedText) {
+                  sendToClient("text_corrected", { text: corrected });
+                }
+              } catch { /* ignore */ }
+              sendToClient("done");
+              cleanup();
+            })();
+          } else {
+            sendToClient("done");
+            cleanup();
+          }
+          return;
         } else if (type === "error") {
           console.error("[ASR-WS] DashScope error event:", msg?.error?.message);
           sendToClient("error", { error: msg?.error?.message ?? "语音识别失败" });

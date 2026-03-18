@@ -9,7 +9,7 @@ import { randomUUID } from "crypto";
 import { EventEmitter } from "events";
 
 const DASHSCOPE_BASE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
-const SESSION_TTL_MS = 120_000; // 2 分钟无活动自动清理
+const SESSION_TTL_MS = 300_000; // 5 分钟无活动自动清理，减少「会话不存在」
 
 interface AsrSession {
   ws: WebSocket;

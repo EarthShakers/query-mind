@@ -39,8 +39,9 @@ async function parseWavToPcm(blob: Blob): Promise<{ pcm: Int16Array; sampleRate:
 const MAX_CHUNKS_BUFFERED = 60;
 
 /** VAD：连续静音超过此时长则暂停发送，节省成本 */
-const VAD_SILENT_MS = 2000;
-const VAD_SILENT_CHUNKS = Math.ceil(VAD_SILENT_MS / 300); // 7 chunks
+const VAD_SILENT_MS = 1500;
+const CHUNK_INTERVAL_MS = 200;
+const VAD_SILENT_CHUNKS = Math.ceil(VAD_SILENT_MS / CHUNK_INTERVAL_MS);
 const VAD_RMS_THRESHOLD = 400; // Int16 下环境底噪约 100-300，语音通常 >500
 
 /** 计算 Int16 PCM 的 RMS 能量 */
@@ -198,6 +199,11 @@ function createWsTransport(opts: {
             finalText = msg.text;
             opts.onText?.(msg.text);
           }
+        } else if (msg.type === "text_corrected") {
+          if (msg.text) {
+            finalText = msg.text;
+            opts.onText?.(msg.text);
+          }
         } else if (msg.type === "done") {
           done = true;
           opts.onDone?.();
@@ -229,13 +235,13 @@ function createWsTransport(opts: {
       }
     };
 
-    // Connection timeout
+    // Connection timeout（延长至 10s，弱网环境更稳定）
     setTimeout(() => {
       if (ws.readyState === WebSocket.CONNECTING) {
         ws.close();
         reject(new Error("WebSocket 连接超时"));
       }
-    }, 5000);
+    }, 10_000);
   });
 }
 
@@ -294,15 +300,22 @@ function createHttpTransport(opts: {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "push", sessionId, audio: base64 }),
-        }).then(() => {
-          flushFailCount = 0;
-        }).catch(() => {
-          flushFailCount += 1;
-          if (flushFailCount >= 5) {
-            opts.onError?.("网络异常，请检查连接");
-            flushFailCount = 0;
-          }
-        });
+        })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (data?.dropped) {
+              opts.onError?.("会话已断开，请重新开始");
+            } else {
+              flushFailCount = 0;
+            }
+          })
+          .catch(() => {
+            flushFailCount += 1;
+            if (flushFailCount >= 5) {
+              opts.onError?.("网络异常，请检查连接");
+              flushFailCount = 0;
+            }
+          });
       },
       async stop() {
         try {
@@ -506,9 +519,14 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
 
       const transportPromise = createWsTransport(transportHandlers).catch((wsErr) => {
         if (process.env.NODE_ENV === "development") {
-          console.warn("[Voice] WebSocket failed, falling back to HTTP:", wsErr.message);
+          console.warn("[Voice] WebSocket failed, retrying...", wsErr.message);
         }
-        return createHttpTransport(transportHandlers);
+        return createWsTransport(transportHandlers).catch((retryErr) => {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[Voice] WebSocket retry failed, falling back to HTTP:", retryErr.message);
+          }
+          return createHttpTransport(transportHandlers);
+        });
       });
 
       // ── 等待音频流 + RecordRTC 就绪 ──
@@ -586,7 +604,7 @@ export function useVoiceInput({ onResult, onPartial, onError, onLevelChange }: U
       }
 
       // 启动 chunk 推送
-      pushIntervalRef.current = setInterval(flushChunks, 300);
+      pushIntervalRef.current = setInterval(flushChunks, CHUNK_INTERVAL_MS);
 
       // ── 等待 transport 就绪 ──
       const transport = await transportPromise;

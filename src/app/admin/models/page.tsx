@@ -36,7 +36,7 @@ const CONFIG_FIELDS: {
   category: keyof ModelsByCategory | "number";
 }[] = [
   { key: "modelChat", label: "主对话模型", hint: "Chat、Report 生成", category: "chat" },
-  { key: "modelLight", label: "轻量任务模型", hint: "Self-Query、Multi-Query、摘要、标题", category: "chat" },
+  { key: "modelLight", label: "轻量任务模型", hint: "Self-Query、Multi-Query、摘要、标题、ASR 语音纠错", category: "chat" },
   { key: "modelAgent", label: "Agent 模型", hint: "LangGraph 规划与执行", category: "chat" },
   { key: "modelRerank", label: "Rerank 模型", hint: "检索重排序", category: "rerank" },
   { key: "modelEmbedding", label: "Embedding 模型", hint: "向量化", category: "embedding" },
