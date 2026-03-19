@@ -32,13 +32,17 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
+# Copy custom server for WebSocket support
+COPY --from=builder /app/server.mjs ./server.mjs
+
 # better-sqlite3 native binary (standalone may not include it fully)
 COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
 COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
 COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
+COPY --from=builder /app/node_modules/ws ./node_modules/ws
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["node", "server.mjs"]

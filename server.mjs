@@ -28,9 +28,7 @@ async function correctAsrText(rawText) {
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey) return rawText;
   try {
-    const { getModelConfig } = await import("./src/lib/llm/model-config.ts");
-    const config = await getModelConfig();
-    const model = config.modelLight;
+    const model = process.env.MODEL_LIGHT || "qwen-max";
     const res = await fetch(DASHSCOPE_CHAT_URL, {
       method: "POST",
       headers: {

@@ -630,22 +630,12 @@ export function useVoiceInput({
 
       // ── 音频采集 & RecordRTC 加载 & ASR transport 创建 三者并行 ──
 
-      // 1) 获取麦克风流
+      // 1) 获取麦克风流（跳过 enumerateDevices 预扫描，省 200-500ms）
       const streamPromise = (async () => {
         let stream: MediaStream;
         try {
-          const devices =
-            (await navigator.mediaDevices?.enumerateDevices?.()) ?? [];
-          const audioInputs = devices.filter((d) => d.kind === "audioinput");
-          const preferred =
-            audioInputs.find((d) =>
-              /built-in|default|internal|麦克风/i.test(d.label)
-            ) ?? audioInputs[0];
           stream = await getCompatUserMedia({
             audio: {
-              ...(preferred?.deviceId
-                ? { deviceId: { exact: preferred.deviceId } }
-                : {}),
               channelCount: 1,
               echoCancellation: false,
               noiseSuppression: false,
