@@ -8,24 +8,30 @@
 
 无需配置 Secrets，推送 `main`/`master` 后自动构建并推送到 `ghcr.io`。
 
-镜像地址：`ghcr.io/你的GitHub用户名/ai-sql-demo:latest`
+镜像地址：`ghcr.io/你的GitHub用户名/ai-sql-demo:latest`（用户名为小写）
 
 ---
 
 ## 2. 服务器部署
 
+**目录建议**：在 `~/ai-sql-demo` 下操作，`.env` 和后续更新都在此目录。
+
 ```bash
-# 安装 Docker
+# 1. 安装 Docker（任意目录执行即可）
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
-# 重新登录
+# 重新登录使 docker 组生效
 
-# 公开镜像无需登录；私有镜像需创建 GitHub PAT (read:packages) 后：
+# 2. 创建部署目录并进入
+mkdir -p ~/ai-sql-demo && cd ~/ai-sql-demo
+
+# 3. 私有镜像需登录；公开镜像可跳过
 # echo $GITHUB_TOKEN | docker login ghcr.io -u 你的GitHub用户名 --password-stdin
 
-mkdir -p ~/ai-sql-demo && cd ~/ai-sql-demo
-nano .env   # 见下方环境变量
+# 4. 创建 .env（见下方环境变量）
+nano .env
 
+# 5. 拉取并运行
 docker pull ghcr.io/你的GitHub用户名/ai-sql-demo:latest
 docker run -d --name ai-sql-demo -p 3000:3000 --env-file .env -e NODE_ENV=production --restart unless-stopped \
   ghcr.io/你的GitHub用户名/ai-sql-demo:latest
