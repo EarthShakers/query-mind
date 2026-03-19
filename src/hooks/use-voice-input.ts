@@ -899,9 +899,16 @@ export function useVoiceInput({
 
     try {
       const transcript = await transport.stop();
-      if (transcript.trim()) {
+      // 防止 API 500 返回的 HTML 被当作转写结果发送给 LLM
+      const isHtml =
+        typeof transcript === "string" &&
+        (transcript.trim().startsWith("<!") ||
+          transcript.trim().toLowerCase().startsWith("<html"));
+      if (transcript.trim() && !isHtml) {
         hasResultRef.current = true;
         onResult(transcript);
+      } else if (isHtml) {
+        onError?.("语音识别服务异常，请稍后重试");
       } else if (!hasResultRef.current) {
         await new Promise((r) => setTimeout(r, 800));
         if (!hasResultRef.current && !hasPartialRef.current) {
