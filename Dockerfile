@@ -35,14 +35,14 @@ COPY --from=builder /app/public ./public
 # Copy custom server for WebSocket support
 COPY --from=builder /app/server.mjs ./server.mjs
 
-# better-sqlite3 native binary (standalone may not include it fully)
-COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlite3
-COPY --from=builder /app/node_modules/bindings ./node_modules/bindings
-COPY --from=builder /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
+# External packages (standalone may not include them)
+COPY --from=builder /app/node_modules/pdf-parse ./node_modules/pdf-parse
+COPY --from=builder /app/node_modules/next ./node_modules/next
 COPY --from=builder /app/node_modules/ws ./node_modules/ws
 
 USER nextjs
 
 EXPOSE 3000
 
+# 阿里云部署时需通过 -e 或 --env-file 传入 DASHSCOPE_API_KEY 等环境变量
 CMD ["node", "server.mjs"]

@@ -346,9 +346,10 @@ app.prepare().then(() => {
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });
-    } else {
-      // Delegate to Next.js (HMR WebSocket, etc.)
+    } else if (nextUpgradeHandler) {
       nextUpgradeHandler(req, socket, head);
+    } else {
+      socket.destroy();
     }
   });
 
