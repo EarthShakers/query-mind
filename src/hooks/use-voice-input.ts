@@ -478,6 +478,7 @@ export function useVoiceInput({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const silentGainRef = useRef<GainNode | null>(null);
   const transportRef = useRef<AsrTransport | null>(null);
+  const transportPromiseRef = useRef<Promise<AsrTransport> | null>(null);
   const pushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chunksRef = useRef<Int16Array[]>([]);
   const hasResultRef = useRef(false);
@@ -532,6 +533,7 @@ export function useVoiceInput({
     mediaStreamRef.current = null;
     transportRef.current?.close();
     transportRef.current = null;
+    transportPromiseRef.current = null;
     vadSilentCountRef.current = 0;
     vadPausedRef.current = false;
     preambleSentRef.current = false;
@@ -832,7 +834,8 @@ export function useVoiceInput({
       // 启动 chunk 推送
       pushIntervalRef.current = setInterval(flushChunks, CHUNK_INTERVAL_MS);
 
-      // ── 等待 transport 就绪 ──
+      // ── 保存 promise 让 stopRecording 也能等待 ──
+      transportPromiseRef.current = transportPromise;
       const transport = await transportPromise;
       if (abortRef.current) {
         transport.close();
@@ -876,8 +879,19 @@ export function useVoiceInput({
 
     const transport = transportRef.current;
     if (!transport) {
-      onError?.("连接未就绪，请重试");
-      return;
+      // transport 还没连上，等待 promise 完成
+      if (transportPromiseRef.current) {
+        try {
+          const t = await transportPromiseRef.current;
+          transportRef.current = t;
+        } catch {
+          onError?.("连接失败，请重试");
+          return;
+        }
+      } else {
+        onError?.("连接未就绪，请重试");
+        return;
+      }
     }
 
     setIsTranscribing(true);
@@ -908,7 +922,8 @@ export function useVoiceInput({
     flushChunks();
 
     try {
-      const transcript = await transport.stop();
+      const finalTransport = transportRef.current!;
+      const transcript = await finalTransport.stop();
       // 防止 API 500 返回的 HTML 被当作转写结果发送给 LLM
       const isHtml =
         typeof transcript === "string" &&
