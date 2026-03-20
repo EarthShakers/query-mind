@@ -8,8 +8,13 @@ import {
   VAD_SILENT_CHUNKS,
 } from "@/lib/voice/voice-input-constants";
 
+/*
+ * RecordRTC 输出的 WAV 分片 → 与 ASR 对齐的 16k PCM 流水线。
+ */
+
 type Ref<T> = { current: T };
 
+/** RecordRTC 分片处理所需的 ref 集合（与 React hook 共享可变状态） */
 export interface VoicePcmPipelineRefs {
   chunksRef: Ref<Int16Array[]>;
   denoiseFloorRef: Ref<number>;
@@ -18,7 +23,10 @@ export interface VoicePcmPipelineRefs {
   vadPausedRef: Ref<boolean>;
 }
 
-/** RecordRTC ondataavailable：WAV → 16k PCM → 预处理 → VAD 缓冲 */
+/**
+ * RecordRTC `ondataavailable` 回调体：解析 WAV → 统一 16kHz → 降噪/AGC →
+ * 可选客户端 VAD 暂停 → 写入 `chunksRef` 供定时 flush。
+ */
 export async function ingestRecordRtcWavBlob(
   blob: Blob,
   refs: VoicePcmPipelineRefs

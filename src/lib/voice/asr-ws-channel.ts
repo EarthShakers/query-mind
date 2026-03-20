@@ -5,6 +5,7 @@ import {
   type AsrTransportHandlers,
 } from "./asr-transport";
 
+/** `warmConnect` 等待首包 open 的最长时间 */
 const CONNECT_TIMEOUT_MS = 10_000;
 
 /**
@@ -50,6 +51,9 @@ export class AsrWsChannel {
     return this.pendingConnect;
   }
 
+  /**
+   * 在当前长连接上开始新一句：确保已连接后，交给 `beginUtteranceOnOpenSocket` 注册本轮监听。
+   */
   async beginUtterance(handlers: AsrTransportHandlers): Promise<AsrTransport> {
     await this.warmConnect();
     const socket = this.ws;

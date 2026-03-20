@@ -1,14 +1,26 @@
 import { INPUT_PREAMP_GAIN } from "@/lib/voice/voice-input-constants";
 
+/*
+ * Web Audio 录音子图：一路电平、一路进 RecordRTC。
+ */
+
+/** `connectVoiceRecordingGraph` 创建的节点句柄，供 teardown 时 disconnect */
 export interface VoiceRecordingGraphNodes {
+  /** 麦克风 MediaStream 源节点 */
   source: MediaStreamAudioSourceNode;
+  /** 数字前级增益（提高 RecordRTC 输入电平） */
   preamp: GainNode;
+  /** 供 RecordRTC 录制的目标 MediaStream */
   recordDest: MediaStreamAudioDestinationNode;
+  /** 频域数据供电平条使用 */
   analyser: AnalyserNode;
+  /** 极小增益接 destination，避免部分浏览器 suspend 图导致 analyser 不工作 */
   silentGain: GainNode;
 }
 
-/** 源 → 分析器（电平）+ 前级 → 录音目标轨 */
+/**
+ * 搭建录音用 Web Audio 子图：一路给 analyser 做电平，一路经 preamp 进 recordDest。
+ */
 export function connectVoiceRecordingGraph(
   audioCtx: AudioContext,
   stream: MediaStream
@@ -30,7 +42,10 @@ export function connectVoiceRecordingGraph(
   return { source, preamp, recordDest, analyser, silentGain };
 }
 
-/** 返回 cancel()：置 stopped 并 cancel 当前帧，避免链式 raf 泄漏 */
+/**
+ * 用 `getByteFrequencyData` 驱动 `onLevelChange(0~1)`；
+ * 返回的函数需在下麦时调用，以停止 rAF 链。
+ */
 export function startAnalyserLevelLoop(
   analyser: AnalyserNode,
   onLevelChange: (level: number) => void

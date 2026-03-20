@@ -1,16 +1,24 @@
-/** 初始底噪估计（Int16 幅度） */
+/**
+ * PCM 预处理：门限降噪 + 简易 AGC，输出供 ASR 的 16bit 线性 PCM。
+ */
+
+/** 会话开始时对底噪能量的初始估计（Int16 幅度尺度） */
 export const DENOISE_FLOOR_DEFAULT = 120;
-/** AGC 起始增益 */
+/** AGC 平滑后的起始增益 */
 export const AGC_GAIN_DEFAULT = 1;
-/** AGC 目标 RMS */
+/** AGC 期望拉到的 RMS 水平（Int16 域） */
 export const AGC_TARGET_RMS = 3200;
 
+/** 计算整段 PCM 的 RMS（均方根） */
 export function pcmRms(pcm: Int16Array): number {
   let sum = 0;
   for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
   return Math.sqrt(sum / pcm.length);
 }
 
+/**
+ * 门限以下样本衰减 + 一阶平滑 AGC；返回新 PCM 与更新后的噪声底、增益状态。
+ */
 export function preprocessPcm(
   pcm: Int16Array,
   noiseFloor: number,

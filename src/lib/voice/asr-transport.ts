@@ -1,11 +1,18 @@
 import { buildAsrWsUrl } from "./build-ws-url";
 
+/*
+ * 浏览器 → 自建 ASR 网关的 WebSocket 传输：二进制推 PCM、长连接上轮换 utterance。
+ * HTTP 降级见 asr-http-transport.ts（createHttpTransport）。
+ */
+
+/** 一轮识别会话：上行 PCM、结束并取终稿、中途取消 */
 export interface AsrTransport {
   pushAudio(pcmBuffer: ArrayBuffer): void;
   stop(): Promise<string>;
   close(): void;
 }
 
+/** 网关在识别过程中推送的文本事件（partial / 终稿 / 纠错 / 错误） */
 export type AsrTransportHandlers = {
   onPartial?: (text: string) => void;
   onText?: (text: string) => void;
@@ -14,22 +21,9 @@ export type AsrTransportHandlers = {
   onDone?: () => void;
 };
 
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 1024;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode.apply(
-      null,
-      Array.from(bytes.subarray(i, i + chunkSize))
-    );
-  }
-  return btoa(binary);
-}
-
 /**
- * 在已打开的 WebSocket 上开始一轮识别（发送 start，直到 started 再返回 transport）。
- * 用于共享长连接；结束时 remove 本轮 message 监听，不关闭 socket。
+ * 在已打开的 WebSocket 上开始一轮识别：发送 `{type:"start"}`，收到 `started` 后 resolve transport。
+ * 用于共享长连接；本句结束只 `cleanupListeners`，**不**关闭底层 socket。
  */
 export function beginUtteranceOnOpenSocket(
   ws: WebSocket,
@@ -151,7 +145,9 @@ export function beginUtteranceOnOpenSocket(
   });
 }
 
-/** 每次新建 WebSocket 的一轮识别（兼容旧行为） */
+/**
+ * 为每一轮识别单独 `new WebSocket`（句末会 close），与 `AsrWsChannel` 长连接相对。
+ */
 export function createEphemeralWsTransport(
   opts: AsrTransportHandlers
 ): Promise<AsrTransport> {
@@ -191,107 +187,4 @@ export function createEphemeralWsTransport(
       }
     }, 10_000);
   });
-}
-
-export function createHttpTransport(
-  opts: AsrTransportHandlers
-): Promise<AsrTransport> {
-  return (async () => {
-    const res = await fetch("/api/asr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "start" }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "无法启动语音识别");
-    const sessionId = data.sessionId as string;
-
-    const es = new EventSource(`/api/asr?sessionId=${sessionId}`);
-    let finalText = "";
-
-    es.addEventListener("partial", (e) => {
-      const { text } = JSON.parse((e as MessageEvent).data);
-      if (text) opts.onPartial?.(text);
-    });
-    es.addEventListener("text", (e) => {
-      const { text } = JSON.parse((e as MessageEvent).data);
-      if (text) {
-        finalText = text;
-        opts.onText?.(text);
-      }
-    });
-    es.addEventListener("error", (e) => {
-      try {
-        const evt = e as MessageEvent;
-        if (evt.data) {
-          const { error: msg } = JSON.parse(evt.data);
-          if (msg) opts.onError?.(msg);
-        }
-      } catch {
-        /* ignore */
-      }
-    });
-    es.addEventListener("done", () => {
-      opts.onDone?.();
-      es.close();
-    });
-
-    let flushFailCount = 0;
-    let sessionDead = false;
-
-    return {
-      pushAudio(pcmBuffer: ArrayBuffer) {
-        if (sessionDead) return;
-        const base64 = bufferToBase64(pcmBuffer);
-        fetch("/api/asr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "push", sessionId, audio: base64 }),
-        })
-          .then(async (res) => {
-            const d = await res.json().catch(() => ({}));
-            if (d?.dropped) {
-              sessionDead = true;
-              opts.onError?.("会话已断开，请重新开始");
-              opts.onDone?.();
-            } else {
-              flushFailCount = 0;
-            }
-          })
-          .catch(() => {
-            flushFailCount += 1;
-            if (flushFailCount >= 5) {
-              sessionDead = true;
-              opts.onError?.("网络异常，请检查连接");
-              opts.onDone?.();
-              flushFailCount = 0;
-            }
-          });
-      },
-      async stop() {
-        try {
-          const stopRes = await fetch("/api/asr", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "stop", sessionId }),
-          });
-          const stopData = await stopRes.json();
-          const transcript = (stopData?.transcript ?? "") as string;
-          if (transcript.trim()) finalText = transcript;
-        } catch {
-          /* ignore */
-        }
-        es.close();
-        return finalText;
-      },
-      close() {
-        es.close();
-        fetch("/api/asr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "stop", sessionId }),
-        }).catch(() => {});
-      },
-    } satisfies AsrTransport;
-  })();
 }

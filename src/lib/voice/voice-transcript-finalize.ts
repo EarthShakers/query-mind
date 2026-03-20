@@ -1,7 +1,12 @@
 import { isAbortLikeError } from "@/lib/voice/voice-errors";
 
+/*
+ * 松手结束录音后：根据 transport.stop() 的终稿、partial、网关 HTML 错误页等分支处理 UI 回调。
+ */
+
 type Ref<T> = { current: T };
 
+/** 识别服务若错返回 HTML 错误页，避免当作文本插入输入框 */
 function looksLikeHtmlResponse(text: string): boolean {
   const t = text.trim();
   return t.startsWith("<!") || t.toLowerCase().startsWith("<html");
@@ -52,6 +57,9 @@ export async function finalizeVoiceTranscript(params: {
   }
 }
 
+/**
+ * `stop()` Promise 被拒绝时的兜底：非 abort 且尚无终稿时，用 partial 或通用错误提示。
+ */
 export function handleFinalizeVoiceError(params: {
   err: unknown;
   hasResultRef: Ref<boolean>;

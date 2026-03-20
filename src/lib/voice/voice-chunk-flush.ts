@@ -1,9 +1,17 @@
 import { PREAMBLE_SILENCE_SAMPLES } from "@/lib/voice/voice-input-constants";
 import type { AsrTransport } from "@/lib/voice/asr-transport";
 
+/*
+ * 定时器触发的 PCM 缓冲 flush：合并小块、首包补静音，降低对网关的 send 次数。
+ */
+
+/** 与 React useRef 同形的可变引用，便于纯函数接收 ref */
 type Ref<T> = { current: T };
 
-/** 将缓冲的 PCM 块合并推送到 transport（含首包静音 preamble） */
+/**
+ * 将环形缓冲中的 PCM 块合并为一块后 `pushAudio`；
+ * 首次发送前会附带一段静音 preamble，便于服务端 VAD/端点。
+ */
 export function flushPcmChunkBuffer(
   transport: AsrTransport,
   chunksRef: Ref<Int16Array[]>,

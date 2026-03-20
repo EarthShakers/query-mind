@@ -1,4 +1,11 @@
-/** 从 WAV blob 解析出 PCM Int16 和采样率 */
+/*
+ * WAV（RIFF）解析与 PCM 重采样，对接 16kHz ASR 上行。
+ */
+
+/**
+ * 解析 RecordRTC 产出的 WAV（RIFF）为 Int16 PCM 与 `sampleRate`；
+ * 会查找 `data` 子块以兼容非标准 44 字节头。
+ */
 export async function parseWavToPcm(
   blob: Blob
 ): Promise<{ pcm: Int16Array; sampleRate: number } | null> {
@@ -37,7 +44,9 @@ export async function parseWavToPcm(
   return { pcm, sampleRate };
 }
 
-/** 降采样 Int16 PCM 到 16kHz，线性插值 */
+/**
+ * 将高于 16kHz 的 Int16 PCM 线性插值降采样到 16kHz；已是低采样率则原样返回。
+ */
 export function resampleTo16k(pcm: Int16Array, fromRate: number): Int16Array {
   if (fromRate <= 16000) return pcm;
   const ratio = fromRate / 16000;

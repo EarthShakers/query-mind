@@ -1,6 +1,9 @@
 /**
- * 兼容 getUserMedia：优先 navigator.mediaDevices.getUserMedia，
- * 回退到旧版（微信 WebView 等）。
+ * 浏览器侧：麦克风采集、AudioContext 单例、RecordRTC 动态加载。
+ */
+
+/**
+ * 兼容各环境获取麦克风流：优先标准 `mediaDevices`，否则 webkit/moz 前缀 API。
  */
 export function getCompatUserMedia(
   constraints: MediaStreamConstraints
@@ -28,9 +31,10 @@ export function getCompatUserMedia(
   return Promise.reject(new Error(hint));
 }
 
-/** AudioContext 单例，避免移动端频繁创建耗尽系统额度 */
+/** 全页共用的 AudioContext，关闭后由 `resetSharedAudioContextSingleton` 清空引用 */
 let sharedAudioContext: AudioContext | null = null;
 
+/** 获取未关闭的单例 AudioContext，必要时新建 */
 export function getOrCreateAudioContext(): AudioContext {
   if (sharedAudioContext && sharedAudioContext.state !== "closed") {
     return sharedAudioContext;
@@ -41,13 +45,16 @@ export function getOrCreateAudioContext(): AudioContext {
   return sharedAudioContext;
 }
 
+/** 在已 `close()` AudioContext 后调用，允许下次重新创建单例 */
 export function resetSharedAudioContextSingleton(): void {
   sharedAudioContext = null;
 }
 
-/** 缓存 RecordRTC 模块 */
+/** 动态 import 的 RecordRTC 默认导出，避免首屏打包过大 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cachedRecordRTC: any = null;
+
+/** 懒加载并缓存 recordrtc 包 */
 export async function getRecordRTC() {
   if (cachedRecordRTC) return cachedRecordRTC;
   cachedRecordRTC = (await import("recordrtc")).default;

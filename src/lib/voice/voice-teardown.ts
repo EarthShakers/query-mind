@@ -2,14 +2,22 @@ import { resetSharedAudioContextSingleton } from "@/lib/voice/browser-audio";
 import type { AsrTransport } from "@/lib/voice/asr-transport";
 import { AGC_GAIN_DEFAULT, DENOISE_FLOOR_DEFAULT } from "@/lib/voice/pcm-preprocess";
 
+/*
+ * 统一释放麦克风流、音频节点、定时器与可选 ASR transport，避免 hook 内重复代码。
+ */
+
 type Ref<T> = { current: T };
 
+/** RecordRTC 实例上我们实际调用的最小接口 */
 export type VoiceRecorderRef = {
   startRecording: () => void;
   stopRecording: () => void;
 };
 
-/** useVoiceInput 内各 ref 的聚合，便于一处 teardown、消灭 cleanup 重复 */
+/**
+ * `useVoiceInput` 持有的全部会话 ref，供单次 teardown 统一清理，
+ * 避免 `cleanup` / `cleanupRecordingOnly` 复制粘贴。
+ */
 export interface VoiceSessionRefs {
   pushIntervalRef: Ref<ReturnType<typeof setInterval> | null>;
   levelLoopCancelRef: Ref<(() => void) | null>;
@@ -32,6 +40,11 @@ export interface VoiceSessionRefs {
   lastPartialRef: Ref<string>;
 }
 
+/**
+ * 结束一轮语音会话：停定时器、停电平 rAF、拆音频图、停轨、关上下文、可选关 ASR。
+ * @param opts.closeTransport 为 true 时同时 `transport.close()` 并清空 transport 相关 ref（取消录音场景）；
+ *                            为 false 时保留 transport，供 stop 后继续 `stop()` 拉取终稿。
+ */
 export function teardownVoiceSession(
   refs: VoiceSessionRefs,
   opts: { closeTransport: boolean; zeroLevel?: () => void }
