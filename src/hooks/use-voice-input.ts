@@ -488,6 +488,7 @@ export function useVoiceInput({
   const denoiseFloorRef = useRef(DENOISE_FLOOR_DEFAULT);
   const agcGainRef = useRef(AGC_GAIN_DEFAULT);
   const hasPartialRef = useRef(false);
+  const lastPartialRef = useRef("");
 
   const cleanup = useCallback(() => {
     onLevelChange?.(0);
@@ -537,6 +538,7 @@ export function useVoiceInput({
     denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
     agcGainRef.current = AGC_GAIN_DEFAULT;
     hasPartialRef.current = false;
+    lastPartialRef.current = "";
   }, [onLevelChange]);
 
   /** 仅清理录音相关资源，保留 transport 以接收最终转写结果 */
@@ -586,6 +588,7 @@ export function useVoiceInput({
     denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
     agcGainRef.current = AGC_GAIN_DEFAULT;
     hasPartialRef.current = false;
+    lastPartialRef.current = "";
   }, [onLevelChange]);
 
   const flushChunks = useCallback(() => {
@@ -622,6 +625,7 @@ export function useVoiceInput({
     denoiseFloorRef.current = DENOISE_FLOOR_DEFAULT;
     agcGainRef.current = AGC_GAIN_DEFAULT;
     hasPartialRef.current = false;
+    lastPartialRef.current = "";
 
     try {
       if (abortRef.current) return;
@@ -667,6 +671,7 @@ export function useVoiceInput({
         onPartial: (text: string) => {
           if (text) {
             hasPartialRef.current = true;
+            lastPartialRef.current = text;
             onPartial?.(text);
           }
         },
@@ -870,7 +875,10 @@ export function useVoiceInput({
     setIsRecording(false);
 
     const transport = transportRef.current;
-    if (!transport) return;
+    if (!transport) {
+      onError?.("连接未就绪，请重试");
+      return;
+    }
 
     setIsTranscribing(true);
 
@@ -889,6 +897,8 @@ export function useVoiceInput({
       }
       recorderRef.current = null;
     }
+    const savedPartial = lastPartialRef.current?.trim();
+    const hadPartial = hasPartialRef.current;
     cleanupRecordingOnly();
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
@@ -911,13 +921,26 @@ export function useVoiceInput({
         onError?.("语音识别服务异常，请稍后重试");
       } else if (!hasResultRef.current) {
         await new Promise((r) => setTimeout(r, 800));
-        if (!hasResultRef.current && !hasPartialRef.current) {
-          onError?.("未识别到语音内容");
+        if (!hasResultRef.current) {
+          if (savedPartial) {
+            hasResultRef.current = true;
+            onResult(savedPartial);
+          } else if (hadPartial) {
+            onError?.("识别不完整，请重试");
+          } else {
+            onError?.("未识别到语音，请靠近麦克风重试");
+          }
         }
       }
     } catch (err) {
-      if (!hasResultRef.current && !isAbortLikeError(err))
-        onError?.("转写失败");
+      if (!hasResultRef.current && !isAbortLikeError(err)) {
+        if (savedPartial) {
+          hasResultRef.current = true;
+          onResult(savedPartial);
+        } else {
+          onError?.("转写失败，请重试");
+        }
+      }
     } finally {
       setIsTranscribing(false);
       transportRef.current = null;
