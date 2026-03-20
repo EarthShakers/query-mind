@@ -72,16 +72,38 @@ function handleAsrWebSocket(clientWs) {
   let timer = null;
   let ready = false;
   let cleaned = false;
-  let finalized = false;
+  /** 当前是否处于一次可识别的会话中（收到 started 后为 true，直到发送 done） */
+  let utteranceLive = false;
   let lastCompletedText = "";
   /** Queue of messages received before DashScope is ready */
   const pendingQueue = [];
+
+  const resetDashSession = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (dashWs) {
+      try {
+        if (dashWs.readyState === WebSocket.OPEN) {
+          dashWs.close();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    dashWs = null;
+    ready = false;
+    pendingQueue.length = 0;
+    lastCompletedText = "";
+  };
 
   const resetTimer = () => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       sendToClient("error", { error: "会话超时" });
-      cleanup();
+      utteranceLive = false;
+      resetDashSession();
     }, SESSION_TTL_MS);
   };
 
@@ -91,21 +113,12 @@ function handleAsrWebSocket(clientWs) {
     }
   };
 
+  /** 关闭客户端连接（页面卸载、致命错误） */
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
-    if (timer) clearTimeout(timer);
-    timer = null;
-    if (dashWs && dashWs.readyState === WebSocket.OPEN) {
-      try {
-        dashWs.close();
-      } catch {
-        /* ignore */
-      }
-    }
-    dashWs = null;
-    ready = false;
-    pendingQueue.length = 0;
+    utteranceLive = false;
+    resetDashSession();
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.close();
     }
@@ -118,37 +131,40 @@ function handleAsrWebSocket(clientWs) {
     pendingQueue.length = 0;
   };
 
+  /**
+   * 一次识别结束：通知客户端 done，断开上游 DashScope，保留浏览器 WebSocket 供下一轮 start。
+   */
   const finalizeSession = () => {
-    if (finalized) return;
-    finalized = true;
+    if (!utteranceLive) return;
+    utteranceLive = false;
     sendToClient("done");
+    const snapshot = lastCompletedText;
+    resetDashSession();
+
     const doLlmCorrect = process.env.ASR_LLM_CORRECT !== "false";
-    if (!doLlmCorrect || !lastCompletedText.trim()) {
-      cleanup();
+    if (!doLlmCorrect || !snapshot.trim()) {
       return;
     }
 
     const timeoutPromise = new Promise((resolve) => {
-      setTimeout(() => resolve(lastCompletedText), ASYNC_CORRECT_TIMEOUT_MS);
+      setTimeout(() => resolve(snapshot), ASYNC_CORRECT_TIMEOUT_MS);
     });
 
-    Promise.race([correctAsrText(lastCompletedText), timeoutPromise])
+    Promise.race([correctAsrText(snapshot), timeoutPromise])
       .then((corrected) => {
         if (
           typeof corrected === "string" &&
           corrected.trim() &&
-          corrected !== lastCompletedText &&
+          corrected !== snapshot &&
           clientWs.readyState === WebSocket.OPEN
         ) {
           sendToClient("text_corrected", {
             text: corrected,
-            sourceText: lastCompletedText,
+            sourceText: snapshot,
           });
         }
       })
-      .finally(() => {
-        cleanup();
-      });
+      .catch(() => {});
   };
 
   /** Connect to DashScope Realtime ASR */
@@ -158,6 +174,8 @@ function handleAsrWebSocket(clientWs) {
       sendToClient("error", { error: "语音识别服务未配置" });
       return;
     }
+
+    utteranceLive = false;
 
     const model = process.env.MODEL_ASR || "qwen3-asr-flash-realtime";
     const wsUrl = `${DASHSCOPE_BASE_URL}?model=${encodeURIComponent(model)}`;
@@ -173,18 +191,21 @@ function handleAsrWebSocket(clientWs) {
       console.error("[ASR-WS] DashScope error:", err.message);
       if (!ready) {
         sendToClient("error", { error: "语音识别服务连接失败" });
-        cleanup();
+        utteranceLive = false;
+        resetDashSession();
       } else {
         sendToClient("error", { error: "连接断开" });
-        cleanup();
+        utteranceLive = false;
+        resetDashSession();
       }
     });
 
     dashWs.on("close", () => {
       const wasReady = ready;
       dashWs = null;
-      // DashScope 意外断开时通知客户端，避免客户端继续发送音频
-      if (wasReady && clientWs.readyState === WebSocket.OPEN) {
+      ready = false;
+      // DashScope 意外断开：若本轮仍在识别中，补发 done 并清理上游
+      if (wasReady && utteranceLive && clientWs.readyState === WebSocket.OPEN) {
         finalizeSession();
       }
     });
@@ -217,6 +238,7 @@ function handleAsrWebSocket(clientWs) {
           );
         } else if (type === "session.updated") {
           ready = true;
+          utteranceLive = true;
           resetTimer();
           sendToClient("started", { sessionId: randomUUID() });
           flushPending();
@@ -242,6 +264,8 @@ function handleAsrWebSocket(clientWs) {
           sendToClient("error", {
             error: msg?.error?.message ?? "语音识别失败",
           });
+          utteranceLive = false;
+          resetDashSession();
         }
       } catch {
         /* ignore parse errors */
@@ -251,6 +275,10 @@ function handleAsrWebSocket(clientWs) {
 
   const handleClientMessage = (msg) => {
     if (msg.type === "start") {
+      if (dashWs) {
+        utteranceLive = false;
+        resetDashSession();
+      }
       startSession();
       return;
     }
