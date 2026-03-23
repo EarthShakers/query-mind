@@ -24,12 +24,9 @@ const DEFAULT_CONFIG: ModelConfig = {
   modelAgent: process.env.MODEL_AGENT || "deepseek-v3.1",
   modelRerank: process.env.MODEL_RERANK || "qwen3-rerank",
   modelEmbedding: process.env.MODEL_EMBEDDING || "text-embedding-v4",
-  embeddingDimensions: parseInt(
-    process.env.EMBEDDING_DIMENSIONS || "1024",
-    10
-  ),
+  embeddingDimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1024", 10),
   modelAsr: process.env.MODEL_ASR || "qwen3-asr-flash-realtime",
-  modelTts: process.env.MODEL_TTS || "qwen-tts-latest",
+  modelTts: process.env.MODEL_TTS || "qwen3-tts-vd-2026-01-26",
   modelImageGen: process.env.MODEL_IMAGE_GEN || "qwen-image",
   modelVideoGen: process.env.MODEL_VIDEO_GEN || "wanx-v1",
 };
@@ -57,7 +54,9 @@ async function loadFromDb(): Promise<ModelConfig | null> {
       modelAgent: String(v.modelAgent ?? DEFAULT_CONFIG.modelAgent),
       modelRerank: String(v.modelRerank ?? DEFAULT_CONFIG.modelRerank),
       modelEmbedding: String(v.modelEmbedding ?? DEFAULT_CONFIG.modelEmbedding),
-      embeddingDimensions: Number(v.embeddingDimensions ?? DEFAULT_CONFIG.embeddingDimensions),
+      embeddingDimensions: Number(
+        v.embeddingDimensions ?? DEFAULT_CONFIG.embeddingDimensions
+      ),
       modelAsr: String(v.modelAsr ?? DEFAULT_CONFIG.modelAsr),
       modelTts: String(v.modelTts ?? DEFAULT_CONFIG.modelTts),
       modelImageGen: String(v.modelImageGen ?? DEFAULT_CONFIG.modelImageGen),
@@ -98,10 +97,7 @@ export function invalidateModelConfigCache(): void {
  * 在指定配置的上下文中执行回调（请求入口调用）
  * 内部所有 getModelChat() 等会读取此 config
  */
-export function runWithConfig<T>(
-  config: ModelConfig,
-  fn: () => T
-): T {
+export function runWithConfig<T>(config: ModelConfig, fn: () => T): T {
   return configStore.run(config, fn);
 }
 
@@ -129,16 +125,14 @@ export const getEmbeddingDimensions = () => getStore().embeddingDimensions;
 export async function saveModelConfig(config: ModelConfig): Promise<boolean> {
   if (!supabaseAdmin) return false;
   try {
-    const { error } = await supabaseAdmin
-      .from("app_settings")
-      .upsert(
-        {
-          key: "model_config",
-          value: config,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "key" }
-      );
+    const { error } = await supabaseAdmin.from("app_settings").upsert(
+      {
+        key: "model_config",
+        value: config,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" }
+    );
 
     if (error) return false;
     invalidateModelConfigCache();

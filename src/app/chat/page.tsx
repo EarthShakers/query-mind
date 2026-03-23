@@ -148,6 +148,10 @@ export default function Page() {
   const [partialText, setPartialText] = useState("");
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsRequestIdRef = useRef(0);
+  const ttsAudioCtxRef = useRef<AudioContext | null>(null);
   const voiceMessageBindingsRef = useRef<Array<{ id: string; raw: string }>>(
     []
   );
@@ -332,6 +336,14 @@ export default function Page() {
   }, [messages, isLoading, turns, agentModeTurnIds, streamData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startNewChat = useCallback(() => {
+    ttsRequestIdRef.current += 1;
+    ttsAbortRef.current?.abort();
+    ttsAbortRef.current = null;
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current.src = "";
+      ttsAudioRef.current = null;
+    }
     setMessages([]);
     setReportId(null);
     setAgentMode(false);
@@ -349,6 +361,14 @@ export default function Page() {
 
   const loadSession = useCallback(
     (id: string) => {
+      ttsRequestIdRef.current += 1;
+      ttsAbortRef.current?.abort();
+      ttsAbortRef.current = null;
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current.src = "";
+        ttsAudioRef.current = null;
+      }
       const session = chatHistory.sessions.find((s) => s.id === id);
       if (!session) return;
       // Reset report state
@@ -393,6 +413,119 @@ export default function Page() {
   }, []);
 
   useEffect(scrollToBottom, [messages, isLoading, scrollToBottom]);
+
+  const stopTtsPlayback = useCallback(() => {
+    ttsRequestIdRef.current += 1;
+    ttsAbortRef.current?.abort();
+    ttsAbortRef.current = null;
+    const audio = ttsAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.onended = null;
+      audio.onerror = null;
+      audio.src = "";
+      ttsAudioRef.current = null;
+    }
+  }, []);
+
+  const getTtsText = useCallback((raw: string) => {
+    const plain = raw.replace(/[#*_`>\-\n]/g, " ").replace(/\s+/g, " ").trim();
+    if (!plain) return "";
+    // 播放整段内容（限制上限避免超长请求）
+    return plain.slice(0, 800);
+  }, []);
+
+  const speakByTts = useCallback(
+    async (text: string, messageId: string) => {
+      if (!text.trim()) return;
+      const ttsText = getTtsText(text);
+      if (!ttsText) return;
+      stopTtsPlayback();
+      const requestId = ttsRequestIdRef.current;
+      const controller = new AbortController();
+      ttsAbortRef.current = controller;
+      try {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: ttsText }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => null);
+          throw new Error(payload?.error || "语音播放失败");
+        }
+        const payload = await res.json().catch(() => null);
+        const url = payload?.audioUrl as string | undefined;
+        if (!url) {
+          throw new Error(payload?.error || "语音播放失败");
+        }
+        if (requestId !== ttsRequestIdRef.current) return;
+        const audio = new Audio(url);
+        audio.onended = () => {
+          if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
+        };
+        audio.onerror = () => {
+          if (ttsAudioRef.current === audio) ttsAudioRef.current = null;
+        };
+        if (requestId !== ttsRequestIdRef.current) {
+          return;
+        }
+        ttsAudioRef.current = audio;
+        await audio.play();
+        if (requestId !== ttsRequestIdRef.current) {
+          audio.pause();
+          return;
+        }
+        void messageId;
+      } catch (err) {
+        if ((err as Error)?.name !== "AbortError") {
+          setToastMsg((err as Error)?.message || "TTS 播放失败，请稍后重试");
+        }
+      } finally {
+        if (ttsAbortRef.current === controller) ttsAbortRef.current = null;
+      }
+    },
+    [stopTtsPlayback, getTtsText]
+  );
+
+  useEffect(() => {
+    return () => {
+      stopTtsPlayback();
+    };
+  }, [stopTtsPlayback]);
+
+  const getTurnAssistantText = useCallback(
+    (assistantMessages: any[]) => {
+      const raw = assistantMessages
+        .map((m) => (typeof m?.content === "string" ? m.content : ""))
+        .join(" ")
+        .trim();
+      return getTtsText(raw);
+    },
+    [getTtsText]
+  );
+
+  const ensureTtsAudioUnlocked = useCallback(async () => {
+    try {
+      const Ctx =
+        typeof window !== "undefined"
+          ? (window.AudioContext ||
+              (window as any).webkitAudioContext ||
+              null)
+          : null;
+      if (!Ctx) return true;
+      if (!ttsAudioCtxRef.current) {
+        ttsAudioCtxRef.current = new Ctx();
+      }
+      if (ttsAudioCtxRef.current.state === "suspended") {
+        await ttsAudioCtxRef.current.resume();
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -824,20 +957,62 @@ export default function Page() {
                         {turn.userContent}
                       </div>
                     </div>
-                    <AssistantTurn
-                      assistantMessages={turn.assistantMessages}
-                      userContent={turn.userContent}
-                      spaceId={[...selectedSpaceIds][0]}
-                      isStreaming={isLastTurn && isLoading}
-                      isAgentMode={agentModeTurnIds.has(turn.id)}
-                      streamData={
-                        isLastTurn
-                          ? currentTurnStreamData
-                          : currentSession?.streamDataByTurn?.[turn.id]
-                      }
-                      onScrollNeeded={scrollToBottom}
-                      interruptedMessageIds={interruptedMessageIds}
-                    />
+                    <div className="relative">
+                      <AssistantTurn
+                        assistantMessages={turn.assistantMessages}
+                        userContent={turn.userContent}
+                        spaceId={[...selectedSpaceIds][0]}
+                        isStreaming={isLastTurn && isLoading}
+                        isAgentMode={agentModeTurnIds.has(turn.id)}
+                        streamData={
+                          isLastTurn
+                            ? currentTurnStreamData
+                            : currentSession?.streamDataByTurn?.[turn.id]
+                        }
+                        onScrollNeeded={scrollToBottom}
+                        interruptedMessageIds={interruptedMessageIds}
+                      />
+                      <div className="absolute top-2 right-2 z-10">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 backdrop-blur px-2 py-1 text-[11px] text-slate-600 shadow-sm hover:bg-white hover:text-indigo-600 transition-colors"
+                          onClick={async () => {
+                            const unlocked = await ensureTtsAudioUnlocked();
+                            if (!unlocked) {
+                              setToastMsg("当前环境音频播放受限，请检查浏览器声音权限");
+                              return;
+                            }
+                            const ttsText = getTurnAssistantText(
+                              turn.assistantMessages
+                            );
+                            if (!ttsText) {
+                              setToastMsg("当前回复暂无可播放文本");
+                              return;
+                            }
+                            const msgId =
+                              turn.assistantMessages?.[
+                                turn.assistantMessages.length - 1
+                              ]?.id || turn.id;
+                            speakByTts(ttsText, msgId);
+                          }}
+                          title="播放这条回复"
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
+                          <span>播放</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -862,6 +1037,7 @@ export default function Page() {
             >
               <form
                 onSubmit={(e) => {
+                  stopTtsPlayback();
                   if (isLoading) {
                     const lastAssistant = messages
                       .filter((m) => m.role === "assistant")
@@ -1150,6 +1326,7 @@ export default function Page() {
               <button
                 onClick={() => {
                   setShowClearConfirm(false);
+                  stopTtsPlayback();
                   setMessages([]);
                   userScrolledUp.current = false;
                 }}
