@@ -18,10 +18,7 @@ export async function GET() {
     return NextResponse.json(config);
   } catch (err) {
     console.error("[models/config] GET error:", err);
-    return NextResponse.json(
-      { error: "获取配置失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "获取配置失败" }, { status: 500 });
   }
 }
 
@@ -35,15 +32,18 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json();
     const config: ModelConfig = {
-      modelChat: String(body.modelChat ?? "").trim() || "deepseek-v3.1",
+      modelChat: String(body.modelChat ?? "").trim() || "qvq-max-2025-03-25",
       modelLight: String(body.modelLight ?? "").trim() || "qwen-max",
-      modelAgent: String(body.modelAgent ?? "").trim() || "deepseek-v3.1",
+      modelAgent: String(body.modelAgent ?? "").trim() || "qvq-max-2025-03-25",
       modelRerank: String(body.modelRerank ?? "").trim() || "qwen3-rerank",
       modelEmbedding:
         String(body.modelEmbedding ?? "").trim() || "text-embedding-v4",
       embeddingDimensions: Math.max(
         256,
-        Math.min(4096, parseInt(String(body.embeddingDimensions ?? "1024"), 10) || 1024)
+        Math.min(
+          4096,
+          parseInt(String(body.embeddingDimensions ?? "1024"), 10) || 1024
+        )
       ),
       modelAsr: String(body.modelAsr ?? "").trim() || "qwen-audio-asr-latest",
       modelTts: String(body.modelTts ?? "").trim() || "qwen-tts-latest",
@@ -61,9 +61,6 @@ export async function PUT(req: Request) {
     return NextResponse.json(config);
   } catch (err) {
     console.error("[models/config] PUT error:", err);
-    return NextResponse.json(
-      { error: "保存配置失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "保存配置失败" }, { status: 500 });
   }
 }

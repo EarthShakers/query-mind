@@ -27,7 +27,7 @@ export interface ModelsByCategory {
 /** 静态兜底：百炼官方文档中的常用模型 */
 const FALLBACK_MODELS: ModelsByCategory = {
   chat: [
-    "deepseek-v3.1",
+    "qvq-max-2025-03-25",
     "qwen3-max",
     "qwen3-max-preview",
     "qwen-max",
@@ -155,7 +155,10 @@ function categorizeModel(id: string): keyof ModelsByCategory | null {
   if (lower.includes("rerank")) return "rerank";
   if (lower.includes("embed") || lower.includes("embedding"))
     return "embedding";
-  if (lower.includes("asr") || (lower.includes("audio") && lower.includes("turbo")))
+  if (
+    lower.includes("asr") ||
+    (lower.includes("audio") && lower.includes("turbo"))
+  )
     return "audioAsr";
   if (
     lower.includes("tts") ||

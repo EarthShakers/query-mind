@@ -19,9 +19,9 @@ export interface ModelConfig {
 }
 
 const DEFAULT_CONFIG: ModelConfig = {
-  modelChat: process.env.MODEL_CHAT || "deepseek-v3.1",
+  modelChat: process.env.MODEL_CHAT || "qvq-max-2025-03-25",
   modelLight: process.env.MODEL_LIGHT || "qwen-max",
-  modelAgent: process.env.MODEL_AGENT || "deepseek-v3.1",
+  modelAgent: process.env.MODEL_AGENT || "qvq-max-2025-03-25",
   modelRerank: process.env.MODEL_RERANK || "qwen3-rerank",
   modelEmbedding: process.env.MODEL_EMBEDDING || "text-embedding-v4",
   embeddingDimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1024", 10),

@@ -34,7 +34,10 @@
       "Bash(pnpm ls:*)",
       "Bash(find /Users/zhuochaoli/code/ai/ai-sql-demo/node_modules/next/dist -name \"standalone*\" -type f 2>/dev/null | head -5)",
       "Bash(find /Users/zhuochaoli/code/ai/ai-sql-demo/node_modules/next/dist -name \"required-server-files*\" -type f 2>/dev/null | head -5)",
-      "Bash(node -e \"import\\('./server.mjs'\\).catch\\(e => { if \\(e.code === 'ERR_MODULE_NOT_FOUND'\\) { console.log\\('Import check: missing module:', e.message.split\\(\\\\\"'\\\\\"\\)[1]\\); } else { console.log\\('Syntax OK \\(runtime error expected\\):', e.message?.slice\\(0, 80\\)\\); } }\\)\")"
+      "Bash(node -e \"import\\('./server.mjs'\\).catch\\(e => { if \\(e.code === 'ERR_MODULE_NOT_FOUND'\\) { console.log\\('Import check: missing module:', e.message.split\\(\\\\\"'\\\\\"\\)[1]\\); } else { console.log\\('Syntax OK \\(runtime error expected\\):', e.message?.slice\\(0, 80\\)\\); } }\\)\")",
+      "WebFetch(domain:dashscope.aliyuncs.com)",
+      "WebFetch(domain:docs.vllm.ai)",
+      "Bash(node:*)"
     ]
   }
 }
