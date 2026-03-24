@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const text = String(body?.text ?? "").trim();
     const voice = String(body?.voice ?? "Cherry");
+    const proxyAudio = Boolean(body?.proxyAudio);
     if (!text) {
       return NextResponse.json({ error: "缺少 text" }, { status: 400 });
     }
@@ -78,6 +79,26 @@ export async function POST(req: NextRequest) {
           continue;
         }
         const normalizedAudioUrl = audioUrl.replace(/^http:\/\//i, "https://");
+        if (proxyAudio) {
+          const audioRes = await fetch(normalizedAudioUrl, {
+            headers: { Accept: "audio/*" },
+          });
+          if (!audioRes.ok || !audioRes.body) {
+            const audioErr = await audioRes.text().catch(() => "");
+            console.error(
+              `[TTS] audio proxy error endpoint=${endpoint} model=${model} status=${audioRes.status} body=${audioErr}`
+            );
+            continue;
+          }
+          return new NextResponse(audioRes.body, {
+            status: 200,
+            headers: {
+              "Content-Type":
+                audioRes.headers.get("content-type") ?? "audio/mpeg",
+              "Cache-Control": "no-store",
+            },
+          });
+        }
         return NextResponse.json({
           audioUrl: normalizedAudioUrl,
           model,

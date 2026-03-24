@@ -18,10 +18,13 @@ const handle = app.getRequestHandler();
 
 // ── DashScope ASR constants ──
 const DASHSCOPE_BASE_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
+const DASHSCOPE_INTL_BASE_URL =
+  "wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime";
 const DASHSCOPE_CHAT_URL =
   "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const SESSION_TTL_MS = 120_000;
 const ASYNC_CORRECT_TIMEOUT_MS = 3500;
+const TTS_SAMPLE_RATE = 24000;
 
 async function correctAsrText(rawText) {
   if (!rawText?.trim()) return rawText;
@@ -60,6 +63,299 @@ async function correctAsrText(rawText) {
 
 function evtId() {
   return `evt_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+}
+
+function splitTtsTextIntoChunks(text, maxChunkLength = 40) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+
+  const sentenceLikeParts =
+    normalized.match(/[^。！？!?；;，,]+[。！？!?；;，,]*/g) || [normalized];
+  const chunks = [];
+  let current = "";
+
+  const pushChunk = (value) => {
+    const trimmed = String(value || "").trim();
+    if (trimmed) chunks.push(trimmed);
+  };
+
+  for (const part of sentenceLikeParts) {
+    const trimmed = String(part || "").trim();
+    if (!trimmed) continue;
+
+    if ((current + trimmed).length <= maxChunkLength) {
+      current += trimmed;
+      continue;
+    }
+
+    pushChunk(current);
+    current = "";
+
+    if (trimmed.length <= maxChunkLength) {
+      current = trimmed;
+      continue;
+    }
+
+    for (let i = 0; i < trimmed.length; i += maxChunkLength) {
+      pushChunk(trimmed.slice(i, i + maxChunkLength));
+    }
+  }
+
+  pushChunk(current);
+  return chunks;
+}
+
+function getRealtimeTtsModelCandidates(preferredModel, voice) {
+  const candidates = [];
+  const add = (model) => {
+    if (model && !candidates.includes(model)) candidates.push(model);
+  };
+
+  const model = String(preferredModel || "").trim();
+  const normalizedVoice = String(voice || "").trim();
+  const usesSystemVoice = !normalizedVoice || normalizedVoice === "Cherry";
+
+  if (model.includes("realtime")) {
+    add(model);
+  }
+  if (model.includes("instruct")) {
+    add("qwen3-tts-instruct-flash-realtime");
+  }
+  if (model.includes("vd") && !usesSystemVoice) {
+    add("qwen3-tts-vd-realtime-2026-01-15");
+  }
+  if (model.includes("vc") && !usesSystemVoice) {
+    add("qwen3-tts-vc-realtime-2026-01-15");
+  }
+
+  add("qwen3-tts-flash-realtime");
+  add("qwen-tts-realtime-latest");
+
+  return candidates;
+}
+
+function handleTtsWebSocket(clientWs) {
+  let dashWs = null;
+  let cleaned = false;
+  let started = false;
+  let sessionFinished = false;
+
+  const sendToClient = (payload) => {
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify(payload));
+    }
+  };
+
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    if (dashWs) {
+      try {
+        dashWs.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    dashWs = null;
+    if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.close();
+    }
+  };
+
+  const startTtsSession = ({ text, voice, model }) => {
+    const apiKey = process.env.DASHSCOPE_API_KEY;
+    if (!apiKey) {
+      sendToClient({ type: "error", error: "语音合成服务未配置" });
+      return;
+    }
+
+    const normalizedText = String(text || "").trim();
+    if (!normalizedText) {
+      sendToClient({ type: "error", error: "缺少 text" });
+      return;
+    }
+
+    const normalizedVoice = String(voice || "Cherry").trim() || "Cherry";
+    const modelCandidates = getRealtimeTtsModelCandidates(
+      model || process.env.MODEL_TTS || "",
+      normalizedVoice
+    );
+    const useIntl = /intl|singapore/i.test(process.env.DASHSCOPE_BASE_URL || "");
+    const baseUrl = useIntl ? DASHSCOPE_INTL_BASE_URL : DASHSCOPE_BASE_URL;
+    const textChunks = splitTtsTextIntoChunks(normalizedText);
+    let candidateIndex = 0;
+
+    const connectWithCandidate = () => {
+      if (candidateIndex >= modelCandidates.length) {
+        sendToClient({ type: "error", error: "实时语音合成连接失败" });
+        return;
+      }
+
+      const currentModel = modelCandidates[candidateIndex];
+      const wsUrl = `${baseUrl}?model=${encodeURIComponent(currentModel)}`;
+
+      dashWs = new WebSocket(wsUrl, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "OpenAI-Beta": "realtime=v1",
+        },
+      });
+
+      dashWs.on("open", () => {
+        started = false;
+        sessionFinished = false;
+      });
+
+      dashWs.on("error", (err) => {
+        if (!started) {
+          candidateIndex += 1;
+          try {
+            dashWs.close();
+          } catch {
+            /* ignore */
+          }
+          dashWs = null;
+          connectWithCandidate();
+          return;
+        }
+        console.error("[TTS-WS] DashScope error:", err.message);
+        sessionFinished = true;
+        sendToClient({ type: "error", error: "实时语音合成连接中断" });
+      });
+
+      dashWs.on("close", () => {
+        if (started && !sessionFinished && clientWs.readyState === WebSocket.OPEN) {
+          sendToClient({ type: "done" });
+        }
+      });
+
+      dashWs.on("message", (raw) => {
+        try {
+          const msg = JSON.parse(raw.toString());
+          const type = msg?.type;
+
+          if (dev) {
+            console.log(
+              "[TTS-WS] DashScope event:",
+              type,
+              JSON.stringify(msg).slice(0, 300)
+            );
+          }
+
+          if (type === "session.created") {
+            dashWs.send(
+              JSON.stringify({
+                event_id: evtId(),
+                type: "session.update",
+                session: {
+                  voice: normalizedVoice,
+                  mode: "server_commit",
+                  language_type: "Chinese",
+                  response_format: "pcm",
+                  sample_rate: TTS_SAMPLE_RATE,
+                },
+              })
+            );
+          } else if (type === "session.updated") {
+            started = true;
+            sendToClient({
+              type: "started",
+              model: currentModel,
+              voice: normalizedVoice,
+              sampleRate: TTS_SAMPLE_RATE,
+            });
+            for (const chunk of textChunks) {
+              dashWs.send(
+                JSON.stringify({
+                  event_id: evtId(),
+                  type: "input_text_buffer.append",
+                  text: chunk,
+                })
+              );
+            }
+            dashWs.send(
+              JSON.stringify({
+                event_id: evtId(),
+                type: "input_text_buffer.commit",
+              })
+            );
+            dashWs.send(
+              JSON.stringify({
+                event_id: evtId(),
+                type: "session.finish",
+              })
+            );
+          } else if (type === "response.audio.delta") {
+            sendToClient({
+              type: "audio",
+              delta: msg?.delta,
+              sampleRate: TTS_SAMPLE_RATE,
+            });
+          } else if (type === "response.done") {
+            sendToClient({ type: "response_done" });
+          } else if (type === "session.finished") {
+            sessionFinished = true;
+            sendToClient({ type: "done" });
+            if (dashWs && dashWs.readyState === WebSocket.OPEN) {
+              dashWs.close();
+            }
+          } else if (type === "error") {
+            if (!started) {
+              candidateIndex += 1;
+              try {
+                dashWs.close();
+              } catch {
+                /* ignore */
+              }
+              dashWs = null;
+              connectWithCandidate();
+              return;
+            }
+            console.error("[TTS-WS] DashScope error event:", msg?.error?.message);
+            sessionFinished = true;
+            sendToClient({
+              type: "error",
+              error: msg?.error?.message ?? "实时语音合成失败",
+            });
+          }
+        } catch (err) {
+          console.error("[TTS-WS] parse error:", err?.message || err);
+        }
+      });
+    };
+
+    connectWithCandidate();
+  };
+
+  clientWs.on("message", (data, isBinary) => {
+    if (isBinary) return;
+    try {
+      const msg = JSON.parse(data.toString());
+      if (msg?.type === "start") {
+        startTtsSession(msg);
+      } else if (msg?.type === "stop") {
+        sessionFinished = true;
+        cleanup();
+      }
+    } catch {
+      /* ignore malformed JSON */
+    }
+  });
+
+  clientWs.on("close", () => {
+    sessionFinished = true;
+    if (dashWs && dashWs.readyState === WebSocket.OPEN) {
+      try {
+        dashWs.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  clientWs.on("error", () => {
+    cleanup();
+  });
 }
 
 /**
@@ -364,6 +660,7 @@ app.prepare().then(() => {
 
   // WebSocket server in noServer mode
   const wss = new WebSocketServer({ noServer: true });
+  const ttsWss = new WebSocketServer({ noServer: true });
 
   // Next.js upgrade handler for HMR WebSocket in dev mode
   const nextUpgradeHandler = app.getUpgradeHandler();
@@ -374,6 +671,10 @@ app.prepare().then(() => {
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });
+    } else if (pathname === "/api/tts-ws") {
+      ttsWss.handleUpgrade(req, socket, head, (ws) => {
+        ttsWss.emit("connection", ws, req);
+      });
     } else if (nextUpgradeHandler) {
       nextUpgradeHandler(req, socket, head);
     } else {
@@ -383,6 +684,10 @@ app.prepare().then(() => {
 
   wss.on("connection", (ws) => {
     handleAsrWebSocket(ws);
+  });
+
+  ttsWss.on("connection", (ws) => {
+    handleTtsWebSocket(ws);
   });
 
   server.listen(port, () => {

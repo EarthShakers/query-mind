@@ -141,6 +141,8 @@ export function AssistantTurn({
   isAgentMode = false,
   streamData,
   onScrollNeeded,
+  onPlayText,
+  onToast,
   interruptedMessageIds,
 }: {
   assistantMessages: any[];
@@ -153,12 +155,15 @@ export function AssistantTurn({
   /** useChat 的 data 流，用于实时 agent 进度 */
   streamData?: any;
   onScrollNeeded: () => void;
+  onPlayText?: (text: string, messageId: string) => void | Promise<void>;
+  onToast?: (message: string) => void;
   /** 被打断的 assistant 消息 ID 集合 */
   interruptedMessageIds?: Set<string>;
 }) {
   const [acceptedChartIds, setAcceptedChartIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [copied, setCopied] = useState(false);
   const allTools = useAllTools(assistantMessages);
 
   const { thinkingTexts, finalText } = useMemo(() => {
@@ -233,6 +238,10 @@ export function AssistantTurn({
   );
   const showThinking = isStreaming || hasThinkingContent;
   const isStillThinking = isStreaming && !hasInterrupted;
+  const canShowActions =
+    !isStreaming && !hasInterrupted && typeof finalText === "string" && !!finalText.trim();
+  const latestAssistantMessageId =
+    assistantMessages[assistantMessages.length - 1]?.id ?? "";
 
   const toolNames = useMemo(
     () => [
@@ -248,6 +257,29 @@ export function AssistantTurn({
     },
     [onScrollNeeded]
   );
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const handleCopy = useCallback(async () => {
+    const text = finalText.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      onToast?.("复制失败，请检查浏览器剪贴板权限");
+    }
+  }, [finalText, onToast]);
+
+  const handlePlay = useCallback(() => {
+    const text = finalText.trim();
+    if (!text || !latestAssistantMessageId) return;
+    void onPlayText?.(text, latestAssistantMessageId);
+  }, [finalText, latestAssistantMessageId, onPlayText]);
 
   // 从 useChat data 中提取 agent 进度事件（兼容嵌套数组格式）
   const agentProgressEvents = useMemo(() => {
@@ -377,6 +409,50 @@ export function AssistantTurn({
             <p className="text-sm text-red-500 mt-2">
               查询失败：{lastErrorMsg || "未知错误，请重试"}
             </p>
+          )}
+
+          {canShowActions && (
+            <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={handlePlay}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                <span>播放</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-all hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                <span>{copied ? "已复制" : "复制"}</span>
+              </button>
+            </div>
           )}
 
           {/* Chart suggestion buttons — only show after streaming ends */}
