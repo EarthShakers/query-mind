@@ -8,7 +8,10 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { getDashScopeLLM } from "@/lib/llm/llm";
 import { dashscopeProvider } from "@/lib/llm/llm";
-import { getModelChat, getModelLight } from "@/lib/llm/model-config";
+import {
+  getModelAgent,
+  getModelLight,
+} from "@/lib/llm/model-config";
 import {
   AgentState,
   type AgentStateType,
@@ -21,6 +24,52 @@ import {
   applyRouteRules,
   reorderByPreferSearchFirst,
 } from "@/lib/agent/router";
+
+function isHttpUnsupportedError(err: unknown): boolean {
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return /does not support http call/i.test(message);
+}
+
+async function invokeAgentPromptWithFallback(
+  prompt: { pipe: (llm: ReturnType<typeof getDashScopeLLM>) => { invoke: (input: Record<string, string>) => Promise<{ content?: unknown }> } },
+  input: Record<string, string>
+) {
+  const preferredModel = getModelAgent();
+  const fallbackModels = ["qwen-plus-2025-07-28", "qwen-max"].filter(
+    (model) => model !== preferredModel
+  );
+
+  try {
+    return await prompt
+      .pipe(
+        getDashScopeLLM({
+          model: preferredModel,
+          temperature: 0.2,
+          maxTokens: 2048,
+        })
+      )
+      .invoke(input);
+  } catch (err) {
+    if (!isHttpUnsupportedError(err)) throw err;
+    for (const model of fallbackModels) {
+      try {
+        return await prompt
+          .pipe(
+            getDashScopeLLM({
+              model,
+              temperature: 0.2,
+              maxTokens: 2048,
+            })
+          )
+          .invoke(input);
+      } catch (fallbackErr) {
+        if (!isHttpUnsupportedError(fallbackErr)) throw fallbackErr;
+      }
+    }
+    throw err;
+  }
+}
 
 /**
  * 规划节点：先按 prompt 规则路由，再（必要时）用 LLM 拆解子任务
@@ -39,13 +88,7 @@ async function planNode(state: AgentStateType) {
     !!state.enableQuery
   );
 
-  const llm = getDashScopeLLM({
-    model: getModelChat(),
-    temperature: 0.2,
-    maxTokens: 2048,
-  });
-
-  const response = await planPrompt.pipe(llm).invoke({
+  const response = await invokeAgentPromptWithFallback(planPrompt, {
     userMessage: state.userMessage,
     tableSchemas,
     enableKnowledge: state.enableKnowledge ? "是" : "否",
@@ -285,16 +328,10 @@ function formatToolResultsSummary(
  * 输出：finalAnswer（简洁、基于真实数据的回答）
  */
 async function synthesizeNode(state: AgentStateType) {
-  const llm = getDashScopeLLM({
-    model: getModelChat(),
-    temperature: 0.3,
-    maxTokens: 2048,
-  });
-
   const summary = formatToolResultsSummary(state.toolResults ?? {});
   const toolResultsStr = summary + JSON.stringify(state.toolResults, null, 2);
 
-  const response = await synthesizePrompt.pipe(llm).invoke({
+  const response = await invokeAgentPromptWithFallback(synthesizePrompt, {
     userMessage: state.userMessage,
     toolResults: toolResultsStr,
     validationFeedback: "",

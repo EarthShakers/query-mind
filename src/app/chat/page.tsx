@@ -152,13 +152,10 @@ export default function Page() {
   const voiceMessageBindingsRef = useRef<Array<{ id: string; raw: string }>>(
     []
   );
-  const {
-    ensureTtsAudioUnlocked,
-    speakByTts,
-    stopTtsPlayback,
-  } = useTtsPlayback({
-    onError: setToastMsg,
-  });
+  const { ensureTtsAudioUnlocked, speakByTts, stopTtsPlayback } =
+    useTtsPlayback({
+      onError: setToastMsg,
+    });
   const voiceInput = useVoiceInput({
     onResult: async (text) => {
       setPartialText("");
@@ -851,7 +848,9 @@ export default function Page() {
                         onPlayText={async (text, messageId) => {
                           const unlocked = await ensureTtsAudioUnlocked();
                           if (!unlocked) {
-                            setToastMsg("当前环境音频播放受限，请检查浏览器声音权限");
+                            setToastMsg(
+                              "当前环境音频播放受限，请检查浏览器声音权限"
+                            );
                             return;
                           }
                           speakByTts(text, messageId);

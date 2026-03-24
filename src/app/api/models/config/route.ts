@@ -32,9 +32,12 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json();
     const config: ModelConfig = {
-      modelChat: String(body.modelChat ?? "").trim() || "qvq-max-2025-03-25",
-      modelLight: String(body.modelLight ?? "").trim() || "qwen-max",
-      modelAgent: String(body.modelAgent ?? "").trim() || "qvq-max-2025-03-25",
+      modelChat:
+        String(body.modelChat ?? "").trim() || "qwen-plus-2025-07-28",
+      modelLight:
+        String(body.modelLight ?? "").trim() || "qwen-plus-2025-07-28",
+      modelAgent:
+        String(body.modelAgent ?? "").trim() || "qwen-plus-2025-07-28",
       modelRerank: String(body.modelRerank ?? "").trim() || "qwen3-rerank",
       modelEmbedding:
         String(body.modelEmbedding ?? "").trim() || "text-embedding-v4",

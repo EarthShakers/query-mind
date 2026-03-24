@@ -11,6 +11,82 @@ import { buildAgentGraph } from "@/lib/agent/agent-graph";
 import type { CoreMessage } from "ai";
 import type { SubTask } from "@/lib/agent/state";
 
+function isHttpUnsupportedError(err: unknown): boolean {
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return /does not support http call/i.test(message);
+}
+
+async function generateObjectWithFallback<T>({
+  schema,
+  prompt,
+  maxTokens,
+}: {
+  schema: z.ZodType<T>;
+  prompt: string;
+  maxTokens: number;
+}) {
+  const preferredModel = getModelLight();
+  const candidates = [
+    preferredModel,
+    "qwen-plus-2025-07-28",
+    "qwen-max",
+  ].filter(
+    (model, index, arr) => model && arr.indexOf(model) === index
+  );
+
+  let lastErr: unknown;
+  for (const model of candidates) {
+    try {
+      return await generateObject({
+        model: dashscopeProvider(model),
+        schema,
+        prompt,
+        maxTokens,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (!isHttpUnsupportedError(err)) throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function streamTextWithFallback({
+  prompt,
+  system,
+  maxTokens,
+}: {
+  prompt: string;
+  system: string;
+  maxTokens: number;
+}) {
+  const preferredModel = getModelLight();
+  const candidates = [
+    preferredModel,
+    "qwen-plus-2025-07-28",
+    "qwen-max",
+  ].filter(
+    (model, index, arr) => model && arr.indexOf(model) === index
+  );
+
+  let lastErr: unknown;
+  for (const model of candidates) {
+    try {
+      return await streamText({
+        model: dashscopeProvider(model),
+        system,
+        prompt,
+        maxTokens,
+      });
+    } catch (err) {
+      lastErr = err;
+      if (!isHttpUnsupportedError(err)) throw err;
+    }
+  }
+  throw lastErr;
+}
+
 /** 大模型判断检索 chunks 是否与用户问题相关 */
 async function judgeChunksRelevance(
   userQuery: string,
@@ -24,8 +100,7 @@ async function judgeChunksRelevance(
     )
     .join("\n");
   try {
-    const { object } = await generateObject({
-      model: dashscopeProvider(getModelLight()),
+    const { object } = await generateObjectWithFallback({
       schema: z.object({ relevant: z.boolean() }),
       prompt: `用户问题：${userQuery}\n\n检索到的片段：\n${summaries}\n\n这些片段与用户问题是否相关？回答 true 或 false。`,
       maxTokens: 16,
@@ -302,8 +377,7 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       // Phase 2 已移至 execute 节点完成时实时推送，此处不再重复注入
 
       // ── Phase 3: 流式输出最终回答 ──
-      const result = await streamText({
-        model: dashscopeProvider(getModelLight()),
+      const result = await streamTextWithFallback({
         system:
           "你是一个纯输出管道。用户会给你一段完整文本，你必须原样、逐字输出，禁止任何增删改。",
         prompt: `请原样输出以下内容，不要做任何修改：\n\n${finalAnswer}`,
