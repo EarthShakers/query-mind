@@ -134,7 +134,7 @@ function ChartBubble({ tool, onReady }: { tool: any; onReady: () => void }) {
 
 /* ─── Single assistant turn ─── */
 export function AssistantTurn({
-  assistantMessages,
+  assistantMessages = [],
   userContent = "",
   spaceId,
   isStreaming,

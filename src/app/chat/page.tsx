@@ -836,7 +836,7 @@ export default function Page() {
                     </div>
                     <div className="relative">
                       <AssistantTurn
-                        assistantMessages={turn.assistantMessages}
+                        assistantMessages={turn.assistantMessages ?? []}
                         userContent={turn.userContent}
                         spaceId={[...selectedSpaceIds][0]}
                         isStreaming={isLastTurn && isLoading}

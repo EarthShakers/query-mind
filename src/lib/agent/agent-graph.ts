@@ -15,10 +15,7 @@ import {
   type SubTask,
 } from "@/lib/agent/state";
 import { planPrompt, synthesizePrompt } from "@/lib/agent/prompts";
-import {
-  agentSearchKnowledge,
-  agentExecuteQuery,
-} from "@/lib/agent/tools";
+import { agentSearchKnowledge, agentExecuteQuery } from "@/lib/agent/tools";
 import {
   getRouteHint,
   applyRouteRules,
@@ -58,7 +55,10 @@ async function planNode(state: AgentStateType) {
 
   try {
     const parsed = JSON.parse(
-      text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim()
+      text
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim()
     );
     let sub_tasks = (parsed.sub_tasks ?? []).map((t: SubTask) => ({
       id: t.id || `st${Math.random().toString(36).slice(2, 8)}`,
@@ -174,13 +174,21 @@ async function executeNode(state: AgentStateType) {
           state.spaceIds,
           state.userMessage
         );
-        toolResults[task.id] = { ...fallback, _fallback: true, _reason: "no_sql" };
+        toolResults[task.id] = {
+          ...fallback,
+          _fallback: true,
+          _reason: "no_sql",
+        };
         completedSteps.push(`search_knowledge:${task.id}(fallback)`);
         await state.streamWriter?.({
           type: "agent_progress",
           node: "execute",
           ts: new Date().toISOString(),
-          toolComplete: { taskId: task.id, toolName: "search_knowledge", result: fallback },
+          toolComplete: {
+            taskId: task.id,
+            toolName: "search_knowledge",
+            result: fallback,
+          },
         });
       } else {
         const result = await agentExecuteQuery(task.sql);
@@ -204,7 +212,11 @@ async function executeNode(state: AgentStateType) {
             type: "agent_progress",
             node: "execute",
             ts: new Date().toISOString(),
-            toolComplete: { taskId: task.id, toolName: "search_knowledge", result: fallback },
+            toolComplete: {
+              taskId: task.id,
+              toolName: "search_knowledge",
+              result: fallback,
+            },
           });
         } else {
           toolResults[task.id] = result;
@@ -213,7 +225,11 @@ async function executeNode(state: AgentStateType) {
             type: "agent_progress",
             node: "execute",
             ts: new Date().toISOString(),
-            toolComplete: { taskId: task.id, toolName: "execute_query", result },
+            toolComplete: {
+              taskId: task.id,
+              toolName: "execute_query",
+              result,
+            },
           });
         }
       }
@@ -230,7 +246,9 @@ async function executeNode(state: AgentStateType) {
 /**
  * 将 toolResults 格式化为 LLM 易读的摘要，突出空结果/错误
  */
-function formatToolResultsSummary(toolResults: Record<string, unknown>): string {
+function formatToolResultsSummary(
+  toolResults: Record<string, unknown>
+): string {
   const lines: string[] = [];
   for (const [taskId, result] of Object.entries(toolResults)) {
     if (result == null) continue;
@@ -240,13 +258,17 @@ function formatToolResultsSummary(toolResults: Record<string, unknown>): string 
       const q = r.query ?? "";
       const fallbackNote = r._fallback ? "（数据查询失败后的回退搜索）" : "";
       lines.push(
-        `[${taskId}] search_knowledge 查询「${q}」${fallbackNote}：${count === 0 ? "未找到相关文档" : `找到 ${count} 条相关片段`}`
+        `[${taskId}] search_knowledge 查询「${q}」${fallbackNote}：${
+          count === 0 ? "未找到相关文档" : `找到 ${count} 条相关片段`
+        }`
       );
     } else if (r.data && Array.isArray(r.data) && !r._fallback) {
       const count = r.data.length;
       const err = r.error;
       lines.push(
-        `[${taskId}] execute_query：${err ? `执行失败（${err}）` : `返回 ${count} 条记录`}`
+        `[${taskId}] execute_query：${
+          err ? `执行失败（${err}）` : `返回 ${count} 条记录`
+        }`
       );
     }
   }
@@ -270,8 +292,7 @@ async function synthesizeNode(state: AgentStateType) {
   });
 
   const summary = formatToolResultsSummary(state.toolResults ?? {});
-  const toolResultsStr =
-    summary + JSON.stringify(state.toolResults, null, 2);
+  const toolResultsStr = summary + JSON.stringify(state.toolResults, null, 2);
 
   const response = await synthesizePrompt.pipe(llm).invoke({
     userMessage: state.userMessage,
@@ -309,8 +330,12 @@ async function validateNode(state: AgentStateType) {
 
   // 2-5. 覆盖度、数据一致性、相关性、格式：LLM 打分 0-100
   const subTasks = plan?.sub_tasks ?? [];
-  const planDescriptions = subTasks.map((t) => t.description).join("；") || "无";
-  const toolResultsStr = JSON.stringify(toolResults ?? {}, null, 2).slice(0, 2000);
+  const planDescriptions =
+    subTasks.map((t) => t.description).join("；") || "无";
+  const toolResultsStr = JSON.stringify(toolResults ?? {}, null, 2).slice(
+    0,
+    2000
+  );
 
   try {
     const { object } = await generateObject({
@@ -340,7 +365,10 @@ async function validateNode(state: AgentStateType) {
     });
 
     await pushCheck("覆盖度", Math.min(100, Math.max(0, object.coverage)));
-    await pushCheck("数据一致性", Math.min(100, Math.max(0, object.dataConsistency)));
+    await pushCheck(
+      "数据一致性",
+      Math.min(100, Math.max(0, object.dataConsistency))
+    );
     await pushCheck("相关性", Math.min(100, Math.max(0, object.relevance)));
     await pushCheck("格式", Math.min(100, Math.max(0, object.format)));
   } catch (err) {

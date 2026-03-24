@@ -19,7 +19,9 @@ async function judgeChunksRelevance(
   if (!chunks?.length) return true;
   const summaries = chunks
     .slice(0, 5)
-    .map((c, i) => `[${i + 1}] ${(c.summary ?? c.content ?? "").slice(0, 150)}...`)
+    .map(
+      (c, i) => `[${i + 1}] ${(c.summary ?? c.content ?? "").slice(0, 150)}...`
+    )
     .join("\n");
   try {
     const { object } = await generateObject({
@@ -52,7 +54,11 @@ export interface AgentProgressEvent {
   subTasks?: { id: string; tool: string; description: string }[];
   toolSummary?: { id: string; kind: string; count: number; error?: string }[];
   /** execute 节点的完整 tool 结果，含 chunks，用于实时展示 */
-  toolResults?: Array<{ toolName: string; result: unknown; chunksRelevant?: boolean }>;
+  toolResults?: Array<{
+    toolName: string;
+    result: unknown;
+    chunksRelevant?: boolean;
+  }>;
 }
 
 /**
@@ -76,8 +82,13 @@ function buildToolStreamParts(
       toolName === "search_knowledge"
         ? { query: (result as { query?: string }).query ?? task.query ?? "" }
         : toolName === "execute_query"
-          ? { sql: (result as { sql?: string }).sql ?? (task as { sql?: string }).sql ?? "" }
-          : {};
+        ? {
+            sql:
+              (result as { sql?: string }).sql ??
+              (task as { sql?: string }).sql ??
+              "",
+          }
+        : {};
 
     parts.push(formatStreamPart("tool_call", { toolCallId, toolName, args }));
     parts.push(formatStreamPart("tool_result", { toolCallId, result }));
@@ -105,7 +116,12 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       node?: string;
       ts?: string;
       toolComplete?: { taskId: string; toolName: string; result: unknown };
-      validationCheck?: { name: string; score?: number; passed?: boolean; message?: string };
+      validationCheck?: {
+        name: string;
+        score?: number;
+        passed?: boolean;
+        message?: string;
+      };
     };
     if (e?.validationCheck) {
       const vc = e.validationCheck;
@@ -135,7 +151,11 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       const chunks = (result as { results?: unknown[] }).results ?? [];
       chunksRelevant = await judgeChunksRelevance(
         input.userMessage,
-        chunks as Array<{ content?: string; summary?: string; similarity?: number }>
+        chunks as Array<{
+          content?: string;
+          summary?: string;
+          similarity?: number;
+        }>
       );
     }
     const progress = {
@@ -145,7 +165,9 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       toolComplete: { taskId, toolName, result, chunksRelevant },
     };
     await writer.write(
-      encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
+      encoder.encode(
+        formatStreamPart("data", [JSON.parse(JSON.stringify(progress))])
+      )
     );
   };
 
@@ -173,13 +195,19 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
       });
       for await (const event of stream) {
         const nodeName = Object.keys(event)[0];
-        const nodeData = (event as Record<string, Record<string, unknown>>)[nodeName];
+        const nodeData = (event as Record<string, Record<string, unknown>>)[
+          nodeName
+        ];
         if (!nodeData) continue;
 
         // 累积状态
-        if (nodeData.plan) plan = nodeData.plan as { sub_tasks: SubTask[]; strategy?: string };
+        if (nodeData.plan)
+          plan = nodeData.plan as { sub_tasks: SubTask[]; strategy?: string };
         if (nodeData.toolResults) {
-          toolResults = { ...toolResults, ...(nodeData.toolResults as Record<string, unknown>) };
+          toolResults = {
+            ...toolResults,
+            ...(nodeData.toolResults as Record<string, unknown>),
+          };
         }
         if (nodeData.finalAnswer) finalAnswer = nodeData.finalAnswer as string;
 
@@ -212,7 +240,11 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
                       node: "planning",
                       ts: new Date().toISOString(),
                       strategy: plan.strategy,
-                      planTask: { id: t.id, tool: t.tool, description: t.description },
+                      planTask: {
+                        id: t.id,
+                        tool: t.tool,
+                        description: t.description,
+                      },
                     })
                   ),
                 ])
@@ -227,7 +259,9 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
             ts: new Date().toISOString(),
           };
           await writer.write(
-            encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
+            encoder.encode(
+              formatStreamPart("data", [JSON.parse(JSON.stringify(progress))])
+            )
           );
 
           // 注入 tool_call + tool_result
@@ -245,7 +279,9 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
             ts: new Date().toISOString(),
           };
           await writer.write(
-            encoder.encode(formatStreamPart("data", [JSON.parse(JSON.stringify(progress))]))
+            encoder.encode(
+              formatStreamPart("data", [JSON.parse(JSON.stringify(progress))])
+            )
           );
         }
       }
@@ -291,7 +327,9 @@ export async function createAgentStreamResponse(input: AgentStreamInput) {
         );
         await writer.close();
       } catch {
-        try { await writer.abort(err); } catch {}
+        try {
+          await writer.abort(err);
+        } catch {}
       }
     }
   })();
