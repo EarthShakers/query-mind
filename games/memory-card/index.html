@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>记忆翻牌</title>
+    <link rel="stylesheet" href="./game/style.css">
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="game-header">
+            <div class="stat-box">
+                <span class="stat-label">⏱️ 时间</span>
+                <span class="stat-value" id="timer">00:00</span>
+            </div>
+            <div class="title-box">
+                <h1>🎴 记忆翻牌</h1>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">🏆 分数</span>
+                <span class="stat-value" id="score">0</span>
+            </div>
+        </div>
+        
+        <div class="game-info">
+            <div class="moves-counter">
+                <span>翻牌次数: </span>
+                <span id="moves">0</span>
+            </div>
+            <div class="pairs-counter">
+                <span>已配对: </span>
+                <span id="pairs">0</span>
+                <span> / </span>
+                <span id="totalPairs">0</span>
+            </div>
+        </div>
+        
+        <div class="board-container">
+            <div class="game-board" id="gameBoard"></div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" id="restartBtn">🔄 重新开始</button>
+            <button class="btn btn-secondary" id="hintBtn">💡 提示</button>
+        </div>
+    </div>
+    
+    <!-- 开始遮罩层 -->
+    <div class="start-overlay" id="startOverlay">
+        <div class="start-modal">
+            <div class="start-icon">🎴</div>
+            <h2>记忆翻牌</h2>
+            <p class="start-desc">记住每张卡牌的位置<br>找出所有配对！</p>
+            <button class="btn btn-primary btn-large" id="startBtn">开始游戏</button>
+        </div>
+    </div>
+    
+    <div class="victory-overlay" id="victoryOverlay">
+        <div class="victory-modal">
+            <div class="victory-icon">🎉</div>
+            <h2>恭喜通关!</h2>
+            <div class="victory-stats">
+                <p>⏱️ 用时: <span id="finalTime">00:00</span></p>
+                <p>🏆 得分: <span id="finalScore">0</span></p>
+                <p>🎯 翻牌: <span id="finalMoves">0</span> 次</p>
+            </div>
+            <button class="btn btn-primary" id="playAgainBtn">再玩一次</button>
+        </div>
+    </div>
+
+    <script src="./game/cards.js"></script>
+    <script src="./game/game.js"></script>
+</body>
+</html>

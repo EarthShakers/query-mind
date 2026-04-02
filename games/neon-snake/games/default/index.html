@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spark 游戏</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      background: #0f172a;
+      color: #94a3b8;
+      font-family: system-ui, sans-serif;
+      padding: 1rem;
+      text-align: center;
+    }
+    code { color: #7dd3fc; }
+    .hint { font-size: 12px; opacity: 0.8; max-width: 28rem; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <p>在 <strong>spark game</strong> 里描述游戏，AI 会通过 <code>write_file</code> 写入完整 <code>index.html</code>。</p>
+  <p class="hint">若编辑器里 <code>index.html</code> 为空，通常是模型写入了空内容；已在 CLI 侧拒绝空写入，并会在启动时自动补此占位页。</p>
+</body>
+</html>
