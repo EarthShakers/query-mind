@@ -11,19 +11,30 @@ function getSecret() {
 }
 
 // 安全策略：设置 HTTP 响应头
-function applySecurityHeaders(res: NextResponse) {
-  res.headers.set("X-Frame-Options", "DENY");
+function applySecurityHeaders(res: NextResponse, pathname?: string) {
+  const allowGameEmbed =
+    pathname?.startsWith("/games/") || pathname?.startsWith("/api/spark/public/");
+
+  if (allowGameEmbed) {
+    res.headers.set("X-Frame-Options", "SAMEORIGIN");
+    res.headers.set(
+      "Content-Security-Policy",
+      "frame-ancestors 'self'; base-uri 'self';"
+    );
+  } else {
+    res.headers.set("X-Frame-Options", "DENY");
+    res.headers.set(
+      "Content-Security-Policy",
+      "frame-ancestors 'none'; base-uri 'self';"
+    );
+  }
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.headers.set(
-    "Content-Security-Policy",
-    "frame-ancestors 'none'; base-uri 'self';"
-  );
 }
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  applySecurityHeaders(res);
+  applySecurityHeaders(res, req.nextUrl.pathname);
 
   // Parse JWT and inject user info into request headers
   const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -74,7 +85,7 @@ export async function middleware(req: NextRequest) {
     const rewriteRes = NextResponse.next({
       request: { headers: requestHeaders },
     });
-    applySecurityHeaders(rewriteRes);
+    applySecurityHeaders(rewriteRes, pathname);
 
     // Route protection for logged-in users
     if (pathname === "/login" || pathname === "/register") {

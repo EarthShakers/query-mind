@@ -54,6 +54,41 @@ async function chooseGameSlug(workspaceRoot: string): Promise<string> {
   });
 }
 
+async function chooseGameSlugForPush(workspaceRoot: string): Promise<string> {
+  const games = listExistingGameSlugs(workspaceRoot);
+  if (games.length === 0) {
+    return "default";
+  }
+
+  console.log(chalk.bold("\n  请选择要同步的游戏：\n"));
+  games.forEach((slug, index) => {
+    console.log(`  ${index + 1}. ${slug}`);
+  });
+  console.log();
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return await new Promise((resolve) => {
+    rl.question("请输入编号或 slug（回车默认 1）: ", (answer) => {
+      rl.close();
+      const raw = answer.trim();
+      if (!raw) {
+        resolve(games[0]);
+        return;
+      }
+      const num = Number.parseInt(raw, 10);
+      if (Number.isFinite(num) && num >= 1 && num <= games.length) {
+        resolve(games[num - 1]);
+        return;
+      }
+      resolve(normalizeGameSlug(raw));
+    });
+  });
+}
+
 program
   .name("spark")
   .description("AI-powered game code generator")
@@ -66,6 +101,8 @@ program
   spark game memory-card
   spark game -g flappy-bird
   spark preview -g memory-card -p 4321
+  spark push
+  spark push all
   spark push -g tank-battle -s tank-battle-v1
   spark config --show
 
@@ -230,36 +267,85 @@ program
   .description(
     `将 ./${GAMES_PARENT_DIR}/<游戏名> 快照推送到 Supabase（需登录 token）`
   )
-  .argument("[workspace]", "工作区根目录", ".")
+  .argument("[target]", "游戏 slug、all，或工作区根目录", ".")
   .option(
     "-g, --game <slug>",
-    `游戏子目录名（推送 ./${GAMES_PARENT_DIR}/<slug>）`,
-    "default"
+    `游戏子目录名（推送 ./${GAMES_PARENT_DIR}/<slug>）`
   )
   .option("-s, --slug <slug>", "云端快照 slug（与本地游戏名无关）", "default")
+  .option("--all", "一键推送 ./${GAMES_PARENT_DIR}/ 下所有游戏")
   .addHelpText(
     "after",
     `
 示例:
+  spark push
+  spark push memory-card
+  spark push all
   spark push -g flappy-bird
   spark push -g tank-battle -s tank-battle-v2
+
+提示:
+  - spark push：自动列出 games/ 下现有游戏让你选
+  - spark push all：一键推送所有 slug
 `
   )
-  .action(async (workspace: string, opts: { slug?: string; game?: string }) => {
+  .action(async (target: string, opts: { slug?: string; game?: string; all?: boolean }) => {
     const config = loadConfig();
-    const remoteSlug = (opts.slug || "default").trim() || "default";
-    const workspaceRoot = path.resolve(process.cwd(), workspace || ".");
-    const gameSlug = normalizeGameSlug(String(opts.game ?? "default"));
-    const gameDir = resolveGameRoot(workspaceRoot, gameSlug);
-    const r = await pushSparkSnapshot(config, gameDir, remoteSlug);
-    if (r.ok) {
-      console.log(
-        chalk.green(
-          `✓ 已推送游戏 ${gameSlug} → 云端 slug=${remoteSlug}`
-        )
+    const rawTarget = (target || ".").trim();
+    const workspaceRoot =
+      rawTarget === "." || rawTarget.includes(path.sep)
+        ? path.resolve(process.cwd(), rawTarget)
+        : process.cwd();
+
+    const pushOne = async (gameSlug: string, remoteSlug?: string) => {
+      const gameDir = resolveGameRoot(workspaceRoot, gameSlug);
+      const r = await pushSparkSnapshot(
+        config,
+        gameDir,
+        (remoteSlug || gameSlug).trim() || gameSlug
       );
-    } else {
-      console.log(chalk.red(`✗ ${r.error}`));
+      if (r.ok) {
+        console.log(
+          chalk.green(
+            `✓ 已推送游戏 ${gameSlug} → 云端 slug=${(remoteSlug || gameSlug).trim() || gameSlug}`
+          )
+        );
+        return true;
+      }
+      console.log(chalk.red(`✗ ${gameSlug}: ${r.error}`));
+      return false;
+    };
+
+    const shouldPushAll = opts.all || rawTarget === "all";
+    if (shouldPushAll) {
+      const games = listExistingGameSlugs(workspaceRoot);
+      if (games.length === 0) {
+        console.log(chalk.red(`✗ 在 ./${GAMES_PARENT_DIR}/ 下没有找到可同步的游戏目录`));
+        process.exitCode = 1;
+        return;
+      }
+      let hasFailure = false;
+      for (const gameSlug of games) {
+        const ok = await pushOne(gameSlug);
+        if (!ok) hasFailure = true;
+      }
+      if (hasFailure) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    const gameSlug = opts.game?.trim()
+      ? normalizeGameSlug(String(opts.game))
+      : rawTarget !== "." && rawTarget !== "all" && !rawTarget.includes(path.sep)
+        ? normalizeGameSlug(rawTarget)
+        : await chooseGameSlugForPush(workspaceRoot);
+
+    const ok = await pushOne(
+      gameSlug,
+      opts.slug?.trim() ? String(opts.slug) : gameSlug
+    );
+    if (!ok) {
       process.exitCode = 1;
     }
   });

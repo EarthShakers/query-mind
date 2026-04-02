@@ -144,6 +144,12 @@ export default function LandingPage() {
               知识库
             </Link>
             <Link
+              href="/games"
+              className="text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              游戏广场
+            </Link>
+            <Link
               href="/chat"
               className="px-4 py-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
             >

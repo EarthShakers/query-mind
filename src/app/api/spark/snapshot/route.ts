@@ -4,6 +4,10 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 const bodySchema = z.object({
   slug: z.string().trim().min(1).max(64).optional(),
+  title: z.string().trim().min(1).max(120).optional(),
+  description: z.string().trim().max(500).optional(),
+  coverUrl: z.string().trim().url().max(2048).optional(),
+  isPublic: z.boolean().optional(),
   files: z.record(z.string(), z.string()),
 });
 
@@ -29,6 +33,12 @@ function validateFiles(files: Record<string, string>): string | null {
   return null;
 }
 
+function prettifySlug(slug: string): string {
+  return slug
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) {
@@ -45,7 +55,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("spark_snapshots")
-    .select("slug, files, updated_at")
+    .select("slug, title, description, cover_url, is_public, files, updated_at")
     .eq("user_id", user.userId)
     .eq("slug", slug)
     .maybeSingle();
@@ -54,10 +64,22 @@ export async function GET(req: Request) {
     return Response.json({ error: error.message }, { status: 500 });
   }
   if (!data) {
-    return Response.json({ slug, files: null, updated_at: null });
+    return Response.json({
+      slug,
+      title: prettifySlug(slug),
+      description: null,
+      cover_url: null,
+      is_public: true,
+      files: null,
+      updated_at: null,
+    });
   }
   return Response.json({
     slug: data.slug,
+    title: (data as { title?: string | null }).title ?? prettifySlug(data.slug),
+    description: (data as { description?: string | null }).description ?? null,
+    cover_url: (data as { cover_url?: string | null }).cover_url ?? null,
+    is_public: (data as { is_public?: boolean }).is_public ?? true,
     files: data.files as Record<string, string>,
     updated_at: data.updated_at,
   });
@@ -91,6 +113,10 @@ export async function POST(req: Request) {
   }
 
   const slug = (parsed.data.slug || "default").trim() || "default";
+  const title = (parsed.data.title || prettifySlug(slug)).trim();
+  const description = parsed.data.description?.trim() || null;
+  const coverUrl = parsed.data.coverUrl?.trim() || null;
+  const isPublic = parsed.data.isPublic ?? true;
   const files = parsed.data.files;
   const invalid = validateFiles(files);
   if (invalid) {
@@ -102,6 +128,10 @@ export async function POST(req: Request) {
     {
       user_id: user.userId,
       slug,
+      title,
+      description,
+      cover_url: coverUrl,
+      is_public: isPublic,
       files,
       updated_at: now,
     },
@@ -111,5 +141,13 @@ export async function POST(req: Request) {
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-  return Response.json({ ok: true, slug, updated_at: now });
+  return Response.json({
+    ok: true,
+    slug,
+    title,
+    description,
+    cover_url: coverUrl,
+    is_public: isPublic,
+    updated_at: now,
+  });
 }

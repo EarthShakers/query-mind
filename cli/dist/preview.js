@@ -164,10 +164,65 @@ function splitShellHtml(port, initialGame) {
     header .grow { flex: 1; min-width: 120px; }
     header span.hint { opacity: 0.75; font-size: 12px; }
     #file-path { font-family: ui-monospace, monospace; color: #7dd3fc; }
-    select {
+    .game-picker-open {
+      display: flex; align-items: center; gap: 10px;
       background: #111827; color: #e5e7eb; border: 1px solid #374151;
-      border-radius: 8px; padding: 6px 10px; font-size: 13px;
+      border-radius: 10px; padding: 6px 12px 6px 8px; font-size: 13px; cursor: pointer;
+      max-width: min(320px, 42vw); text-align: left;
     }
+    .game-picker-open:hover { border-color: #4b5563; background: #1f2937; }
+    .game-picker-open:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+    .game-picker-open-thumb {
+      flex: 0 0 40px; width: 40px; height: 40px; border-radius: 8px; overflow: hidden;
+      background: #1e293b; display: flex; align-items: center; justify-content: center;
+    }
+    .game-picker-open-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .game-picker-open-title { font-weight: 600; color: #f3f4f6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .game-picker-open-slug { font-size: 11px; opacity: 0.65; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .game-picker-caret { flex: 0 0 auto; width: 18px; height: 18px; opacity: 0.55; }
+    .game-picker-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .game-picker-overlay[hidden] { display: none !important; }
+    .game-picker-scrim { position: absolute; inset: 0; background: rgba(0,0,0,0.68); backdrop-filter: blur(5px); }
+    .game-picker-panel {
+      position: relative; z-index: 1; width: min(920px, 100%); max-height: min(640px, 85vh);
+      background: #141414; border: 1px solid #333; border-radius: 14px; box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .game-picker-panel-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #2a2a2a; }
+    .game-picker-panel-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    .game-picker-icon-btn {
+      width: 36px; height: 36px; border: 0; border-radius: 8px; background: #2a2a2a; color: #e5e7eb;
+      font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .game-picker-icon-btn:hover { background: #374151; }
+    .game-picker-cards {
+      padding: 18px; overflow: auto; display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px;
+    }
+    .game-picker-card {
+      border: 1px solid #333; border-radius: 12px; overflow: hidden; background: #1a1a1a; cursor: pointer;
+      padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; transition: border-color 0.15s, transform 0.15s;
+    }
+    .game-picker-card:hover { border-color: #3b82f6; transform: translateY(-2px); }
+    .game-picker-card:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+    .game-picker-card.active { border-color: #60a5fa; box-shadow: 0 0 0 1px #60a5fa; }
+    .game-picker-card-media { aspect-ratio: 16 / 10; background: #0f172a; position: relative; }
+    .game-picker-icon {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    }
+    .game-picker-icon svg {
+      flex-shrink: 0;
+      color: rgba(255,255,255,0.9);
+      stroke: currentColor;
+      stroke-width: 2.25;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .game-picker-icon-sm svg { width: 24px; height: 24px; stroke-width: 2; }
+    .game-picker-icon-lg svg { width: 52px; height: 52px; stroke-width: 2.35; }
+    .game-picker-card-body { padding: 10px 12px 12px; }
+    .game-picker-card-title { font-size: 14px; font-weight: 600; color: #f3f4f6; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .game-picker-card-slug { font-size: 11px; color: #64748b; margin-top: 4px; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     button {
       background: #2563eb; color: #fff; border: 0; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer;
     }
@@ -239,7 +294,26 @@ function splitShellHtml(port, initialGame) {
 <body>
   <header>
     <span class="label">spark</span>
-    <select id="game-select"></select>
+    <div class="game-picker">
+      <button type="button" class="game-picker-open" id="game-picker-open" aria-haspopup="dialog" aria-expanded="false" aria-controls="game-picker-panel">
+        <span class="game-picker-open-thumb" id="game-picker-open-thumb" aria-hidden="true"></span>
+        <span class="game-picker-open-text">
+          <span class="game-picker-open-title" id="game-picker-open-title">${initialGame}</span>
+          <span class="game-picker-open-slug" id="game-picker-open-slug">${initialGame}</span>
+        </span>
+        <svg class="game-picker-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div id="game-picker-overlay" class="game-picker-overlay" hidden>
+      <div class="game-picker-scrim" id="game-picker-scrim"></div>
+      <div class="game-picker-panel" id="game-picker-panel" role="dialog" aria-modal="true" aria-labelledby="game-picker-heading">
+        <div class="game-picker-panel-head">
+          <h2 id="game-picker-heading">选择游戏</h2>
+          <button type="button" class="game-picker-icon-btn" id="game-picker-dismiss" aria-label="关闭">×</button>
+        </div>
+        <div id="game-picker-cards" class="game-picker-cards"></div>
+      </div>
+    </div>
     <span id="file-path">index.html</span>
     <span class="grow"></span>
     <button type="button" class="secondary" id="btn-refresh-tree">刷新列表</button>
@@ -276,7 +350,15 @@ function splitShellHtml(port, initialGame) {
   var statusEl = document.getElementById("status");
   var btnSave = document.getElementById("btn-save");
   var btnRefreshTree = document.getElementById("btn-refresh-tree");
-  var gameSelectEl = document.getElementById("game-select");
+  var gamePickerOpen = document.getElementById("game-picker-open");
+  var gamePickerOpenThumb = document.getElementById("game-picker-open-thumb");
+  var gamePickerOpenTitle = document.getElementById("game-picker-open-title");
+  var gamePickerOpenSlug = document.getElementById("game-picker-open-slug");
+  var gamePickerOverlay = document.getElementById("game-picker-overlay");
+  var gamePickerScrim = document.getElementById("game-picker-scrim");
+  var gamePickerDismiss = document.getElementById("game-picker-dismiss");
+  var gamePickerCards = document.getElementById("game-picker-cards");
+  var gameCatalog = [];
   var fileTreeEl = document.getElementById("file-tree");
   var pathEl = document.getElementById("file-path");
   var editorHostEl = document.getElementById("editor");
@@ -290,7 +372,195 @@ function splitShellHtml(port, initialGame) {
   var MON_BASE = "${MONACO_CDN}";
 
   pathEl.textContent = currentFile;
-  gameSelectEl.value = currentGame;
+
+  function slugHue(slug) {
+    var h = 0;
+    for (var i = 0; i < slug.length; i++) {
+      h = ((h << 5) - h + slug.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h) % 360;
+  }
+
+  function gradientStyleForSlug(slug) {
+    var h = slugHue(slug);
+    return (
+      "linear-gradient(135deg, hsl(" +
+      h +
+      ",55%,28%), hsl(" +
+      ((h + 44) % 360) +
+      ",50%,18%))"
+    );
+  }
+
+  function catalogEntryForSlug(slug) {
+    for (var i = 0; i < gameCatalog.length; i++) {
+      if (gameCatalog[i].slug === slug) return gameCatalog[i];
+    }
+    return { slug: slug, title: slug, cover: null };
+  }
+
+  /** 按游戏目录 slug 内联语义图标（不加载封面照片） */
+  function semanticIconSvg(slug) {
+    var s = (slug || "").toLowerCase();
+    if (s === "default") {
+      return (
+        '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<rect x="14" y="12" width="36" height="40" rx="5" fill="rgba(255,255,255,0.07)" stroke="currentColor"/>' +
+        '<path d="M22 24h20M22 32h14M22 40h18" fill="none"/>' +
+        '<path d="M42 10l8 5-2 10-10-2 4-13z" fill="rgba(255,255,255,0.22)" stroke="currentColor" stroke-width="1.8"/>' +
+        "</svg>"
+      );
+    }
+    if (s === "memory-card") {
+      return (
+        '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<g fill="rgba(255,255,255,0.06)" stroke="currentColor">' +
+        '<rect x="10" y="20" width="20" height="28" rx="3" transform="rotate(-9 20 34)"/>' +
+        '<rect x="30" y="16" width="20" height="28" rx="3" transform="rotate(11 40 30)"/>' +
+        "</g>" +
+        "</svg>"
+      );
+    }
+    if (s === "neon-snake") {
+      return (
+        '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<path d="M8 46 C8 46 18 14 32 26 S54 18 56 20" fill="none"/>' +
+        '<circle cx="8" cy="46" r="4.5" fill="currentColor" stroke="none"/>' +
+        "</svg>"
+      );
+    }
+    if (s === "tank-battle") {
+      return (
+        '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<rect x="6" y="34" width="52" height="15" rx="3" fill="rgba(255,255,255,0.07)" stroke="currentColor"/>' +
+        '<circle cx="18" cy="49" r="5.5" fill="rgba(255,255,255,0.05)" stroke="currentColor"/>' +
+        '<circle cx="46" cy="49" r="5.5" fill="rgba(255,255,255,0.05)" stroke="currentColor"/>' +
+        '<rect x="28" y="22" width="8" height="14" fill="rgba(255,255,255,0.06)" stroke="currentColor"/>' +
+        '<rect x="30" y="14" width="16" height="5" rx="1.5" fill="rgba(255,255,255,0.08)" stroke="currentColor"/>' +
+        "</svg>"
+      );
+    }
+    if (s === "gobang") {
+      return (
+        '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<path d="M22 20v24M30 20v24M38 20v24M46 20v24M22 28h24M22 36h24M22 44h24" fill="none" stroke="currentColor" opacity="0.35"/>' +
+        '<circle cx="30" cy="34" r="3.5" fill="currentColor" stroke="none"/>' +
+        '<circle cx="38" cy="38" r="3.5" fill="currentColor" stroke="none" opacity="0.45"/>' +
+        '<circle cx="34" cy="44" r="3.5" fill="currentColor" stroke="none"/>' +
+        "</svg>"
+      );
+    }
+    if (s === "flappy-bird") {
+      return (
+        '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+        '<path d="M12 36 Q18 22 32 28 L42 23 L42 32 L34 34 Q32 44 20 44 Q12 44 12 36Z" fill="rgba(255,255,255,0.1)" stroke="currentColor"/>' +
+        '<circle cx="28" cy="32" r="2.2" fill="currentColor" stroke="none"/>' +
+        '<rect x="46" y="8" width="8" height="14" rx="1" fill="rgba(255,255,255,0.06)" stroke="currentColor"/>' +
+        '<rect x="46" y="42" width="8" height="14" rx="1" fill="rgba(255,255,255,0.06)" stroke="currentColor"/>' +
+        "</svg>"
+      );
+    }
+    return (
+      '<svg viewBox="0 0 64 64" aria-hidden="true">' +
+      '<rect x="10" y="18" width="44" height="30" rx="9" fill="rgba(255,255,255,0.06)" stroke="currentColor"/>' +
+      '<circle cx="22" cy="33" r="3.5" fill="currentColor" stroke="none"/>' +
+      '<rect x="36" y="29" width="12" height="3.5" rx="1" fill="currentColor" stroke="none"/>' +
+      '<rect x="40.25" y="25.5" width="3.5" height="12" rx="1" fill="currentColor" stroke="none"/>' +
+      "</svg>"
+    );
+  }
+
+  function renderSemanticGameIcon(container, slug, size) {
+    container.innerHTML = "";
+    var wrap = document.createElement("div");
+    wrap.className = "game-picker-icon game-picker-icon-" + size;
+    wrap.style.background = gradientStyleForSlug(slug);
+    wrap.innerHTML = semanticIconSvg(slug);
+    container.appendChild(wrap);
+  }
+
+  function syncGamePickerTrigger() {
+    if (!gamePickerOpenTitle || !gamePickerOpenSlug || !gamePickerOpenThumb) return;
+    var e = catalogEntryForSlug(currentGame);
+    gamePickerOpenTitle.textContent = e.title || e.slug;
+    gamePickerOpenSlug.textContent = e.slug;
+    renderSemanticGameIcon(gamePickerOpenThumb, e.slug, "sm");
+  }
+
+  function setGamePickerExpanded(on) {
+    if (gamePickerOpen) gamePickerOpen.setAttribute("aria-expanded", on ? "true" : "false");
+  }
+
+  function openGamePicker() {
+    if (!gamePickerOverlay) return;
+    gamePickerOverlay.hidden = false;
+    setGamePickerExpanded(true);
+    renderGamePickerGrid();
+    try {
+      if (gamePickerDismiss) gamePickerDismiss.focus();
+    } catch (eOpen) {}
+  }
+
+  function closeGamePicker() {
+    if (!gamePickerOverlay) return;
+    gamePickerOverlay.hidden = true;
+    setGamePickerExpanded(false);
+    try {
+      if (gamePickerOpen) gamePickerOpen.focus();
+    } catch (eClose) {}
+  }
+
+  function renderGamePickerGrid() {
+    if (!gamePickerCards) return;
+    gamePickerCards.innerHTML = "";
+    gameCatalog.forEach(function (entry) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "game-picker-card" + (entry.slug === currentGame ? " active" : "");
+      var media = document.createElement("div");
+      media.className = "game-picker-card-media";
+      renderSemanticGameIcon(media, entry.slug, "lg");
+      var body = document.createElement("div");
+      body.className = "game-picker-card-body";
+      var t = document.createElement("div");
+      t.className = "game-picker-card-title";
+      t.textContent = entry.title || entry.slug;
+      var sub = document.createElement("div");
+      sub.className = "game-picker-card-slug";
+      sub.textContent = entry.slug;
+      body.appendChild(t);
+      body.appendChild(sub);
+      btn.appendChild(media);
+      btn.appendChild(body);
+      btn.addEventListener("click", function () {
+        closeGamePicker();
+        if (entry.slug === currentGame) return;
+        switchCurrentGame(entry.slug);
+      });
+      gamePickerCards.appendChild(btn);
+    });
+  }
+
+  function switchCurrentGame(nextSlug) {
+    currentGame = nextSlug || ${JSON.stringify(initialGame)};
+    currentFile = "index.html";
+    draftState = null;
+    lastLoadedGame = null;
+    btnSave.disabled = false;
+    pathEl.textContent = currentFile;
+    updateUrl();
+    syncGamePickerTrigger();
+    fetchFileList()
+      .then(function () {
+        return openFile(currentFile);
+      })
+      .then(function () {
+        bumpIframe();
+      });
+  }
+
+  syncGamePickerTrigger();
 
   function setStatus(msg, ok) {
     statusEl.textContent = msg;
@@ -412,20 +682,32 @@ function splitShellHtml(port, initialGame) {
       })
       .then(function (j) {
         var games = j.games || [];
-        gameSelectEl.innerHTML = "";
-        games.forEach(function (slug) {
-          var opt = document.createElement("option");
-          opt.value = slug;
-          opt.textContent = slug;
-          if (slug === currentGame) opt.selected = true;
-          gameSelectEl.appendChild(opt);
-        });
+        var catalog = j.catalog;
+        if (catalog && catalog.length) {
+          gameCatalog = catalog;
+        } else {
+          gameCatalog = games.map(function (slug) {
+            return { slug: slug, title: slug, cover: null };
+          });
+        }
         if (games.length && games.indexOf(currentGame) < 0) {
           currentGame = games[0];
-          gameSelectEl.value = currentGame;
         }
+        if (gameCatalog.length) {
+          var found = false;
+          for (var i = 0; i < gameCatalog.length; i++) {
+            if (gameCatalog[i].slug === currentGame) {
+              found = true;
+              break;
+            }
+          }
+          if (!found) currentGame = gameCatalog[0].slug;
+        }
+        syncGamePickerTrigger();
       })
-      .catch(function () {});
+      .catch(function () {
+        syncGamePickerTrigger();
+      });
   }
 
   function fetchFileList() {
@@ -720,26 +1002,32 @@ function splitShellHtml(port, initialGame) {
   }
 
   btnSave.addEventListener("click", save);
-  gameSelectEl.addEventListener("change", function () {
-    currentGame = gameSelectEl.value || ${JSON.stringify(initialGame)};
-    currentFile = "index.html";
-    draftState = null;
-    lastLoadedGame = null;
-    btnSave.disabled = false;
-    pathEl.textContent = currentFile;
-    updateUrl();
-    fetchFileList().then(function () {
-      return openFile(currentFile);
-    }).then(function () {
-      bumpIframe();
+  if (gamePickerOpen) {
+    gamePickerOpen.addEventListener("click", function () {
+      openGamePicker();
     });
-  });
+  }
+  if (gamePickerScrim) {
+    gamePickerScrim.addEventListener("click", function () {
+      closeGamePicker();
+    });
+  }
+  if (gamePickerDismiss) {
+    gamePickerDismiss.addEventListener("click", function () {
+      closeGamePicker();
+    });
+  }
   btnRefreshTree.addEventListener("click", function () {
     fetchFileList().then(function () {
       return openFile(currentFile, true);
     });
   });
   document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && gamePickerOverlay && !gamePickerOverlay.hidden) {
+      e.preventDefault();
+      closeGamePicker();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
       save();
@@ -852,6 +1140,99 @@ function isPathInsideRoot(filePath, root) {
     const rootResolved = pathMod.resolve(root);
     return resolved === rootResolved || resolved.startsWith(rootResolved + pathMod.sep);
 }
+const GAME_COVER_CANDIDATES = [
+    "cover.png",
+    "cover.jpg",
+    "cover.webp",
+    "preview.png",
+    "preview.jpg",
+    "thumb.png",
+    "poster.jpg",
+    "icon.png",
+];
+function prettifyGameSlug(slug) {
+    return slug
+        .split(/[-_]+/)
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+}
+function readGameTitleFromIndexHtml(gameRoot) {
+    try {
+        const html = fs.readFileSync(pathMod.join(gameRoot, "index.html"), "utf8");
+        const m = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+        if (m) {
+            const t = m[1].replace(/\s+/g, " ").trim();
+            if (t)
+                return t;
+        }
+    }
+    catch {
+        /* ignore */
+    }
+    return null;
+}
+function firstExistingCoverRel(gameRoot) {
+    for (const name of GAME_COVER_CANDIDATES) {
+        const full = pathMod.join(gameRoot, name);
+        try {
+            if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+                return name.replace(/\\/g, "/");
+            }
+        }
+        catch {
+            /* ignore */
+        }
+    }
+    return null;
+}
+/** 供 /spark 游戏选择器：标题来自 game.json、index.html 的 title、或美化后的目录名 */
+function listGameCatalog(gamesParent) {
+    const slugs = listGameSlugs(gamesParent);
+    return slugs.map((slug) => {
+        const gameRoot = pathMod.resolve(gamesParent, slug);
+        const pretty = prettifyGameSlug(slug);
+        let title = pretty;
+        let cover = null;
+        try {
+            const manifestPath = pathMod.join(gameRoot, "game.json");
+            if (fs.existsSync(manifestPath)) {
+                const raw = fs.readFileSync(manifestPath, "utf8");
+                const j = JSON.parse(raw);
+                if (typeof j.title === "string" && j.title.trim()) {
+                    title = j.title.trim();
+                }
+                if (typeof j.cover === "string" && j.cover.trim()) {
+                    const rel = j.cover.trim().replace(/^[/\\]+/, "").replace(/\\/g, "/");
+                    if (!rel.includes("..")) {
+                        const full = pathMod.resolve(gameRoot, rel);
+                        if (isPathInsideRoot(full, gameRoot)) {
+                            try {
+                                if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+                                    cover = rel;
+                                }
+                            }
+                            catch {
+                                /* ignore */
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            /* ignore bad json */
+        }
+        const fromIndex = readGameTitleFromIndexHtml(gameRoot);
+        if (fromIndex && title === pretty) {
+            title = fromIndex;
+        }
+        if (!cover) {
+            cover = firstExistingCoverRel(gameRoot);
+        }
+        return { slug, title, cover };
+    });
+}
 function handleSparkSave(req, res, gamesParent) {
     const chunks = [];
     let size = 0;
@@ -934,6 +1315,7 @@ export function startPreviewServer(gameDir, port = 4321) {
                 res.end(JSON.stringify({
                     gameRoot,
                     games: listGameSlugs(gamesParent),
+                    catalog: listGameCatalog(gamesParent),
                     currentGame,
                 }));
                 return;
@@ -948,6 +1330,7 @@ export function startPreviewServer(gameDir, port = 4321) {
                 res.writeHead(200);
                 res.end(JSON.stringify({
                     games: listGameSlugs(gamesParent),
+                    catalog: listGameCatalog(gamesParent),
                     currentGame,
                 }));
                 return;
