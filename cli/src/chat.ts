@@ -12,7 +12,7 @@ import {
 import { resolveLocalGameApiBase } from "./discover.js";
 import type { FileContext } from "./context.js";
 import { collectLocalContext } from "./context.js";
-import { executeTool } from "./tools.js";
+import { executeTool, writeGeneratedFile } from "./tools.js";
 import { startPreviewServer, type PreviewServer } from "./preview.js";
 import {
   probeSparkPreviewShell,
@@ -41,6 +41,10 @@ interface StreamToolExecution {
 interface StreamResponseResult {
   assistantText: string;
   toolExecutions: StreamToolExecution[];
+  fileWrites: Array<{
+    path: string;
+    message: string;
+  }>;
 }
 
 interface StreamingToolProgress {
@@ -48,8 +52,16 @@ interface StreamingToolProgress {
   argsText: string;
   lastAnnouncedAt: number;
   lastAnnouncedSize: number;
+}
+
+interface StreamingFileBlock {
+  path: string;
+  language: string;
+  content: string;
   lastDraftPublishedAt: number;
   lastDraftPublishedSize: number;
+  lastProgressAnnouncedAt: number;
+  lastProgressAnnouncedSize: number;
 }
 
 /**
@@ -113,7 +125,7 @@ export async function startChat(
       if (!previewOpened) {
         previewOpened = true;
         await open(
-          `http://localhost:${port}/spark?file=${encodeURIComponent(file)}&t=${Date.now()}`
+          `http://localhost:${port}/spark?game=${encodeURIComponent(gameSlug)}&file=${encodeURIComponent(file)}&t=${Date.now()}`
         );
       }
     } catch (e) {
@@ -289,8 +301,9 @@ export async function startChat(
           let previewTriggeredThisRound = false;
           let assistantText = "";
           let toolExecutions: StreamToolExecution[] = [];
+          let fileWrites: Array<{ path: string; message: string }> = [];
           try {
-            ({ assistantText, toolExecutions } = await streamResponse(
+            ({ assistantText, toolExecutions, fileWrites } = await streamResponse(
               chatConfig,
               messages,
               context,
@@ -335,18 +348,14 @@ export async function startChat(
           }
 
           if (toolExecutions.length === 0) {
-            break;
+            if (fileWrites.length === 0) {
+              break;
+            }
           }
 
-          const hasSuccessfulWrite = toolExecutions.some(
-            (item) => item.toolName === "write_file" && item.result.success
-          );
-          if (hasSuccessfulWrite) {
-            const writeMessages = toolExecutions
-              .filter(
-                (item) => item.toolName === "write_file" && item.result.success
-              )
-              .map((item) => item.result.message)
+          if (fileWrites.length > 0) {
+            const writeMessages = fileWrites
+              .map((item) => item.message)
               .filter(Boolean);
             console.log(
               chalk.green(
@@ -373,15 +382,10 @@ export async function startChat(
           const readCount = toolExecutions.filter(
             (item) => item.toolName === "read_file" && item.result.success
           ).length;
-          const writeCount = toolExecutions.filter(
-            (item) => item.toolName === "write_file" && item.result.success
-          ).length;
           const summary =
-            writeCount > 0
-              ? `已写入 ${writeCount} 个文件，正在整理最后结果...`
-              : readCount > 0
-                ? `已读取 ${readCount} 个文件，正在根据现有代码继续修改...`
-                : "本地工具已执行，正在继续生成...";
+            readCount > 0
+              ? `已读取 ${readCount} 个文件，正在根据现有代码继续修改...`
+              : "本地工具已执行，正在继续生成...";
           console.log(chalk.dim(`\n  ${summary}\n`));
         }
 
@@ -487,47 +491,20 @@ async function streamResponse(
   const decoder = new TextDecoder();
   let buffer = "";
   let assistantText = "";
-  /** tool_call 流式参数片段，在 9 完整包到达前累加 */
   let toolArgsTextBuffer = "";
   const toolExecutions: StreamToolExecution[] = [];
+  const fileWrites: Array<{ path: string; message: string }> = [];
   let firstVisibleEvent = false;
   let streamingTool: StreamingToolProgress | null = null;
+  let textLineBuffer = "";
+  let pendingFilePath: string | null = null;
+  let activeFileBlock: StreamingFileBlock | null = null;
 
   const ensureVisible = () => {
     if (firstVisibleEvent) return;
     firstVisibleEvent = true;
     onFirstVisible();
     process.stdout.write("\n");
-  };
-
-  const tryExtractToolPath = (argsText: string): string | null => {
-    const match = argsText.match(/"path"\s*:\s*"([^"]*)/);
-    return match?.[1] ?? null;
-  };
-
-  const decodePartialJsonString = (raw: string): string => {
-    let text = raw;
-    if (text.endsWith("\\")) {
-      text = text.slice(0, -1);
-    }
-    text = text.replace(/\\"/g, '"');
-    text = text.replace(/\\\\/g, "\\");
-    text = text.replace(/\\n/g, "\n");
-    text = text.replace(/\\r/g, "\r");
-    text = text.replace(/\\t/g, "\t");
-    return text;
-  };
-
-  const tryExtractPartialContent = (argsText: string): string | null => {
-    const marker = '"content":"';
-    const markerIdx = argsText.indexOf(marker);
-    if (markerIdx < 0) return null;
-    let raw = argsText.slice(markerIdx + marker.length);
-    const closingIdx = raw.lastIndexOf('"');
-    if (closingIdx >= 0) {
-      raw = raw.slice(0, closingIdx);
-    }
-    return decodePartialJsonString(raw);
   };
 
   const describeDraftPhase = (content: string): string | null => {
@@ -551,36 +528,33 @@ async function streamResponse(
   };
 
   const publishDraftPreview = (force = false) => {
-    if (!streamingTool || streamingTool.toolName !== "write_file" || !onDraftUpdate) {
+    if (!activeFileBlock || !onDraftUpdate) {
       return;
     }
-    const path = tryExtractToolPath(streamingTool.argsText);
-    const partialContent = tryExtractPartialContent(streamingTool.argsText);
-    if (!path || partialContent == null) return;
 
     const now = Date.now();
-    const size = partialContent.length;
+    const size = activeFileBlock.content.length;
     if (
       !force &&
-      now - streamingTool.lastDraftPublishedAt < 120 &&
-      size - streamingTool.lastDraftPublishedSize < 256
+      now - activeFileBlock.lastDraftPublishedAt < 120 &&
+      size - activeFileBlock.lastDraftPublishedSize < 256
     ) {
       return;
     }
 
-    const lineCount = Math.max(1, partialContent.split("\n").length);
-    const phase = describeDraftPhase(partialContent);
+    const lineCount = Math.max(1, activeFileBlock.content.split("\n").length);
+    const phase = describeDraftPhase(activeFileBlock.content);
     onDraftUpdate({
-      path,
-      content: partialContent,
+      path: activeFileBlock.path,
+      content: activeFileBlock.content,
       note:
         `正在生成草稿` +
         `${lineCount ? `，约 ${lineCount} 行` : ""}` +
         `${phase ? `，当前在补 ${phase}` : ""}`,
     });
 
-    streamingTool.lastDraftPublishedAt = now;
-    streamingTool.lastDraftPublishedSize = size;
+    activeFileBlock.lastDraftPublishedAt = now;
+    activeFileBlock.lastDraftPublishedSize = size;
   };
 
   const announceStreamingToolProgress = (force = false) => {
@@ -595,21 +569,11 @@ async function streamResponse(
       return;
     }
 
-    const path = tryExtractToolPath(streamingTool.argsText);
-    if (streamingTool.toolName === "write_file") {
-      const partialContent = tryExtractPartialContent(streamingTool.argsText);
-      const lineCount = partialContent
-        ? Math.max(1, partialContent.split("\n").length)
-        : null;
-      const phase = partialContent ? describeDraftPhase(partialContent) : null;
-      console.log(
-        chalk.dim(
-          `  正在编写${path ? ` ${path}` : "代码文件"}...` +
-            `${lineCount ? ` 草稿约 ${lineCount} 行` : ""}` +
-            `${phase ? `，当前在补 ${phase}` : ""}`
-        )
-      );
-    } else if (streamingTool.toolName === "read_file") {
+    if (streamingTool.toolName === "read_file") {
+      const path = (() => {
+        const match = streamingTool.argsText.match(/"path"\s*:\s*"([^"]*)/);
+        return match?.[1] ?? null;
+      })();
       console.log(
         chalk.dim(`  正在读取${path ? ` ${path}` : "项目文件"}...`)
       );
@@ -619,6 +583,118 @@ async function streamResponse(
 
     streamingTool.lastAnnouncedAt = now;
     streamingTool.lastAnnouncedSize = size;
+  };
+
+  const announceFileBlockProgress = (force = false) => {
+    if (!activeFileBlock) return;
+    const now = Date.now();
+    const size = activeFileBlock.content.length;
+    if (
+      !force &&
+      now - activeFileBlock.lastProgressAnnouncedAt < 300 &&
+      size - activeFileBlock.lastProgressAnnouncedSize < 160
+    ) {
+      return;
+    }
+    const lineCount = Math.max(1, activeFileBlock.content.split("\n").length);
+    const phase = describeDraftPhase(activeFileBlock.content);
+    console.log(
+      chalk.dim(
+        `  正在编写 ${activeFileBlock.path}... 草稿约 ${lineCount} 行` +
+          `${phase ? `，当前在补 ${phase}` : ""}`
+      )
+    );
+    activeFileBlock.lastProgressAnnouncedAt = now;
+    activeFileBlock.lastProgressAnnouncedSize = size;
+  };
+
+  const finalizeFileBlock = async () => {
+    if (!activeFileBlock) return;
+    publishDraftPreview(true);
+    const result = await writeGeneratedFile(
+      activeFileBlock.path,
+      activeFileBlock.content,
+      cwd
+    );
+    if (result.success) {
+      console.log(chalk.green(`  ✓ ${result.message || activeFileBlock.path}`));
+      fileWrites.push({
+        path: activeFileBlock.path,
+        message: result.message || `写入 ${activeFileBlock.path}`,
+      });
+      onDraftUpdate?.(null);
+      await onFileWritten();
+    } else {
+      console.log(chalk.red(`  ✗ ${result.error || "写入失败"}`));
+    }
+    activeFileBlock = null;
+  };
+
+  const processTextLine = async (line: string) => {
+    const trimmed = line.trim();
+
+    if (activeFileBlock) {
+      if (trimmed.startsWith("```")) {
+        await finalizeFileBlock();
+        return;
+      }
+      activeFileBlock.content += `${line}\n`;
+      publishDraftPreview();
+      announceFileBlockProgress();
+      return;
+    }
+
+    if (pendingFilePath) {
+      if (trimmed.startsWith("```")) {
+        activeFileBlock = {
+          path: pendingFilePath,
+          language: trimmed.slice(3).trim(),
+          content: "",
+          lastDraftPublishedAt: 0,
+          lastDraftPublishedSize: 0,
+          lastProgressAnnouncedAt: 0,
+          lastProgressAnnouncedSize: 0,
+        };
+        pendingFilePath = null;
+        console.log(chalk.dim(`  开始生成 ${activeFileBlock.path}...`));
+        publishDraftPreview(true);
+        return;
+      }
+
+      if (trimmed.length === 0) {
+        return;
+      }
+    }
+
+    if (trimmed.startsWith("FILE:")) {
+      ensureVisible();
+      pendingFilePath = trimmed.slice("FILE:".length).trim();
+      assistantText += `${line}\n`;
+      return;
+    }
+
+    ensureVisible();
+    process.stdout.write(`${line}\n`);
+    assistantText += `${line}\n`;
+  };
+
+  const processTextChunk = async (text: string, flush = false) => {
+    textLineBuffer += text;
+    const lines = textLineBuffer.split("\n");
+    const remaining = flush ? (lines.pop() ?? "") : "";
+    if (!flush) {
+      textLineBuffer = lines.pop() ?? "";
+    } else {
+      textLineBuffer = "";
+    }
+
+    for (const line of lines) {
+      await processTextLine(line);
+    }
+
+    if (flush && remaining.trim()) {
+      await processTextLine(remaining);
+    }
   };
 
   try {
@@ -636,10 +712,8 @@ async function streamResponse(
 
         switch (parsed.type) {
           case "0": {
-            ensureVisible();
             const text = parsed.value as string;
-            process.stdout.write(text);
-            assistantText += text;
+            await processTextChunk(text);
             break;
           }
 
@@ -660,8 +734,6 @@ async function streamResponse(
               argsText: "",
               lastAnnouncedAt: 0,
               lastAnnouncedSize: 0,
-              lastDraftPublishedAt: 0,
-              lastDraftPublishedSize: 0,
             };
             ensureVisible();
             announceStreamingToolProgress(true);
@@ -673,7 +745,6 @@ async function streamResponse(
             toolArgsTextBuffer += data.argsTextDelta ?? "";
             if (streamingTool) {
               streamingTool.argsText += data.argsTextDelta ?? "";
-              publishDraftPreview();
               announceStreamingToolProgress();
             }
             break;
@@ -700,7 +771,6 @@ async function streamResponse(
               }
             }
             toolArgsTextBuffer = "";
-            publishDraftPreview(true);
             announceStreamingToolProgress(true);
             streamingTool = null;
 
@@ -716,10 +786,6 @@ async function streamResponse(
 
             if (result.success) {
               console.log(chalk.green(`  ✓ ${result.message || toolName}`));
-              if (toolName === "write_file") {
-                onDraftUpdate?.(null);
-                await onFileWritten();
-              }
             } else {
               console.log(chalk.red(`  ✗ ${result.error}`));
             }
@@ -750,13 +816,17 @@ async function streamResponse(
       err instanceof Error &&
       /terminated|aborted/i.test(err.message)
     ) {
-      return { assistantText, toolExecutions };
+      return { assistantText, toolExecutions, fileWrites };
     }
     throw err;
   }
 
+  await processTextChunk("", true);
+  if (activeFileBlock) {
+    await finalizeFileBlock();
+  }
   onDraftUpdate?.(null);
-  return { assistantText, toolExecutions };
+  return { assistantText, toolExecutions, fileWrites };
 }
 
 function buildToolFeedbackMessage(

@@ -24,6 +24,19 @@ export function resolveGamesParent(workspaceRoot: string): string {
   return path.resolve(workspaceRoot, GAMES_PARENT_DIR);
 }
 
+export function listExistingGameSlugs(workspaceRoot: string): string[] {
+  const gamesParent = resolveGamesParent(workspaceRoot);
+  try {
+    return fs
+      .readdirSync(gamesParent, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => normalizeGameSlug(entry.name))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
 /** 游戏根目录：<workspace>/games/<slug> */
 export function resolveGameRoot(workspaceRoot: string, gameSlug: string): string {
   const slug = normalizeGameSlug(gameSlug);

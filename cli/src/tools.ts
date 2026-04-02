@@ -27,6 +27,14 @@ export async function executeTool(
   }
 }
 
+export async function writeGeneratedFile(
+  filePath: string,
+  content: string,
+  cwd: string
+): Promise<ToolResult> {
+  return writeFile(filePath, content, cwd);
+}
+
 function resolveSafe(filePath: string, cwd: string): string | null {
   const resolved = path.resolve(cwd, filePath);
   if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {

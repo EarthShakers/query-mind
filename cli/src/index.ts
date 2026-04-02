@@ -14,27 +14,95 @@ import {
   normalizeGameSlug,
   resolveGameRoot,
   GAMES_PARENT_DIR,
+  listExistingGameSlugs,
 } from "./game-root.js";
 
 const program = new Command();
 
+async function chooseGameSlug(workspaceRoot: string): Promise<string> {
+  const games = listExistingGameSlugs(workspaceRoot);
+  if (games.length === 0) {
+    return "default";
+  }
+
+  console.log(chalk.bold("\n  请选择要进入的游戏：\n"));
+  games.forEach((slug, index) => {
+    console.log(`  ${index + 1}. ${slug}`);
+  });
+  console.log();
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return await new Promise((resolve) => {
+    rl.question("请输入编号或 slug（回车默认 1）: ", (answer) => {
+      rl.close();
+      const raw = answer.trim();
+      if (!raw) {
+        resolve(games[0]);
+        return;
+      }
+      const num = Number.parseInt(raw, 10);
+      if (Number.isFinite(num) && num >= 1 && num <= games.length) {
+        resolve(games[num - 1]);
+        return;
+      }
+      resolve(normalizeGameSlug(raw));
+    });
+  });
+}
+
 program
   .name("spark")
   .description("AI-powered game code generator")
-  .version("0.1.0");
+  .version("0.1.0")
+  .addHelpText(
+    "after",
+    `
+示例:
+  spark game
+  spark game memory-card
+  spark game -g flappy-bird
+  spark preview -g memory-card -p 4321
+  spark push -g tank-battle -s tank-battle-v1
+  spark config --show
+
+说明:
+  - 每个游戏默认位于 ./${GAMES_PARENT_DIR}/<slug>/
+  - 每个游戏目录里都有自己的 index.html
+  - /spark 预览页支持切换不同 slug 的游戏
+`
+  );
 
 program
   .command("game")
   .description(
     `进入游戏生成对话模式（文件写入 ./${GAMES_PARENT_DIR}/<游戏名>/）`
   )
+  .argument("[game]", "直接指定游戏 slug，例如 memory-card")
   .option("-p, --port <port>", "预览服务端口（与 spark preview 一致）", "4321")
   .option(
     "-g, --game <slug>",
     `游戏子目录名（位于 ./${GAMES_PARENT_DIR}/<slug>）`,
-    "default"
   )
-  .action(async (opts: { port?: string; game?: string }) => {
+  .addHelpText(
+    "after",
+    `
+示例:
+  spark game
+  spark game memory-card
+  spark game -g flappy-bird
+  spark game -g pool -p 4322
+
+提示:
+  - spark game memory-card：直接进入已有游戏
+  - 不传参数时，会自动列出 ./${GAMES_PARENT_DIR}/ 下现有游戏供你选择
+  - 建议每个游戏使用独立 slug，便于在 /spark 中切换
+`
+  )
+  .action(async (gameArg: string | undefined, opts: { port?: string; game?: string }) => {
     const config = loadConfig();
     if (!config.token) {
       console.log(
@@ -45,7 +113,12 @@ program
     }
     const p = Number.parseInt(String(opts.port ?? "4321"), 10);
     const previewPort = Number.isFinite(p) && p > 0 && p < 65536 ? p : 4321;
-    const gameSlug = normalizeGameSlug(String(opts.game ?? "default"));
+    const workspaceRoot = process.cwd();
+    const gameSlug = opts.game?.trim()
+      ? normalizeGameSlug(String(opts.game))
+      : gameArg?.trim()
+        ? normalizeGameSlug(gameArg)
+        : await chooseGameSlug(workspaceRoot);
     await startChat(config, process.cwd(), { previewPort, gameSlug });
   });
 
@@ -64,6 +137,20 @@ program
     "-g, --game <slug>",
     `游戏子目录名（预览 ./${GAMES_PARENT_DIR}/<slug>）`,
     "default"
+  )
+  .addHelpText(
+    "after",
+    `
+示例:
+  spark preview
+  spark preview -g memory-card
+  spark preview -g memory-card -p 4321
+  spark preview . -g tank-battle -p 4322
+
+提示:
+  - 打开后访问 http://localhost:<port>/spark
+  - /spark 顶部可以切换 games/ 下的多个游戏目录
+`
   )
   .action(async (workspace: string, opts: { port?: string; game?: string }) => {
     const workspaceRoot = path.resolve(process.cwd(), workspace || ".");
@@ -111,6 +198,14 @@ program
 program
   .command("login")
   .description("设置认证 token")
+  .addHelpText(
+    "after",
+    `
+说明:
+  - 登录 token 会保存到本地配置
+  - 本地开发只跑 game/preview 时通常不一定需要登录
+`
+  )
   .action(async () => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -142,6 +237,14 @@ program
     "default"
   )
   .option("-s, --slug <slug>", "云端快照 slug（与本地游戏名无关）", "default")
+  .addHelpText(
+    "after",
+    `
+示例:
+  spark push -g flappy-bird
+  spark push -g tank-battle -s tank-battle-v2
+`
+  )
   .action(async (workspace: string, opts: { slug?: string; game?: string }) => {
     const config = loadConfig();
     const remoteSlug = (opts.slug || "default").trim() || "default";
@@ -166,6 +269,14 @@ program
   .description("查看或修改配置")
   .option("--api-base <url>", "设置 API 地址")
   .option("--show", "显示当前配置")
+  .addHelpText(
+    "after",
+    `
+示例:
+  spark config --show
+  spark config --api-base http://localhost:3000
+`
+  )
   .action((opts) => {
     if (opts.apiBase) {
       saveConfig({ apiBase: opts.apiBase });

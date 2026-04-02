@@ -9,3 +9,4 @@ export interface ToolResult {
     error?: string;
 }
 export declare function executeTool(toolCall: ToolCall, cwd: string): Promise<ToolResult>;
+export declare function writeGeneratedFile(filePath: string, content: string, cwd: string): Promise<ToolResult>;

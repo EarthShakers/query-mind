@@ -5,11 +5,24 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { watch } from "chokidar";
 import { lookup } from "mime-types";
+import { normalizeGameSlug } from "./game-root.js";
 
 export interface PreviewServer {
   port: number;
   close: () => void;
   setDraft: (draft: { path: string; content: string; note?: string } | null) => void;
+}
+
+function listGameSlugs(gamesParent: string): string[] {
+  try {
+    return fs
+      .readdirSync(gamesParent, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => normalizeGameSlug(entry.name))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
 }
 
 const SAVE_MAX_BYTES = 8 * 1024 * 1024;
@@ -141,7 +154,11 @@ function listSparkProjectFiles(root: string): string[] {
   return out;
 }
 
-function splitShellHtml(port: number): string {
+const MONACO_CDN =
+  "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min";
+
+function splitShellHtml(port: number, initialGame: string): string {
+  const initialGamePath = `/__spark/game/${encodeURIComponent(initialGame)}/index.html`;
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -155,6 +172,10 @@ function splitShellHtml(port: number): string {
     header .grow { flex: 1; min-width: 120px; }
     header span.hint { opacity: 0.75; font-size: 12px; }
     #file-path { font-family: ui-monospace, monospace; color: #7dd3fc; }
+    select {
+      background: #111827; color: #e5e7eb; border: 1px solid #374151;
+      border-radius: 8px; padding: 6px 10px; font-size: 13px;
+    }
     button {
       background: #2563eb; color: #fff; border: 0; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer;
     }
@@ -165,8 +186,36 @@ function splitShellHtml(port: number): string {
     #status { font-size: 12px; min-width: 140px; }
     #status.ok { color: #4ade80; }
     #status.err { color: #f87171; }
-    main { flex: 1; display: flex; min-height: 0; }
-    #pane-code { flex: 1; min-width: 0; display: flex; flex-direction: row; border-right: 1px solid #2a2a2a; }
+    #main-split { flex: 1; display: flex; flex-direction: row; min-height: 0; align-items: stretch; }
+    #pane-code {
+      flex: 0 0 45%;
+      min-width: 200px;
+      max-width: 85%;
+      display: flex;
+      flex-direction: row;
+      min-height: 0;
+      overflow: hidden;
+    }
+    #splitter {
+      flex: 0 0 10px;
+      cursor: col-resize;
+      background: #2a2a2a;
+      position: relative;
+      z-index: 2;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    /* 扩大可点区域，触控板/窄条不易误触失败 */
+    #splitter::before {
+      content: "";
+      position: absolute;
+      left: -8px;
+      right: -8px;
+      top: 0;
+      bottom: 0;
+    }
+    #splitter:hover, #splitter.dragging { background: #3b82f6; }
     #file-sidebar {
       flex: 0 0 200px; min-width: 160px; max-width: 280px; border-right: 1px solid #2a2a2a;
       display: flex; flex-direction: column; min-height: 0; background: #111;
@@ -179,12 +228,18 @@ function splitShellHtml(port: number): string {
     }
     #file-tree button.file-item:hover { background: #1f2937; }
     #file-tree button.file-item.active { background: #1e3a5f; color: #93c5fd; }
-    #editor-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+    #editor-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; position: relative; }
+    #editor {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+    }
     #editor-fallback {
-      flex: 1; width: 100%; min-height: 0; display: block; border: 0; outline: 0;
+      flex: 1; width: 100%; min-height: 0; display: none; border: 0; outline: 0;
       resize: none; background: #0d0d0d; color: #e5e7eb; padding: 14px; font: 13px/1.6 ui-monospace, monospace;
     }
-    #pane-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #111; }
+    #editor-fallback.fallback-visible { display: block; }
+    #pane-preview { flex: 1 1 auto; min-width: 200px; display: flex; flex-direction: column; background: #111; min-height: 0; }
     #pane-preview iframe { flex: 1; width: 100%; border: 0; background: #1a1a1a; }
     .label { font-weight: 600; letter-spacing: 0.02em; }
   </style>
@@ -192,59 +247,106 @@ function splitShellHtml(port: number): string {
 <body>
   <header>
     <span class="label">spark</span>
+    <select id="game-select"></select>
     <span id="file-path">index.html</span>
     <span class="grow"></span>
     <button type="button" class="secondary" id="btn-refresh-tree">刷新列表</button>
+    <button type="button" class="secondary" id="btn-reset-split" title="代码区与预览区恢复约各占一半宽度">重置布局</button>
     <button type="button" id="btn-save">保存 (Ctrl+S)</button>
     <span id="status" class="hint"></span>
     <span class="hint">左侧可显示计划/草稿；右侧仅在真实写入后运行</span>
   </header>
-  <main>
+  <main id="main-split">
     <div id="pane-code">
       <div id="file-sidebar">
         <div class="side-head">游戏文件（可编辑）</div>
         <div id="file-tree"></div>
       </div>
       <div id="editor-wrap">
-        <textarea id="editor-fallback" spellcheck="false"></textarea>
+        <div id="editor"></div>
+        <textarea id="editor-fallback" spellcheck="false" class="fallback-visible"></textarea>
       </div>
     </div>
+    <div id="splitter" role="separator" aria-orientation="vertical" aria-label="调整代码区与预览区宽度"></div>
     <div id="pane-preview">
-      <iframe id="game" title="game" src="/index.html?nohmr=1"></iframe>
+      <iframe id="game" title="game" src="${initialGamePath}?nohmr=1"></iframe>
     </div>
   </main>
+  <script src="${MONACO_CDN}/vs/loader.js"></script>
   <script>
 (function () {
   var port = ${port};
   var params = new URLSearchParams(location.search);
+  var currentGame = params.get("game") || ${JSON.stringify(initialGame)};
   var currentFile = params.get("file") || "index.html";
 
   var iframe = document.getElementById("game");
   var statusEl = document.getElementById("status");
   var btnSave = document.getElementById("btn-save");
   var btnRefreshTree = document.getElementById("btn-refresh-tree");
+  var gameSelectEl = document.getElementById("game-select");
   var fileTreeEl = document.getElementById("file-tree");
   var pathEl = document.getElementById("file-path");
+  var editorHostEl = document.getElementById("editor");
   var fallbackEditorEl = document.getElementById("editor-fallback");
+  var monacoEditor = null;
+  var suppressEditorChange = 0;
   var dirty = false;
   var draftState = null;
+  /** 编辑器内容与当前加载时的 game 一致时才允许 openFile 短路；换游戏后必须重新拉取 */
+  var lastLoadedGame = null;
+  var MON_BASE = "${MONACO_CDN}";
 
   pathEl.textContent = currentFile;
+  gameSelectEl.value = currentGame;
 
   function setStatus(msg, ok) {
     statusEl.textContent = msg;
     statusEl.className = ok ? "ok" : "err";
   }
 
+  function languageForPath(name) {
+    var ext = (name.split(".").pop() || "").toLowerCase();
+    if (ext === "js" || ext === "mjs" || ext === "cjs") return "javascript";
+    if (ext === "css") return "css";
+    if (ext === "json") return "json";
+    if (ext === "md") return "markdown";
+    if (ext === "ts" || ext === "tsx") return "typescript";
+    if (ext === "jsx") return "javascript";
+    if (ext === "html" || ext === "htm") return "html";
+    return "plaintext";
+  }
+
+  function applyEditorLanguage() {
+    if (monacoEditor && monacoEditor.getModel && monacoEditor.getModel()) {
+      monaco.editor.setModelLanguage(monacoEditor.getModel(), languageForPath(currentFile));
+    }
+  }
+
   function getCurrentEditorValue() {
-    return fallbackEditorEl.value;
+    return monacoEditor ? monacoEditor.getValue() : fallbackEditorEl.value;
   }
 
   function setCurrentEditorValue(text) {
-    fallbackEditorEl.value = text;
+    if (monacoEditor) {
+      suppressEditorChange++;
+      try {
+        monacoEditor.setValue(text || "");
+        applyEditorLanguage();
+      } finally {
+        suppressEditorChange--;
+      }
+    } else {
+      fallbackEditorEl.value = text;
+    }
+  }
+
+  function layoutMonaco() {
+    if (monacoEditor) monacoEditor.layout();
   }
 
   function currentEditorHasModel() {
+    if (monacoEditor) return true;
     return !!fallbackEditorEl.value;
   }
 
@@ -254,20 +356,33 @@ function splitShellHtml(port: number): string {
 
   function applyDraftToEditor() {
     if (!hasDraftForCurrentFile()) return false;
-    fallbackEditorEl.value = draftState.content || "";
+    setCurrentEditorValue(draftState.content || "");
     dirty = false;
     btnSave.disabled = true;
     setStatus(draftState.note || "正在显示生成草稿，待真实写入后可保存", true);
+    lastLoadedGame = currentGame;
     return true;
   }
 
   function bumpIframe() {
-    iframe.src = "/index.html?nohmr=1&t=" + Date.now();
+    iframe.src =
+      "/__spark/game/" +
+      encodeURIComponent(currentGame) +
+      "/index.html?nohmr=1&t=" +
+      Date.now();
   }
 
   function rawUrl(rel) {
     var parts = rel.split("/").filter(Boolean);
-    return "/__spark/raw/" + parts.map(encodeURIComponent).join("/");
+    return "/__spark/raw/" + parts.map(encodeURIComponent).join("/") + "?game=" + encodeURIComponent(currentGame);
+  }
+
+  function updateUrl() {
+    history.replaceState(
+      null,
+      "",
+      "?game=" + encodeURIComponent(currentGame) + "&file=" + encodeURIComponent(currentFile)
+    );
   }
 
   function highlightTreeActive() {
@@ -297,54 +412,98 @@ function splitShellHtml(port: number): string {
     highlightTreeActive();
   }
 
-  function fetchFileList() {
-    return fetch("/__spark/list")
+  function fetchGames() {
+    return fetch("/__spark/games")
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
       .then(function (j) {
+        var games = j.games || [];
+        gameSelectEl.innerHTML = "";
+        games.forEach(function (slug) {
+          var opt = document.createElement("option");
+          opt.value = slug;
+          opt.textContent = slug;
+          if (slug === currentGame) opt.selected = true;
+          gameSelectEl.appendChild(opt);
+        });
+        if (games.length && games.indexOf(currentGame) < 0) {
+          currentGame = games[0];
+          gameSelectEl.value = currentGame;
+        }
+      })
+      .catch(function () {});
+  }
+
+  function fetchFileList() {
+    var gameSnapshot = currentGame;
+    return fetch("/__spark/list?game=" + encodeURIComponent(gameSnapshot))
+      .then(function (r) {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
+      .then(function (j) {
+        if (gameSnapshot !== currentGame) return [];
         var files = j.files || [];
         renderFileList(files);
         if (files.length && files.indexOf(currentFile) < 0) {
           currentFile = files[0];
           pathEl.textContent = currentFile;
-          history.replaceState(null, "", "?file=" + encodeURIComponent(currentFile));
+          updateUrl();
         }
         return files;
       })
       .catch(function () {
+        if (gameSnapshot !== currentGame) return [];
         fileTreeEl.textContent = "无法加载列表";
         return [];
       });
   }
 
-  function openFile(rel) {
-    if (rel === currentFile && currentEditorHasModel()) return Promise.resolve();
+  function openFile(rel, force) {
+    force = !!force;
+    if (
+      !force &&
+      rel === currentFile &&
+      currentEditorHasModel() &&
+      lastLoadedGame === currentGame
+    ) {
+      return Promise.resolve();
+    }
     if (dirty) {
       if (!confirm("当前文件未保存，切换将丢失修改。是否继续？")) return;
     }
     currentFile = rel;
     pathEl.textContent = currentFile;
-    history.replaceState(null, "", "?file=" + encodeURIComponent(currentFile));
+    updateUrl();
     highlightTreeActive();
     if (applyDraftToEditor()) {
       return Promise.resolve();
     }
+    var gameSnapshot = currentGame;
     return fetch(rawUrl(currentFile))
       .then(function (r) {
+        if (gameSnapshot !== currentGame) return "__stale__";
         if (!r.ok) throw new Error(String(r.status));
         return r.text();
       })
       .then(function (text) {
-        fallbackEditorEl.value = text;
+        if (text === "__stale__") return;
+        if (gameSnapshot !== currentGame) return;
+        setCurrentEditorValue(text);
+        lastLoadedGame = currentGame;
         dirty = false;
         btnSave.disabled = false;
         setStatus("", true);
+        layoutMonaco();
       })
       .catch(function () {
-        fallbackEditorEl.value = "<!-- 文件不存在，保存将创建 -->";
+        if (gameSnapshot !== currentGame) return;
+        setCurrentEditorValue("<!-- 文件不存在，保存将创建 -->");
+        lastLoadedGame = currentGame;
         dirty = true;
+        layoutMonaco();
       });
   }
 
@@ -352,16 +511,22 @@ function splitShellHtml(port: number): string {
     if (applyDraftToEditor()) {
       return Promise.resolve();
     }
+    var gameSnapshot = currentGame;
+    var pathSnapshot = currentFile;
     return fetch(rawUrl(currentFile))
       .then(function (r) {
+        if (gameSnapshot !== currentGame || pathSnapshot !== currentFile) return "__stale__";
         if (!r.ok) throw new Error(String(r.status));
         return r.text();
       })
       .then(function (text) {
+        if (text === "__stale__") return;
+        if (gameSnapshot !== currentGame || pathSnapshot !== currentFile) return;
         if (dirty) {
           if (!confirm("磁盘上的文件已变化，是否放弃未保存修改并重新加载？")) return;
         }
         setCurrentEditorValue(text);
+        lastLoadedGame = currentGame;
         dirty = false;
         btnSave.disabled = false;
         setStatus("", true);
@@ -376,7 +541,7 @@ function splitShellHtml(port: number): string {
     fetch("/__spark/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: currentFile, content: content }),
+      body: JSON.stringify({ game: currentGame, path: currentFile, content: content }),
     })
       .then(function (r) {
         return r.json().then(function (j) {
@@ -408,10 +573,178 @@ function splitShellHtml(port: number): string {
     statusEl.className = "hint";
     btnSave.disabled = false;
   });
+
+  function initSplitter() {
+    var main = document.getElementById("main-split");
+    var paneCode = document.getElementById("pane-code");
+    var splitter = document.getElementById("splitter");
+    if (!main || !paneCode || !splitter) return;
+    var stored = null;
+    try {
+      stored = localStorage.getItem("spark.splitLeftPx");
+    } catch (e0) {}
+    var w = stored ? parseInt(stored, 10) : NaN;
+    var total0 = main.getBoundingClientRect().width;
+    var splitterGrip = 10;
+    if (!(w >= 200) || w > total0 - 220) {
+      w = Math.max(280, Math.floor(total0 * 0.45));
+    }
+    paneCode.style.flex = "0 0 " + w + "px";
+
+    var dragActive = false;
+    var dragPointerId = null;
+    var startX = 0;
+    var startW = 0;
+
+    var minSplitL = 200;
+    var minSplitR = 200;
+
+    function applySplitWidth(clientX) {
+      var dx = clientX - startX;
+      var nw = startW + dx;
+      var total = main.getBoundingClientRect().width;
+      nw = Math.max(minSplitL, Math.min(nw, total - minSplitR - splitterGrip));
+      paneCode.style.flex = "0 0 " + nw + "px";
+      layoutMonaco();
+    }
+
+    function resetSplitToCenter() {
+      var total = main.getBoundingClientRect().width;
+      var ideal = Math.floor((total - splitterGrip) / 2);
+      var nw = Math.max(
+        minSplitL,
+        Math.min(ideal, total - minSplitR - splitterGrip)
+      );
+      paneCode.style.flex = "0 0 " + nw + "px";
+      layoutMonaco();
+      try {
+        localStorage.setItem("spark.splitLeftPx", String(Math.round(nw)));
+      } catch (eReset) {}
+    }
+
+    function endSplitDrag() {
+      if (!dragActive) return;
+      dragActive = false;
+      dragPointerId = null;
+      splitter.classList.remove("dragging");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      layoutMonaco();
+      try {
+        localStorage.setItem(
+          "spark.splitLeftPx",
+          String(Math.round(paneCode.getBoundingClientRect().width))
+        );
+      } catch (e1) {}
+    }
+
+    function onPointerMove(e) {
+      if (!dragActive) return;
+      if (dragPointerId !== null && e.pointerId !== dragPointerId) return;
+      e.preventDefault();
+      applySplitWidth(e.clientX);
+    }
+
+    function onPointerUp(e) {
+      if (!dragActive) return;
+      if (dragPointerId !== null && e.pointerId !== dragPointerId) return;
+      try {
+        splitter.releasePointerCapture(e.pointerId);
+      } catch (eRel) {}
+      endSplitDrag();
+    }
+
+    splitter.addEventListener(
+      "pointerdown",
+      function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dragActive = true;
+        dragPointerId = e.pointerId;
+        startX = e.clientX;
+        startW = paneCode.getBoundingClientRect().width;
+        splitter.classList.add("dragging");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        try {
+          splitter.setPointerCapture(e.pointerId);
+        } catch (eCap) {}
+      },
+      { passive: false }
+    );
+
+    splitter.addEventListener("pointermove", onPointerMove, { passive: false });
+    splitter.addEventListener("pointerup", onPointerUp);
+    splitter.addEventListener("pointercancel", onPointerUp);
+    splitter.addEventListener("lostpointercapture", function () {
+      if (dragActive) endSplitDrag();
+    });
+
+    var btnResetSplit = document.getElementById("btn-reset-split");
+    if (btnResetSplit) {
+      btnResetSplit.addEventListener("click", function () {
+        resetSplitToCenter();
+      });
+    }
+
+    window.addEventListener("resize", function () {
+      layoutMonaco();
+    });
+  }
+
+  function wireMonacoChange() {
+    if (!monacoEditor) return;
+    monacoEditor.onDidChangeModelContent(function () {
+      if (suppressEditorChange > 0) return;
+      if (hasDraftForCurrentFile()) {
+        setStatus("当前是生成草稿，等待真实写入完成后再编辑/保存", false);
+        suppressEditorChange++;
+        try {
+          monacoEditor.setValue(draftState.content || "");
+        } finally {
+          suppressEditorChange--;
+        }
+        return;
+      }
+      dirty = true;
+      statusEl.textContent = "";
+      statusEl.className = "hint";
+      btnSave.disabled = false;
+    });
+  }
+
+  function boot() {
+    initSplitter();
+    fetchGames()
+      .then(function () {
+        return fetchFileList();
+      })
+      .then(function () {
+        return openFile(currentFile);
+      })
+      .then(function () {
+        layoutMonaco();
+      });
+  }
+
   btnSave.addEventListener("click", save);
-  btnRefreshTree.addEventListener("click", function () {
+  gameSelectEl.addEventListener("change", function () {
+    currentGame = gameSelectEl.value || ${JSON.stringify(initialGame)};
+    currentFile = "index.html";
+    draftState = null;
+    lastLoadedGame = null;
+    btnSave.disabled = false;
+    pathEl.textContent = currentFile;
+    updateUrl();
     fetchFileList().then(function () {
       return openFile(currentFile);
+    }).then(function () {
+      bumpIframe();
+    });
+  });
+  btnRefreshTree.addEventListener("click", function () {
+    fetchFileList().then(function () {
+      return openFile(currentFile, true);
     });
   });
   document.addEventListener("keydown", function (e) {
@@ -421,9 +754,57 @@ function splitShellHtml(port: number): string {
     }
   });
 
-  fetchFileList().then(function () {
-    return openFile(currentFile);
-  });
+  if (typeof require !== "undefined") {
+    self.MonacoEnvironment = {
+      getWorkerUrl: function (_moduleId, label) {
+        var b = MON_BASE + "/vs";
+        if (label === "json") return b + "/language/json/json.worker.js";
+        if (label === "css" || label === "scss" || label === "less")
+          return b + "/language/css/css.worker.js";
+        if (label === "html" || label === "handlebars" || label === "razor")
+          return b + "/language/html/html.worker.js";
+        if (label === "typescript" || label === "javascript")
+          return b + "/language/typescript/ts.worker.js";
+        return b + "/editor/editor.worker.js";
+      },
+    };
+    require.config({ paths: { vs: MON_BASE + "/vs" } });
+    require(
+      ["vs/editor/editor.main"],
+      function () {
+        monaco.editor.defineTheme("spark-dark", {
+          base: "vs-dark",
+          inherit: true,
+          rules: [],
+          colors: { "editor.background": "#0d0d0d" },
+        });
+        monaco.editor.setTheme("spark-dark");
+        monacoEditor = monaco.editor.create(editorHostEl, {
+          value: "",
+          language: "html",
+          fontSize: 13,
+          wordWrap: "on",
+          minimap: { enabled: false },
+          automaticLayout: true,
+          tabSize: 2,
+          insertSpaces: true,
+        });
+        wireMonacoChange();
+        fallbackEditorEl.classList.remove("fallback-visible");
+        fallbackEditorEl.style.display = "none";
+        boot();
+      },
+      function (err) {
+        console.error("[spark] Monaco load error:", err);
+        if (editorHostEl) editorHostEl.style.display = "none";
+        fallbackEditorEl.classList.add("fallback-visible");
+        fallbackEditorEl.style.display = "block";
+        boot();
+      }
+    );
+  } else {
+    boot();
+  }
 
   try {
     var ws = new WebSocket("ws://" + location.hostname + ":" + port);
@@ -436,7 +817,7 @@ function splitShellHtml(port: number): string {
             if (!currentFile || currentFile === "index.html" || currentFile === draftState.path) {
               currentFile = draftState.path;
               pathEl.textContent = currentFile;
-              history.replaceState(null, "", "?file=" + encodeURIComponent(currentFile));
+              updateUrl();
               highlightTreeActive();
               applyDraftToEditor();
             }
@@ -484,7 +865,7 @@ function isPathInsideRoot(filePath: string, root: string): boolean {
 function handleSparkSave(
   req: IncomingMessage,
   res: ServerResponse,
-  gameRoot: string
+  gamesParent: string
 ): void {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -500,7 +881,9 @@ function handleSparkSave(
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     try {
       const raw = Buffer.concat(chunks).toString("utf-8");
-      const body = JSON.parse(raw) as { path?: string; content?: string };
+      const body = JSON.parse(raw) as { game?: string; path?: string; content?: string };
+      const gameSlug = normalizeGameSlug(body.game || "default");
+      const gameRoot = pathMod.resolve(gamesParent, gameSlug);
       const rel = (body.path || "").trim().replace(/^[/\\]+/, "");
       if (!rel || rel.includes("..")) {
         res.writeHead(400);
@@ -545,7 +928,9 @@ export function startPreviewServer(
   gameDir: string,
   port = 4321
 ): PreviewServer {
-  const gameRoot = pathMod.resolve(gameDir);
+  const initialGameRoot = pathMod.resolve(gameDir);
+  const gamesParent = pathMod.dirname(initialGameRoot);
+  const initialGame = pathMod.basename(initialGameRoot);
   let draftState: { path: string; content: string; note?: string } | null = null;
 
   const server = http.createServer((req, res) => {
@@ -555,6 +940,15 @@ export function startPreviewServer(
     const pathname = decodeURIComponent(q >= 0 ? rawUrl.slice(0, q) : rawUrl);
     const search = q >= 0 ? rawUrl.slice(q + 1) : "";
     const searchParams = new URLSearchParams(search);
+    const gamePathPrefix = "/__spark/game/";
+    const pathGameMatch = pathname.startsWith(gamePathPrefix)
+      ? pathname.slice(gamePathPrefix.length).match(/^([^/]+)(\/.*)?$/)
+      : null;
+    const pathGame = pathGameMatch?.[1]
+      ? normalizeGameSlug(pathGameMatch[1])
+      : null;
+    const currentGame = pathGame ?? normalizeGameSlug(searchParams.get("game") || initialGame);
+    const gameRoot = pathMod.resolve(gamesParent, currentGame);
     const nohmr = searchParams.get("nohmr") === "1";
 
     if (pathname === "/__spark/meta") {
@@ -564,6 +958,25 @@ export function startPreviewServer(
         res.end(
           JSON.stringify({
             gameRoot,
+            games: listGameSlugs(gamesParent),
+            currentGame,
+          })
+        );
+        return;
+      }
+      res.writeHead(405, { Allow: "GET" });
+      res.end();
+      return;
+    }
+
+    if (pathname === "/__spark/games") {
+      if (method === "GET") {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            games: listGameSlugs(gamesParent),
+            currentGame,
           })
         );
         return;
@@ -598,7 +1011,7 @@ export function startPreviewServer(
 
     if (pathname === "/__spark/save") {
       if (method === "POST") {
-        handleSparkSave(req, res, gameRoot);
+        handleSparkSave(req, res, gamesParent);
         return;
       }
       res.writeHead(405, { Allow: "POST" });
@@ -608,7 +1021,7 @@ export function startPreviewServer(
 
     if (pathname === "/spark" || pathname === "/spark/") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(splitShellHtml(port));
+      res.end(splitShellHtml(port, currentGame));
       return;
     }
 
@@ -640,7 +1053,11 @@ export function startPreviewServer(
       return;
     }
 
-    const staticPath = pathname === "/" ? "/index.html" : pathname;
+    const staticPath = pathGameMatch
+      ? pathGameMatch[2] || "/index.html"
+      : pathname === "/"
+        ? "/index.html"
+        : pathname;
     const relative = staticPath.replace(/^[/\\]+/, "");
     if (isSparkStaticHttpBlocked(relative)) {
       res.writeHead(403);
@@ -681,7 +1098,7 @@ export function startPreviewServer(
   }
 
   let debounceTimer: ReturnType<typeof setTimeout>;
-  const watcher = watch(gameRoot, {
+  const watcher = watch(gamesParent, {
     ignoreInitial: true,
     ignored: /(^|[/\\])\./,
   });

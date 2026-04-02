@@ -10,6 +10,9 @@ export async function executeTool(toolCall, cwd) {
             return { success: false, error: `未知工具: ${toolCall.tool}` };
     }
 }
+export async function writeGeneratedFile(filePath, content, cwd) {
+    return writeFile(filePath, content, cwd);
+}
 function resolveSafe(filePath, cwd) {
     const resolved = path.resolve(cwd, filePath);
     if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {

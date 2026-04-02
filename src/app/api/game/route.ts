@@ -47,20 +47,11 @@ export async function POST(req: Request) {
       const result = await streamText({
         model: dashscopeProvider(getModelGame()),
         abortSignal: abortController.signal,
-        // 游戏生成通常只需要「读文件 -> 写文件 -> 可选简短收尾」几步，限制步数能减少无意义长尾输出
-        maxSteps: 3,
+        // 游戏生成现在只保留 read_file 工具；写文件通过普通文本流输出 FILE: 代码块。
+        maxSteps: 6,
         system: getGameSystemPrompt(context),
         messages: sanitizeMessages(messages),
         tools: {
-          write_file: {
-            description: "写入文件到用户本地项目目录",
-            parameters: z.object({
-              path: z
-                .string()
-                .describe("相对路径，如 index.html 或 src/game.js"),
-              content: z.string().describe("文件完整内容"),
-            }),
-          },
           read_file: {
             description: "读取用户本地项目中的文件",
             parameters: z.object({
