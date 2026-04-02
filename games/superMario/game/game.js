@@ -3,6 +3,7 @@ class Game {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
+    this.ctx.imageSmoothingEnabled = false;
     this.canvas.width = CONFIG.CANVAS_WIDTH;
     this.canvas.height = CONFIG.CANVAS_HEIGHT;
     
@@ -20,8 +21,10 @@ class Game {
     
     this.cameraX = 0;
     this.particles = [];
+    this.popupCoins = [];
     this.clouds = [];
     this.bgOffset = 0;
+    this.backgroundGradient = null;
     
     this.questionBlocks = {};
     
@@ -43,27 +46,41 @@ class Game {
       onGround: false,
       facing: 1,
       animFrame: 0,
-      animTimer: 0
+      animTimer: 0,
+      jumpsRemaining: 1,
+      jumpPressed: false
     };
     
-    this.map = level.map;
+    this.map = level.map.map(row => row.slice());
     this.mapWidth = level.width;
     this.bgTheme = level.bgTheme;
+    this.backgroundGradient = this.createBackgroundGradient();
     
     this.questionBlocks = {};
+    this.popupCoins = [];
     
-    this.enemies = level.enemies.map(e => ({
-      x: e.x * CONFIG.TILE_SIZE,
+    this.enemies = level.enemies.map(e => {
+      const baseX = e.x * CONFIG.TILE_SIZE;
+      const phaseSeed = (e.x * 17 + e.y * 13) % 7;
+      const direction = phaseSeed % 2 === 0 ? -1 : 1;
+      const patrolDistance = (2 + (phaseSeed % 3)) * CONFIG.TILE_SIZE;
+      const offset = ((phaseSeed % 5) - 2) * (CONFIG.TILE_SIZE / 4);
+
+      return {
+      x: baseX + offset,
       y: (e.y - 1) * CONFIG.TILE_SIZE,
-      vx: -CONFIG.ENEMY.SPEED,
       width: CONFIG.ENEMY.WIDTH,
       height: CONFIG.ENEMY.HEIGHT,
       type: e.type,
       alive: true,
       animFrame: 0,
-      startX: e.x * CONFIG.TILE_SIZE - 4 * CONFIG.TILE_SIZE,
-      endX: e.x * CONFIG.TILE_SIZE + 4 * CONFIG.TILE_SIZE
-    }));
+      spawnX: baseX + offset,
+      patrolDistance,
+      direction,
+      vx: direction * CONFIG.ENEMY.SPEED,
+      turnCooldown: 0
+    };
+    });
     
     this.coins = level.coins.map(c => ({
       x: c.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
@@ -167,10 +184,18 @@ class Game {
     p.vx *= CONFIG.PLAYER.FRICTION;
     p.vx = Math.max(-CONFIG.PLAYER.SPEED, Math.min(CONFIG.PLAYER.SPEED, p.vx));
     
-    if ((this.keys['Space'] || this.keys['ArrowUp'] || this.keys['KeyW']) && p.onGround) {
+    const jumpHeld = this.keys['Space'] || this.keys['ArrowUp'] || this.keys['KeyW'];
+    if (jumpHeld && !p.jumpPressed && (p.onGround || p.jumpsRemaining > 0)) {
       p.vy = CONFIG.PLAYER.JUMP_FORCE;
+      if (!p.onGround) {
+        p.jumpsRemaining--;
+      }
       p.onGround = false;
+      p.jumpPressed = true;
       this.addParticles(p.x + p.width / 2, p.y + p.height, 3, '#aaa');
+    }
+    if (!jumpHeld) {
+      p.jumpPressed = false;
     }
     
     p.vy += CONFIG.GRAVITY;
@@ -237,9 +262,15 @@ class Game {
           if (p.vy > 0) {
             p.y = y * tileSize - p.height;
             p.onGround = true;
+            p.jumpsRemaining = 1;
           } else if (p.vy < 0) {
+            const overlapLeft = Math.max(p.x, x * tileSize);
+            const overlapRight = Math.min(p.x + p.width, (x + 1) * tileSize);
+            const overlapWidth = Math.max(0, overlapRight - overlapLeft);
             p.y = (y + 1) * tileSize;
-            this.hitQuestionBlock(x, y);
+            if (overlapWidth >= 10) {
+              this.hitQuestionBlock(x, y);
+            }
           }
           p.vy = 0;
         }
@@ -260,16 +291,19 @@ class Game {
     this.map[tileY][tileX] = 2;
     
     const coinX = tileX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-    const coinY = tileY * CONFIG.TILE_SIZE - CONFIG.TILE_SIZE / 2;
-    
-    // 弹出的金币直接添加到数组，会被自动收集
-    this.coins.push({
+    const coinStartY = tileY * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+    const coinPeakY = tileY * CONFIG.TILE_SIZE - CONFIG.TILE_SIZE / 2;
+
+    this.totalCoins++;
+    this.coinsEl.textContent = this.totalCoins;
+
+    this.popupCoins.push({
       x: coinX,
-      y: coinY,
+      y: coinStartY,
       rotation: 0,
-      popping: true,
-      popVy: -8,
-      popTargetY: tileY * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
+      vy: -7,
+      peakY: coinPeakY,
+      life: 24
     });
     
     this.addParticles(coinX, tileY * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE, 4, CONFIG.COLORS.COIN);
@@ -286,39 +320,35 @@ class Game {
     
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      
-      enemy.x += enemy.vx;
+
+      if (enemy.turnCooldown > 0) {
+        enemy.turnCooldown--;
+        continue;
+      }
+
+      const nextX = enemy.x + enemy.vx;
       enemy.animFrame = (enemy.animFrame + 0.15) % 2;
-      
-      const checkWallX = enemy.vx > 0 
-        ? Math.floor((enemy.x + enemy.width + 4) / tileSize) 
-        : Math.floor((enemy.x - 4) / tileSize);
-      const enemyBodyY = Math.floor((enemy.y + enemy.height / 2) / tileSize);
-      
-      if (this.isSolid(checkWallX, enemyBodyY)) {
-        enemy.vx *= -1;
-        enemy.x += enemy.vx * 2;
+
+      const frontX = enemy.direction > 0 ? nextX + enemy.width + 2 : nextX - 2;
+      const frontTileX = Math.floor(frontX / tileSize);
+      const wallTopY = Math.floor((enemy.y + 4) / tileSize);
+      const wallBottomY = Math.floor((enemy.y + enemy.height - 4) / tileSize);
+      const groundAheadY = Math.floor((enemy.y + enemy.height + 6) / tileSize);
+      const reachedLeft = nextX <= enemy.spawnX - enemy.patrolDistance;
+      const reachedRight = nextX >= enemy.spawnX + enemy.patrolDistance;
+      const hitWall =
+        this.isSolid(frontTileX, wallTopY) ||
+        this.isSolid(frontTileX, wallBottomY);
+      const hasGroundAhead = this.isSolid(frontTileX, groundAheadY);
+
+      if (reachedLeft || reachedRight || hitWall || !hasGroundAhead) {
+        enemy.direction *= -1;
+        enemy.vx = enemy.direction * CONFIG.ENEMY.SPEED;
+        enemy.turnCooldown = 8;
         continue;
       }
-      
-      const checkGroundX = enemy.vx > 0 
-        ? Math.floor((enemy.x + enemy.width) / tileSize) 
-        : Math.floor(enemy.x / tileSize);
-      const feetY = Math.floor((enemy.y + enemy.height + 2) / tileSize);
-      
-      if (!this.isSolid(checkGroundX, feetY)) {
-        enemy.vx *= -1;
-        enemy.x += enemy.vx * 2;
-        continue;
-      }
-      
-      if (enemy.x <= enemy.startX) {
-        enemy.vx = CONFIG.ENEMY.SPEED;
-        enemy.x = enemy.startX + 1;
-      } else if (enemy.x >= enemy.endX) {
-        enemy.vx = -CONFIG.ENEMY.SPEED;
-        enemy.x = enemy.endX - 1;
-      }
+
+      enemy.x = nextX;
     }
   }
   
@@ -327,13 +357,18 @@ class Game {
       const coin = this.coins[i];
       coin.rotation += CONFIG.COIN.ROTATION_SPEED;
       
-      if (coin.popping) {
-        coin.y += coin.popVy;
-        coin.popVy += 0.5;
-        if (coin.y >= coin.popTargetY) {
-          coin.y = coin.popTargetY;
-          coin.popping = false;
-        }
+    }
+
+    for (let i = this.popupCoins.length - 1; i >= 0; i--) {
+      const coin = this.popupCoins[i];
+      coin.rotation += CONFIG.COIN.ROTATION_SPEED * 1.5;
+      coin.y += coin.vy;
+      if (coin.y <= coin.peakY) {
+        coin.vy = 1.2;
+      }
+      coin.life--;
+      if (coin.life <= 0) {
+        this.popupCoins.splice(i, 1);
       }
     }
   }
@@ -456,23 +491,7 @@ class Game {
   
   drawBackground() {
     const ctx = this.ctx;
-    
-    let gradient;
-    if (this.bgTheme === 'underground') {
-      gradient = ctx.createLinearGradient(0, 0, 0, CONFIG.CANVAS_HEIGHT);
-      gradient.addColorStop(0, '#1a1a2e');
-      gradient.addColorStop(1, '#2d2d44');
-    } else if (this.bgTheme === 'sky') {
-      gradient = ctx.createLinearGradient(0, 0, 0, CONFIG.CANVAS_HEIGHT);
-      gradient.addColorStop(0, '#ff9a9e');
-      gradient.addColorStop(0.5, '#fecfef');
-      gradient.addColorStop(1, '#87ceeb');
-    } else {
-      gradient = ctx.createLinearGradient(0, 0, 0, CONFIG.CANVAS_HEIGHT);
-      gradient.addColorStop(0, '#87ceeb');
-      gradient.addColorStop(1, '#e0f6ff');
-    }
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = this.backgroundGradient || CONFIG.COLORS.SKY;
     ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
     
     if (this.bgTheme !== 'underground') {
@@ -524,14 +543,14 @@ class Game {
         const tile = this.map[y][x];
         if (tile === 0) continue;
         
-        const screenX = x * tileSize - this.cameraX;
+        const screenX = Math.round(x * tileSize - this.cameraX);
         const screenY = y * tileSize;
         
         switch (tile) {
           case 1: this.drawGround(screenX, screenY, tileSize); break;
           case 2: this.drawBrick(screenX, screenY, tileSize, x, y); break;
           case 3: this.drawQuestionBlock(screenX, screenY, tileSize, x, y); break;
-          case 4: this.drawPipe(screenX, screenY, tileSize, y); break;
+          case 4: this.drawPipe(screenX, screenY, tileSize, x, y); break;
           case 6: this.drawPlatform(screenX, screenY, tileSize); break;
         }
       }
@@ -600,9 +619,9 @@ class Game {
     }
   }
   
-  drawPipe(x, y, size, tileY) {
+  drawPipe(x, y, size, tileX, tileY) {
     const ctx = this.ctx;
-    const isTop = tileY === 0 || this.map[tileY - 1] && this.map[tileY - 1][Math.floor((x + this.cameraX) / size)] !== 4;
+    const isTop = tileY === 0 || this.map[tileY - 1]?.[tileX] !== 4;
     
     if (isTop) {
       ctx.fillStyle = CONFIG.COLORS.PIPE;
@@ -633,7 +652,7 @@ class Game {
     const ctx = this.ctx;
     
     for (const coin of this.coins) {
-      const screenX = coin.x - this.cameraX;
+      const screenX = Math.round(coin.x - this.cameraX);
       if (screenX < -50 || screenX > CONFIG.CANVAS_WIDTH + 50) continue;
       
       const scaleX = Math.cos(coin.rotation);
@@ -661,6 +680,36 @@ class Game {
       
       ctx.restore();
     }
+
+    for (const coin of this.popupCoins) {
+      const screenX = Math.round(coin.x - this.cameraX);
+      if (screenX < -50 || screenX > CONFIG.CANVAS_WIDTH + 50) continue;
+
+      const scaleX = Math.cos(coin.rotation);
+      ctx.save();
+      ctx.translate(screenX, coin.y);
+      ctx.scale(scaleX, 1);
+      ctx.globalAlpha = Math.min(1, coin.life / 10);
+
+      ctx.fillStyle = CONFIG.COLORS.COIN;
+      ctx.beginPath();
+      ctx.arc(0, 0, CONFIG.COIN.SIZE / 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = CONFIG.COLORS.COIN_DARK;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (Math.abs(scaleX) > 0.3) {
+        ctx.fillStyle = CONFIG.COLORS.COIN_DARK;
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', 0, 0);
+      }
+
+      ctx.restore();
+    }
   }
   
   drawEnemies() {
@@ -669,7 +718,7 @@ class Game {
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       
-      const screenX = enemy.x - this.cameraX;
+      const screenX = Math.round(enemy.x - this.cameraX);
       if (screenX < -50 || screenX > CONFIG.CANVAS_WIDTH + 50) continue;
       
       ctx.fillStyle = CONFIG.COLORS.ENEMY;
@@ -704,7 +753,7 @@ class Game {
   drawPlayer() {
     const ctx = this.ctx;
     const p = this.player;
-    const screenX = p.x - this.cameraX;
+    const screenX = Math.round(p.x - this.cameraX);
     
     ctx.save();
     ctx.translate(screenX + p.width / 2, p.y + p.height / 2);
@@ -741,7 +790,7 @@ class Game {
   drawParticles() {
     const ctx = this.ctx;
     for (const p of this.particles) {
-      const screenX = p.x - this.cameraX;
+      const screenX = Math.round(p.x - this.cameraX);
       ctx.fillStyle = p.color;
       ctx.globalAlpha = p.life / 30;
       ctx.fillRect(screenX - p.size / 2, p.y - p.size / 2, p.size, p.size);
@@ -751,7 +800,7 @@ class Game {
   
   drawFlag() {
     const ctx = this.ctx;
-    const screenX = this.flagX - this.cameraX;
+    const screenX = Math.round(this.flagX - this.cameraX);
     if (screenX < -50 || screenX > CONFIG.CANVAS_WIDTH + 50) return;
     
     ctx.fillStyle = CONFIG.COLORS.FLAG_POLE;
@@ -769,6 +818,27 @@ class Game {
     ctx.beginPath();
     ctx.arc(screenX + 16, 95, 6, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  createBackgroundGradient() {
+    const gradient = this.ctx.createLinearGradient(0, 0, 0, CONFIG.CANVAS_HEIGHT);
+
+    if (this.bgTheme === 'underground') {
+      gradient.addColorStop(0, '#1a1a2e');
+      gradient.addColorStop(1, '#2d2d44');
+      return gradient;
+    }
+
+    if (this.bgTheme === 'sky') {
+      gradient.addColorStop(0, '#ff9a9e');
+      gradient.addColorStop(0.5, '#fecfef');
+      gradient.addColorStop(1, '#87ceeb');
+      return gradient;
+    }
+
+    gradient.addColorStop(0, '#87ceeb');
+    gradient.addColorStop(1, '#e0f6ff');
+    return gradient;
   }
   
   gameLoop() {
