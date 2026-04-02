@@ -41,13 +41,14 @@ export async function POST(req: Request) {
 
   return runWithConfigAsync(config, async () => {
     const abortController = new AbortController();
-    const timeout = setTimeout(() => abortController.abort(), 120_000);
+    const timeout = setTimeout(() => abortController.abort(), 300_000);
 
     try {
       const result = await streamText({
         model: dashscopeProvider(getModelChat()),
         abortSignal: abortController.signal,
-        maxSteps: 5,
+        // 游戏生成通常只需要「读文件 -> 写文件 -> 可选简短收尾」几步，限制步数能减少无意义长尾输出
+        maxSteps: 3,
         system: getGameSystemPrompt(context),
         messages: sanitizeMessages(messages),
         tools: {

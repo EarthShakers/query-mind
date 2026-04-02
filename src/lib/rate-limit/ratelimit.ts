@@ -2,30 +2,52 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { TIER_CONFIGS } from "./tier-config";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+const isLocalDev = process.env.NODE_ENV !== "production";
+const hasRedisConfig = Boolean(
+  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+);
+
+const redis = hasRedisConfig
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    })
+  : null;
 
 // Rate limiter 实例使用全局最大值；如需按用户等级区分，
 // 可在 check 函数中读取 getTierConfig() 做二次判断。
-const ratelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(TIER_CONFIGS.enterprise.chatRatePerMinute, "1 m"),
-  prefix: "rl:chat",
-});
+const ratelimit = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        TIER_CONFIGS.enterprise.chatRatePerMinute,
+        "1 m"
+      ),
+      prefix: "rl:chat",
+    })
+  : null;
 
-const uploadRatelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(TIER_CONFIGS.enterprise.uploadRatePerMinute, "1 m"),
-  prefix: "rl:upload",
-});
+const uploadRatelimit = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        TIER_CONFIGS.enterprise.uploadRatePerMinute,
+        "1 m"
+      ),
+      prefix: "rl:upload",
+    })
+  : null;
 
-const uploadDailyRatelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(TIER_CONFIGS.enterprise.uploadRatePerDay, "1 d"),
-  prefix: "rl:upload_daily",
-});
+const uploadDailyRatelimit = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(
+        TIER_CONFIGS.enterprise.uploadRatePerDay,
+        "1 d"
+      ),
+      prefix: "rl:upload_daily",
+    })
+  : null;
 
 // 以下值从 tier-config 中取默认等级的配置
 const DAILY_TOKEN_LIMIT = TIER_CONFIGS.anonymous.dailyTokenBudget;
@@ -33,6 +55,10 @@ const MAX_INPUT_LENGTH = TIER_CONFIGS.anonymous.maxInputLength;
 
 function dailyKey() {
   return `daily_tokens:${new Date().toISOString().slice(0, 10)}`;
+}
+
+function shouldSkipRateLimit(): boolean {
+  return isLocalDev || !redis;
 }
 
 /** 从请求中提取限流 key：登录用户用 userId，匿名用 IP */
@@ -53,10 +79,17 @@ export function getClientIp(req: Request): string {
 
 /** IP 限流检查，超限返回错误 Response，否则返回 null */
 export async function checkRateLimit(req: Request): Promise<Response | null> {
+  if (shouldSkipRateLimit() || !ratelimit) return null;
   const key = getRateLimitKey(req);
-  const { success } = await ratelimit.limit(key);
-  if (!success) {
-    return new Response("请求过于频繁，请稍后再试", { status: 429 });
+  try {
+    const { success } = await ratelimit.limit(key);
+    if (!success) {
+      return new Response("请求过于频繁，请稍后再试", { status: 429 });
+    }
+  } catch (error) {
+    if (!isLocalDev) {
+      console.error("[ratelimit] checkRateLimit failed:", error);
+    }
   }
   return null;
 }
@@ -65,25 +98,41 @@ export async function checkRateLimit(req: Request): Promise<Response | null> {
 export async function checkUploadRateLimit(
   req: Request
 ): Promise<Response | null> {
-  const key = getRateLimitKey(req);
-  const { success: minOk } = await uploadRatelimit.limit(key);
-  if (!minOk) {
-    return new Response("上传过于频繁，请稍后再试", { status: 429 });
+  if (shouldSkipRateLimit() || !uploadRatelimit || !uploadDailyRatelimit) {
+    return null;
   }
-  const { success: dayOk } = await uploadDailyRatelimit.limit(key);
-  if (!dayOk) {
-    return new Response("今日上传次数已达上限（20 次），请明天再试", {
-      status: 429,
-    });
+  const key = getRateLimitKey(req);
+  try {
+    const { success: minOk } = await uploadRatelimit.limit(key);
+    if (!minOk) {
+      return new Response("上传过于频繁，请稍后再试", { status: 429 });
+    }
+    const { success: dayOk } = await uploadDailyRatelimit.limit(key);
+    if (!dayOk) {
+      return new Response("今日上传次数已达上限（20 次），请明天再试", {
+        status: 429,
+      });
+    }
+  } catch (error) {
+    if (!isLocalDev) {
+      console.error("[ratelimit] checkUploadRateLimit failed:", error);
+    }
   }
   return null;
 }
 
 /** 每日 token 熔断检查，超限返回错误 Response，否则返回 null */
 export async function checkDailyBudget(): Promise<Response | null> {
-  const used = (await redis.get<number>(dailyKey())) ?? 0;
-  if (used >= DAILY_TOKEN_LIMIT) {
-    return new Response("今日用量已达上限，请明天再试", { status: 429 });
+  if (shouldSkipRateLimit() || !redis) return null;
+  try {
+    const used = (await redis.get<number>(dailyKey())) ?? 0;
+    if (used >= DAILY_TOKEN_LIMIT) {
+      return new Response("今日用量已达上限，请明天再试", { status: 429 });
+    }
+  } catch (error) {
+    if (!isLocalDev) {
+      console.error("[ratelimit] checkDailyBudget failed:", error);
+    }
   }
   return null;
 }
@@ -100,8 +149,14 @@ export function checkInputLength(content: string): Response | null {
 
 /** 流结束后异步记录 token 用量 */
 export async function recordTokenUsage(totalTokens: number) {
-  if (!totalTokens) return;
+  if (!totalTokens || shouldSkipRateLimit() || !redis) return;
   const key = dailyKey();
-  await redis.incrby(key, totalTokens);
-  await redis.expire(key, 86400);
+  try {
+    await redis.incrby(key, totalTokens);
+    await redis.expire(key, 86400);
+  } catch (error) {
+    if (!isLocalDev) {
+      console.error("[ratelimit] recordTokenUsage failed:", error);
+    }
+  }
 }

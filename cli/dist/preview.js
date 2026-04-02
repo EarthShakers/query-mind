@@ -5,7 +5,8 @@ import { WebSocketServer } from "ws";
 import { watch } from "chokidar";
 import { lookup } from "mime-types";
 const SAVE_MAX_BYTES = 8 * 1024 * 1024;
-const ALLOWED_SAVE_EXT = new Set([
+/** 预览侧栏 / 编辑器 / __spark/raw / __spark/save 仅开放「游戏向」可改文件，不暴露 CLI/工程脚手架 */
+const SPARK_USER_EDIT_EXT = new Set([
     ".html",
     ".htm",
     ".js",
@@ -13,15 +14,85 @@ const ALLOWED_SAVE_EXT = new Set([
     ".cjs",
     ".css",
     ".json",
-    ".ts",
-    ".tsx",
-    ".jsx",
-    ".md",
     ".txt",
     ".svg",
-    ".xml",
 ]);
-const MONACO_CDN = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min";
+const SPARK_DENY_BASENAME_LOWER = new Set([
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "npm-shrinkwrap.json",
+    "tsconfig.json",
+    "components.json",
+]);
+function sparkBasenameLower(rel) {
+    const norm = rel.replace(/\\/g, "/");
+    const seg = norm.split("/").pop() || "";
+    return seg.toLowerCase();
+}
+function isSparkDenyBasenameLower(baseLower) {
+    if (SPARK_DENY_BASENAME_LOWER.has(baseLower))
+        return true;
+    if (baseLower.startsWith("tsconfig.") && baseLower.endsWith(".json")) {
+        return true;
+    }
+    const tooling = [
+        "vite.config.ts",
+        "vite.config.js",
+        "vite.config.mjs",
+        "vite.config.cjs",
+        "next.config.js",
+        "next.config.mjs",
+        "next.config.ts",
+        "tailwind.config.js",
+        "tailwind.config.ts",
+        "tailwind.config.cjs",
+        "tailwind.config.mjs",
+        "postcss.config.js",
+        "postcss.config.cjs",
+        "postcss.config.mjs",
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "playwright.config.ts",
+        "webpack.config.js",
+        "webpack.config.cjs",
+    ];
+    return tooling.includes(baseLower);
+}
+/** 是否可在 /spark 侧栏列出并由 raw/save 编辑 */
+function isSparkUserEditableRel(rel) {
+    const norm = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+    if (!norm || norm.includes(".."))
+        return false;
+    const baseLower = sparkBasenameLower(norm);
+    if (isSparkDenyBasenameLower(baseLower))
+        return false;
+    const ext = pathMod.extname(baseLower).toLowerCase();
+    return SPARK_USER_EDIT_EXT.has(ext);
+}
+/** 是否禁止通过普通静态 GET 暴露（iframe 拉游戏资源时仍可读图片/字体等） */
+function isSparkStaticHttpBlocked(relativeUrlPath) {
+    const norm = relativeUrlPath.replace(/\\/g, "/").replace(/^\/+/, "");
+    if (!norm)
+        return false;
+    const baseLower = sparkBasenameLower(norm);
+    if (isSparkDenyBasenameLower(baseLower))
+        return true;
+    const ext = pathMod.extname(baseLower).toLowerCase();
+    const blockExt = new Set([
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".mts",
+        ".cts",
+        ".md",
+        ".xml",
+        ".map",
+    ]);
+    return blockExt.has(ext);
+}
 function listSparkProjectFiles(root) {
     const out = [];
     const ignore = new Set([
@@ -53,9 +124,9 @@ function listSparkProjectFiles(root) {
                 walk(full, rel);
             }
             else {
-                const ext = pathMod.extname(ent.name).toLowerCase();
-                if (ALLOWED_SAVE_EXT.has(ext)) {
-                    out.push(rel.replace(/\\/g, "/"));
+                const relPosix = rel.replace(/\\/g, "/");
+                if (isSparkUserEditableRel(relPosix)) {
+                    out.push(relPosix);
                 }
             }
         }
@@ -103,7 +174,10 @@ function splitShellHtml(port) {
     #file-tree button.file-item:hover { background: #1f2937; }
     #file-tree button.file-item.active { background: #1e3a5f; color: #93c5fd; }
     #editor-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-    #editor { flex: 1; width: 100%; min-height: 0; }
+    #editor-fallback {
+      flex: 1; width: 100%; min-height: 0; display: block; border: 0; outline: 0;
+      resize: none; background: #0d0d0d; color: #e5e7eb; padding: 14px; font: 13px/1.6 ui-monospace, monospace;
+    }
     #pane-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #111; }
     #pane-preview iframe { flex: 1; width: 100%; border: 0; background: #1a1a1a; }
     .label { font-weight: 600; letter-spacing: 0.02em; }
@@ -117,27 +191,25 @@ function splitShellHtml(port) {
     <button type="button" class="secondary" id="btn-refresh-tree">刷新列表</button>
     <button type="button" id="btn-save">保存 (Ctrl+S)</button>
     <span id="status" class="hint"></span>
-    <span class="hint">Monaco 多文件；右侧为运行效果</span>
+    <span class="hint">左侧可显示计划/草稿；右侧仅在真实写入后运行</span>
   </header>
   <main>
     <div id="pane-code">
       <div id="file-sidebar">
-        <div class="side-head">项目文件</div>
+        <div class="side-head">游戏文件（可编辑）</div>
         <div id="file-tree"></div>
       </div>
       <div id="editor-wrap">
-        <div id="editor"></div>
+        <textarea id="editor-fallback" spellcheck="false"></textarea>
       </div>
     </div>
     <div id="pane-preview">
       <iframe id="game" title="game" src="/index.html?nohmr=1"></iframe>
     </div>
   </main>
-  <script src="${MONACO_CDN}/vs/loader.js"></script>
   <script>
 (function () {
   var port = ${port};
-  var MON_BASE = "${MONACO_CDN}";
   var params = new URLSearchParams(location.search);
   var currentFile = params.get("file") || "index.html";
 
@@ -147,40 +219,40 @@ function splitShellHtml(port) {
   var btnRefreshTree = document.getElementById("btn-refresh-tree");
   var fileTreeEl = document.getElementById("file-tree");
   var pathEl = document.getElementById("file-path");
+  var fallbackEditorEl = document.getElementById("editor-fallback");
   var dirty = false;
-  var editor = null;
-  var models = new Map();
+  var draftState = null;
 
   pathEl.textContent = currentFile;
-
-  self.MonacoEnvironment = {
-    getWorkerUrl: function (_moduleId, label) {
-      var b = MON_BASE + "/vs";
-      if (label === "json") return b + "/language/json/json.worker.js";
-      if (label === "css" || label === "scss" || label === "less") return b + "/language/css/css.worker.js";
-      if (label === "html" || label === "handlebars" || label === "razor") return b + "/language/html/html.worker.js";
-      if (label === "typescript" || label === "javascript") return b + "/language/typescript/ts.worker.js";
-      return b + "/editor/editor.worker.js";
-    }
-  };
-
-  require.config({ paths: { vs: MON_BASE + "/vs" } });
-
-  function languageForPath(name) {
-    var ext = (name.split(".").pop() || "").toLowerCase();
-    if (ext === "js" || ext === "mjs" || ext === "cjs") return "javascript";
-    if (ext === "css") return "css";
-    if (ext === "json") return "json";
-    if (ext === "md") return "markdown";
-    if (ext === "ts" || ext === "tsx") return "typescript";
-    if (ext === "jsx") return "javascript";
-    if (ext === "html" || ext === "htm") return "html";
-    return "plaintext";
-  }
 
   function setStatus(msg, ok) {
     statusEl.textContent = msg;
     statusEl.className = ok ? "ok" : "err";
+  }
+
+  function getCurrentEditorValue() {
+    return fallbackEditorEl.value;
+  }
+
+  function setCurrentEditorValue(text) {
+    fallbackEditorEl.value = text;
+  }
+
+  function currentEditorHasModel() {
+    return !!fallbackEditorEl.value;
+  }
+
+  function hasDraftForCurrentFile() {
+    return !!(draftState && draftState.path === currentFile);
+  }
+
+  function applyDraftToEditor() {
+    if (!hasDraftForCurrentFile()) return false;
+    fallbackEditorEl.value = draftState.content || "";
+    dirty = false;
+    btnSave.disabled = true;
+    setStatus(draftState.note || "正在显示生成草稿，待真实写入后可保存", true);
+    return true;
   }
 
   function bumpIframe() {
@@ -190,19 +262,6 @@ function splitShellHtml(port) {
   function rawUrl(rel) {
     var parts = rel.split("/").filter(Boolean);
     return "/__spark/raw/" + parts.map(encodeURIComponent).join("/");
-  }
-
-  function uriFor(rel) {
-    return monaco.Uri.parse("spark://" + rel.split("/").map(encodeURIComponent).join("/"));
-  }
-
-  function getOrCreateModel(rel, text) {
-    var u = uriFor(rel);
-    var existing = monaco.editor.getModel(u);
-    if (existing) {
-      return existing;
-    }
-    return monaco.editor.createModel(text || "", languageForPath(rel), u);
   }
 
   function highlightTreeActive() {
@@ -246,43 +305,47 @@ function splitShellHtml(port) {
           pathEl.textContent = currentFile;
           history.replaceState(null, "", "?file=" + encodeURIComponent(currentFile));
         }
+        return files;
       })
       .catch(function () {
         fileTreeEl.textContent = "无法加载列表";
+        return [];
       });
   }
 
   function openFile(rel) {
-    if (rel === currentFile && editor) return;
-    if (dirty && editor) {
+    if (rel === currentFile && currentEditorHasModel()) return Promise.resolve();
+    if (dirty) {
       if (!confirm("当前文件未保存，切换将丢失修改。是否继续？")) return;
     }
     currentFile = rel;
     pathEl.textContent = currentFile;
     history.replaceState(null, "", "?file=" + encodeURIComponent(currentFile));
     highlightTreeActive();
+    if (applyDraftToEditor()) {
+      return Promise.resolve();
+    }
     return fetch(rawUrl(currentFile))
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
         return r.text();
       })
       .then(function (text) {
-        var model = getOrCreateModel(currentFile, text);
-        models.set(currentFile, model);
-        editor.setModel(model);
+        fallbackEditorEl.value = text;
         dirty = false;
+        btnSave.disabled = false;
         setStatus("", true);
       })
       .catch(function () {
-        var model = getOrCreateModel(currentFile, "<!-- 文件不存在，保存将创建 -->");
-        models.set(currentFile, model);
-        editor.setModel(model);
+        fallbackEditorEl.value = "<!-- 文件不存在，保存将创建 -->";
         dirty = true;
       });
   }
 
   function loadSourceDisk() {
-    if (!editor) return Promise.resolve();
+    if (applyDraftToEditor()) {
+      return Promise.resolve();
+    }
     return fetch(rawUrl(currentFile))
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
@@ -292,21 +355,18 @@ function splitShellHtml(port) {
         if (dirty) {
           if (!confirm("磁盘上的文件已变化，是否放弃未保存修改并重新加载？")) return;
         }
-        var m = editor.getModel();
-        if (m) {
-          m.setValue(text);
-        }
+        setCurrentEditorValue(text);
         dirty = false;
+        btnSave.disabled = false;
         setStatus("", true);
       })
       .catch(function () {});
   }
 
   function save() {
-    if (!editor) return;
     btnSave.disabled = true;
     setStatus("保存中…", true);
-    var content = editor.getValue();
+    var content = getCurrentEditorValue();
     fetch("/__spark/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -331,61 +391,77 @@ function splitShellHtml(port) {
         btnSave.disabled = false;
       });
   }
-
-  require(["vs/editor/editor.main"], function () {
-    monaco.editor.defineTheme("spark-dark", {
-      base: "vs-dark",
-      inherit: true,
-      rules: [],
-      colors: {
-        "editor.background": "#0d0d0d",
-      },
-    });
-    monaco.editor.setTheme("spark-dark");
-    editor = monaco.editor.create(document.getElementById("editor"), {
-      model: null,
-      fontSize: 13,
-      wordWrap: "on",
-      minimap: { enabled: false },
-      automaticLayout: true,
-      tabSize: 2,
-      insertSpaces: true,
-    });
-    editor.onDidChangeModelContent(function () {
-      dirty = true;
-      statusEl.textContent = "";
-      statusEl.className = "hint";
-    });
-
-    btnSave.addEventListener("click", save);
-    btnRefreshTree.addEventListener("click", fetchFileList);
-    document.addEventListener("keydown", function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        save();
-      }
-    });
-
+  fallbackEditorEl.addEventListener("input", function () {
+    if (hasDraftForCurrentFile()) {
+      setStatus("当前是生成草稿，等待真实写入完成后再编辑/保存", false);
+      fallbackEditorEl.value = draftState.content || "";
+      return;
+    }
+    dirty = true;
+    statusEl.textContent = "";
+    statusEl.className = "hint";
+    btnSave.disabled = false;
+  });
+  btnSave.addEventListener("click", save);
+  btnRefreshTree.addEventListener("click", function () {
     fetchFileList().then(function () {
       return openFile(currentFile);
     });
+  });
+  document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      e.preventDefault();
+      save();
+    }
+  });
 
-    try {
-      var ws = new WebSocket("ws://" + location.hostname + ":" + port);
-      ws.onmessage = function () {
-        fetchFileList();
-        loadSourceDisk().then(function () {
-          bumpIframe();
-        });
-      };
-    } catch (e) {}
+  fetchFileList().then(function () {
+    return openFile(currentFile);
+  });
 
-    document.addEventListener("visibilitychange", function () {
-      if (!document.hidden) {
-        fetchFileList();
-        loadSourceDisk();
-      }
-    });
+  try {
+    var ws = new WebSocket("ws://" + location.hostname + ":" + port);
+    ws.onmessage = function (event) {
+      try {
+        var data = JSON.parse(event.data);
+        if (data && data.type === "draft") {
+          if (data.payload && data.payload.path) {
+            draftState = data.payload;
+            if (!currentFile || currentFile === "index.html" || currentFile === draftState.path) {
+              currentFile = draftState.path;
+              pathEl.textContent = currentFile;
+              history.replaceState(null, "", "?file=" + encodeURIComponent(currentFile));
+              highlightTreeActive();
+              applyDraftToEditor();
+            }
+          } else {
+            draftState = null;
+            btnSave.disabled = false;
+            setStatus("草稿已完成，已切回真实文件", true);
+            fetchFileList().then(function () {
+              return loadSourceDisk();
+            }).then(function () {
+              bumpIframe();
+            });
+          }
+          return;
+        }
+      } catch (e) {}
+
+      fetchFileList().then(function () {
+        return loadSourceDisk();
+      }).then(function () {
+        bumpIframe();
+      });
+    };
+  } catch (e) {}
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) {
+      fetchFileList().then(function () {
+        return loadSourceDisk();
+      });
+    }
   });
 })();
   </script>
@@ -419,12 +495,11 @@ function handleSparkSave(req, res, gameRoot) {
                 res.end(JSON.stringify({ ok: false, error: "invalid path" }));
                 return;
             }
-            const ext = pathMod.extname(rel).toLowerCase();
-            if (!ALLOWED_SAVE_EXT.has(ext)) {
-                res.writeHead(400);
+            if (!isSparkUserEditableRel(rel)) {
+                res.writeHead(403);
                 res.end(JSON.stringify({
                     ok: false,
-                    error: "不允许的扩展名，允许: " + [...ALLOWED_SAVE_EXT].join(", "),
+                    error: "预览仅允许保存游戏向文件（html/js/css/json/txt/svg 等），不开放工程脚手架与 TypeScript 源",
                 }));
                 return;
             }
@@ -451,6 +526,7 @@ function handleSparkSave(req, res, gameRoot) {
 }
 export function startPreviewServer(gameDir, port = 4321) {
     const gameRoot = pathMod.resolve(gameDir);
+    let draftState = null;
     const server = http.createServer((req, res) => {
         const method = req.method || "GET";
         const rawUrl = req.url || "/";
@@ -459,6 +535,19 @@ export function startPreviewServer(gameDir, port = 4321) {
         const search = q >= 0 ? rawUrl.slice(q + 1) : "";
         const searchParams = new URLSearchParams(search);
         const nohmr = searchParams.get("nohmr") === "1";
+        if (pathname === "/__spark/meta") {
+            if (method === "GET") {
+                res.setHeader("Content-Type", "application/json; charset=utf-8");
+                res.writeHead(200);
+                res.end(JSON.stringify({
+                    gameRoot,
+                }));
+                return;
+            }
+            res.writeHead(405, { Allow: "GET" });
+            res.end();
+            return;
+        }
         if (pathname === "/__spark/list") {
             if (method === "GET") {
                 res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -507,6 +596,11 @@ export function startPreviewServer(gameDir, port = 4321) {
                 res.end("Forbidden");
                 return;
             }
+            if (!isSparkUserEditableRel(rel)) {
+                res.writeHead(403);
+                res.end("Forbidden");
+                return;
+            }
             if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
                 res.writeHead(404);
                 res.end("Not found");
@@ -518,6 +612,11 @@ export function startPreviewServer(gameDir, port = 4321) {
         }
         const staticPath = pathname === "/" ? "/index.html" : pathname;
         const relative = staticPath.replace(/^[/\\]+/, "");
+        if (isSparkStaticHttpBlocked(relative)) {
+            res.writeHead(403);
+            res.end("Forbidden");
+            return;
+        }
         const filePath = pathMod.join(gameRoot, relative);
         if (!isPathInsideRoot(filePath, gameRoot)) {
             res.writeHead(403);
@@ -538,6 +637,14 @@ export function startPreviewServer(gameDir, port = 4321) {
         serveFile(filePath, res, port, !nohmr);
     });
     const wss = new WebSocketServer({ server });
+    function broadcast(payload) {
+        const message = JSON.stringify(payload);
+        wss.clients.forEach((client) => {
+            if (client.readyState === 1) {
+                client.send(message);
+            }
+        });
+    }
     let debounceTimer;
     const watcher = watch(gameRoot, {
         ignoreInitial: true,
@@ -546,16 +653,43 @@ export function startPreviewServer(gameDir, port = 4321) {
     watcher.on("all", () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            wss.clients.forEach((client) => {
-                if (client.readyState === 1) {
-                    client.send("reload");
-                }
-            });
+            broadcast({ type: "reload" });
         }, 200);
+    });
+    server.once("error", (err) => {
+        try {
+            watcher.close();
+        }
+        catch {
+            /* ignore */
+        }
+        try {
+            wss.close();
+        }
+        catch {
+            /* ignore */
+        }
+        if (err.code === "EADDRINUSE") {
+            console.error(`\n[spark] 端口 ${port} 已被占用。\n` +
+                `  • 若已在运行 spark preview 或 spark game，直接打开 http://localhost:${port}/spark\n` +
+                `  • 要再起一个预览请换端口：spark preview -p 4322\n` +
+                `  • 查看占用（macOS）：lsof -nP -iTCP:${port} -sTCP:LISTEN\n`);
+        }
+        else {
+            console.error("\n[spark] 预览服务监听失败:", err.message);
+        }
+        process.exit(1);
     });
     server.listen(port);
     return {
         port,
+        setDraft: (draft) => {
+            draftState = draft;
+            broadcast({
+                type: "draft",
+                payload: draftState,
+            });
+        },
         close: () => {
             watcher.close();
             wss.close();

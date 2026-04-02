@@ -18,14 +18,21 @@ function resolveSafe(filePath, cwd) {
     return resolved;
 }
 async function writeFile(filePath, content, cwd) {
+    const text = content ?? "";
+    if (text.trim().length === 0) {
+        return {
+            success: false,
+            error: "拒绝写入空文件（避免把 index.html 等覆盖成空白）。请输出完整文件内容后再调用 write_file。",
+        };
+    }
     const fullPath = resolveSafe(filePath, cwd);
     if (!fullPath) {
         return { success: false, error: "路径越界，只能写入项目目录" };
     }
     const dir = path.dirname(fullPath);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(fullPath, content, "utf-8");
-    const lines = content.split("\n").length;
+    fs.writeFileSync(fullPath, text, "utf-8");
+    const lines = text.split("\n").length;
     return {
         success: true,
         message: `写入 ${filePath} (${lines}行)`,
