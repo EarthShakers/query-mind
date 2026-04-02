@@ -37,7 +37,19 @@
       "Bash(node -e \"import\\('./server.mjs'\\).catch\\(e => { if \\(e.code === 'ERR_MODULE_NOT_FOUND'\\) { console.log\\('Import check: missing module:', e.message.split\\(\\\\\"'\\\\\"\\)[1]\\); } else { console.log\\('Syntax OK \\(runtime error expected\\):', e.message?.slice\\(0, 80\\)\\); } }\\)\")",
       "WebFetch(domain:dashscope.aliyuncs.com)",
       "WebFetch(domain:docs.vllm.ai)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(find /Users/zhuochaoli/code/ai/ai-sql-demo -type f \\\\\\(-name *.sql -o -name schema* -o -name *migrations* \\\\\\))",
+      "Bash(gh api:*)",
+      "Bash(brew list:*)",
+      "Bash(python3 -c \"import sys,json; [print\\(x[''''path'''']\\) for x in json.load\\(sys.stdin\\)[''''tree'''']]\")",
+      "Read(//Users/zhuochaoli/code/ai/**)",
+      "Read(//Users/zhuochaoli/code/**)",
+      "Bash(git clone:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(mkdir -p /tmp/spark-test)",
+      "Read(//tmp/**)",
+      "Bash(gtimeout 60 npx tsx /Users/zhuochaoli/code/ai/ai-sql-demo/cli/src/index.ts game)"
     ]
   }
 }

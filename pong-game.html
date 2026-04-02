@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>经典弹球游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+        
+        canvas {
+            border: none;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+        
+        .score {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 48px;
+            font-weight: 300;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+            user-select: none;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-align: center;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="score" id="score">0 : 0</div>
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <div class="controls">使用鼠标或上下箭头键控制左侧挡板</div>
+
+    <script>
+        // 游戏配置常量
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 500;
+        const PADDLE_WIDTH = 10;
+        const PADDLE_HEIGHT = 80;
+        const PADDLE_MARGIN = 20;
+        const BALL_RADIUS = 8;
+        const INITIAL_BALL_SPEED = 4;
+        const MAX_BALL_SPEED = 12;
+        const PADDLE_SPEED = 8;
+        const AI_REACTION_TIME = 0.85; // AI反应速度 (0-1)
+        const SPEED_INCREASE_FACTOR = 1.05; // 每次碰撞后速度增加因子
+        
+        // 游戏状态
+        let canvas, ctx;
+        let playerPaddle, aiPaddle, ball;
+        let playerScore = 0, aiScore = 0;
+        let lastTime = 0;
+        let animationId;
+        let ballTrail = []; // 小球轨迹数组
+        const MAX_TRAIL_LENGTH = 10; // 最大轨迹长度
+        
+        // 初始化游戏
+        function init() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // 初始化挡板
+            playerPaddle = {
+                x: PADDLE_MARGIN,
+                y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+                width: PADDLE_WIDTH,
+                height: PADDLE_HEIGHT,
+                speed: PADDLE_SPEED
+            };
+            
+            aiPaddle = {
+                x: CANVAS_WIDTH - PADDLE_MARGIN - PADDLE_WIDTH,
+                y: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+                width: PADDLE_WIDTH,
+                height: PADDLE_HEIGHT,
+                speed: PADDLE_SPEED
+            };
+            
+            // 初始化小球
+            resetBall();
+            
+            // 事件监听
+            canvas.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('keydown', handleKeyDown);
+            
+            // 开始游戏循环
+            lastTime = performance.now();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        // 重置小球位置和速度
+        function resetBall() {
+            ball = {
+                x: CANVAS_WIDTH / 2,
+                y: CANVAS_HEIGHT / 2,
+                radius: BALL_RADIUS,
+                speed: INITIAL_BALL_SPEED,
+                dx: (Math.random() > 0.5 ? 1 : -1) * INITIAL_BALL_SPEED,
+                dy: (Math.random() * 2 - 1) * INITIAL_BALL_SPEED
+            };
+            ballTrail = [];
+        }
+        
+        // 鼠标移动控制
+        function handleMouseMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseY = e.clientY - rect.top;
+            playerPaddle.y = Math.max(0, Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, mouseY - PADDLE_HEIGHT / 2));
+        }
+        
+        // 键盘控制
+        function handleKeyDown(e) {
+            switch(e.key) {
+                case 'ArrowUp':
+                    playerPaddle.y = Math.max(0, playerPaddle.y - playerPaddle.speed);
+                    break;
+                case 'ArrowDown':
+                    playerPaddle.y = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, playerPaddle.y + playerPaddle.speed);
+                    break;
+            }
+        }
+        
+        // AI控制逻辑
+        function updateAI() {
+            const targetY = ball.y - aiPaddle.height / 2;
+            const centerY = aiPaddle.y + aiPaddle.height / 2;
+            
+            // 简单的跟随逻辑，加入反应时间因子
+            if (Math.abs(centerY - targetY) > 10) {
+                if (centerY < targetY) {
+                    aiPaddle.y += aiPaddle.speed * AI_REACTION_TIME;
+                } else {
+                    aiPaddle.y -= aiPaddle.speed * AI_REACTION_TIME;
+                }
+            }
+            
+            // 确保AI挡板不会超出边界
+            aiPaddle.y = Math.max(0, Math.min(CANVAS_HEIGHT - aiPaddle.height, aiPaddle.y));
+        }
+        
+        // 更新小球位置和碰撞检测
+        function updateBall(deltaTime) {
+            // 添加轨迹点
+            ballTrail.push({ x: ball.x, y: ball.y });
+            if (ballTrail.length > MAX_TRAIL_LENGTH) {
+                ballTrail.shift();
+            }
+            
+            // 更新位置
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+            
+            // 上下边界碰撞
+            if (ball.y - ball.radius <= 0 || ball.y + ball.radius >= CANVAS_HEIGHT) {
+                ball.dy = -ball.dy;
+                // 调整位置防止卡在边界
+                ball.y = Math.max(ball.radius, Math.min(CANVAS_HEIGHT - ball.radius, ball.y));
+            }
+            
+            // 左侧挡板碰撞
+            if (ball.dx < 0 && 
+                ball.x - ball.radius <= playerPaddle.x + playerPaddle.width &&
+                ball.x - ball.radius >= playerPaddle.x &&
+                ball.y + ball.radius >= playerPaddle.y &&
+                ball.y - ball.radius <= playerPaddle.y + playerPaddle.height) {
+                
+                handlePaddleCollision(playerPaddle);
+            }
+            
+            // 右侧挡板碰撞
+            if (ball.dx > 0 && 
+                ball.x + ball.radius >= aiPaddle.x &&
+                ball.x + ball.radius <= aiPaddle.x + aiPaddle.width &&
+                ball.y + ball.radius >= aiPaddle.y &&
+                ball.y - ball.radius <= aiPaddle.y + aiPaddle.height) {
+                
+                handlePaddleCollision(aiPaddle);
+            }
+            
+            // 得分检测
+            if (ball.x - ball.radius <= 0) {
+                aiScore++;
+                updateScore();
+                resetBall();
+            } else if (ball.x + ball.radius >= CANVAS_WIDTH) {
+                playerScore++;
+                updateScore();
+                resetBall();
+            }
+        }
+        
+        // 处理挡板碰撞
+        function handlePaddleCollision(paddle) {
+            // 计算撞击点在挡板上的相对位置 (-1 到 1)
+            const hitPosition = (ball.y - (paddle.y + paddle.height / 2)) / (paddle.height / 2);
+            
+            // 根据撞击位置改变反弹角度
+            const angle = hitPosition * Math.PI / 3; // ±60度最大角度
+            
+            // 计算新的速度方向
+            const speed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+            const direction = ball.dx > 0 ? -1 : 1;
+            
+            ball.dx = direction * speed * Math.cos(angle);
+            ball.dy = speed * Math.sin(angle);
+            
+            // 增加球速，但有上限
+            const currentSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+            if (currentSpeed < MAX_BALL_SPEED) {
+                ball.dx *= SPEED_INCREASE_FACTOR;
+                ball.dy *= SPEED_INCREASE_FACTOR;
+            }
+            
+            // 调整位置防止卡在挡板内
+            if (paddle === playerPaddle) {
+                ball.x = playerPaddle.x + playerPaddle.width + ball.radius;
+            } else {
+                ball.x = aiPaddle.x - ball.radius;
+            }
+        }
+        
+        // 更新分数显示
+        function updateScore() {
+            document.getElementById('score').textContent = `${playerScore} : ${aiScore}`;
+        }
+        
+        // 渲染游戏
+        function render() {
+            // 清空画布
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            // 绘制中间虚线
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(CANVAS_WIDTH / 2, 0);
+            ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // 绘制小球轨迹（动态模糊效果）
+            for (let i = 0; i < ballTrail.length; i++) {
+                const point = ballTrail[i];
+                const alpha = i / ballTrail.length * 0.5;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, ball.radius * (i / ballTrail.length), 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            }
+            
+            // 绘制小球
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            
+            // 绘制挡板
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(playerPaddle.x, playerPaddle.y, playerPaddle.width, playerPaddle.height);
+            ctx.fillRect(aiPaddle.x, aiPaddle.y, aiPaddle.width, aiPaddle.height);
+        }
+        
+        // 游戏主循环
+        function gameLoop(currentTime) {
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            
+            updateAI();
+            updateBall(deltaTime);
+            render();
+            
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        // 启动游戏
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
