@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>超级玛丽 - 横版跳跃</title>
+  <link rel="stylesheet" href="game/style.css">
+</head>
+<body>
+  <div id="game-container">
+    <div id="ui-top">
+      <div class="ui-item">金币: <span id="coins">0</span></div>
+      <div class="ui-item">关卡: <span id="level">1</span></div>
+      <div class="ui-item">生命: <span id="lives">3</span></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="message" class="hidden"></div>
+    <div id="controls-hint">
+      方向键/WASD 移动 | 空格/W 跳跃 | R 重新开始
+    </div>
+  </div>
+  <script src="game/config.js"></script>
+  <script src="game/levels.js"></script>
+  <script src="game/game.js"></script>
+</body>
+</html>

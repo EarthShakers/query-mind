@@ -499,12 +499,52 @@ async function streamResponse(
   let textLineBuffer = "";
   let pendingFilePath: string | null = null;
   let activeFileBlock: StreamingFileBlock | null = null;
+  let transientStatusText = "";
+  let transientStatusActive = false;
+  let transientStatusNeedsNewline = false;
 
   const ensureVisible = () => {
     if (firstVisibleEvent) return;
     firstVisibleEvent = true;
     onFirstVisible();
     process.stdout.write("\n");
+  };
+
+  const clearTransientStatus = () => {
+    if (!transientStatusActive || !process.stdout.isTTY) {
+      transientStatusText = "";
+      transientStatusActive = false;
+      transientStatusNeedsNewline = false;
+      return;
+    }
+    readline.clearLine(process.stdout, 0);
+    readline.cursorTo(process.stdout, 0);
+    transientStatusText = "";
+    transientStatusActive = false;
+  };
+
+  const commitTransientStatus = () => {
+    if (!transientStatusNeedsNewline) return;
+    if (process.stdout.isTTY) {
+      process.stdout.write("\n");
+    }
+    transientStatusNeedsNewline = false;
+    transientStatusText = "";
+    transientStatusActive = false;
+  };
+
+  const renderTransientStatus = (text: string) => {
+    if (!process.stdout.isTTY) {
+      console.log(text);
+      return;
+    }
+    if (transientStatusText === text) return;
+    readline.clearLine(process.stdout, 0);
+    readline.cursorTo(process.stdout, 0);
+    process.stdout.write(text);
+    transientStatusText = text;
+    transientStatusActive = true;
+    transientStatusNeedsNewline = true;
   };
 
   const describeDraftPhase = (content: string): string | null => {
@@ -569,17 +609,17 @@ async function streamResponse(
       return;
     }
 
-    if (streamingTool.toolName === "read_file") {
-      const path = (() => {
-        const match = streamingTool.argsText.match(/"path"\s*:\s*"([^"]*)/);
-        return match?.[1] ?? null;
-      })();
-      console.log(
-        chalk.dim(`  正在读取${path ? ` ${path}` : "项目文件"}...`)
-      );
-    } else {
-      console.log(chalk.dim(`  正在执行 ${streamingTool.toolName}...`));
-    }
+    const line =
+      streamingTool.toolName === "read_file"
+        ? (() => {
+            const path = (() => {
+              const match = streamingTool.argsText.match(/"path"\s*:\s*"([^"]*)/);
+              return match?.[1] ?? null;
+            })();
+            return chalk.dim(`  正在读取${path ? ` ${path}` : "项目文件"}...`);
+          })()
+        : chalk.dim(`  正在执行 ${streamingTool.toolName}...`);
+    renderTransientStatus(line);
 
     streamingTool.lastAnnouncedAt = now;
     streamingTool.lastAnnouncedSize = size;
@@ -598,7 +638,7 @@ async function streamResponse(
     }
     const lineCount = Math.max(1, activeFileBlock.content.split("\n").length);
     const phase = describeDraftPhase(activeFileBlock.content);
-    console.log(
+    renderTransientStatus(
       chalk.dim(
         `  正在编写 ${activeFileBlock.path}... 草稿约 ${lineCount} 行` +
           `${phase ? `，当前在补 ${phase}` : ""}`
@@ -611,6 +651,7 @@ async function streamResponse(
   const finalizeFileBlock = async () => {
     if (!activeFileBlock) return;
     publishDraftPreview(true);
+    commitTransientStatus();
     const result = await writeGeneratedFile(
       activeFileBlock.path,
       activeFileBlock.content,
@@ -668,12 +709,14 @@ async function streamResponse(
 
     if (trimmed.startsWith("FILE:")) {
       ensureVisible();
+      commitTransientStatus();
       pendingFilePath = trimmed.slice("FILE:".length).trim();
       assistantText += `${line}\n`;
       return;
     }
 
     ensureVisible();
+    commitTransientStatus();
     process.stdout.write(`${line}\n`);
     assistantText += `${line}\n`;
   };
@@ -719,6 +762,7 @@ async function streamResponse(
 
           case "3": {
             ensureVisible();
+            commitTransientStatus();
             console.error(chalk.red(`  流错误: ${parsed.value}`));
             break;
           }
@@ -772,6 +816,7 @@ async function streamResponse(
             }
             toolArgsTextBuffer = "";
             announceStreamingToolProgress(true);
+            commitTransientStatus();
             streamingTool = null;
 
             const args: Record<string, string> = {};
@@ -810,6 +855,7 @@ async function streamResponse(
       }
     }
   } catch (err) {
+    commitTransientStatus();
     onDraftUpdate?.(null);
     if (
       (assistantText.trim() || toolExecutions.length > 0) &&
@@ -825,6 +871,7 @@ async function streamResponse(
   if (activeFileBlock) {
     await finalizeFileBlock();
   }
+  clearTransientStatus();
   onDraftUpdate?.(null);
   return { assistantText, toolExecutions, fileWrites };
 }

@@ -323,12 +323,51 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
     let textLineBuffer = "";
     let pendingFilePath = null;
     let activeFileBlock = null;
+    let transientStatusText = "";
+    let transientStatusActive = false;
+    let transientStatusNeedsNewline = false;
     const ensureVisible = () => {
         if (firstVisibleEvent)
             return;
         firstVisibleEvent = true;
         onFirstVisible();
         process.stdout.write("\n");
+    };
+    const clearTransientStatus = () => {
+        if (!transientStatusActive || !process.stdout.isTTY) {
+            transientStatusText = "";
+            transientStatusActive = false;
+            transientStatusNeedsNewline = false;
+            return;
+        }
+        readline.clearLine(process.stdout, 0);
+        readline.cursorTo(process.stdout, 0);
+        transientStatusText = "";
+        transientStatusActive = false;
+    };
+    const commitTransientStatus = () => {
+        if (!transientStatusNeedsNewline)
+            return;
+        if (process.stdout.isTTY) {
+            process.stdout.write("\n");
+        }
+        transientStatusNeedsNewline = false;
+        transientStatusText = "";
+        transientStatusActive = false;
+    };
+    const renderTransientStatus = (text) => {
+        if (!process.stdout.isTTY) {
+            console.log(text);
+            return;
+        }
+        if (transientStatusText === text)
+            return;
+        readline.clearLine(process.stdout, 0);
+        readline.cursorTo(process.stdout, 0);
+        process.stdout.write(text);
+        transientStatusText = text;
+        transientStatusActive = true;
+        transientStatusNeedsNewline = true;
     };
     const describeDraftPhase = (content) => {
         const lower = content.toLowerCase();
@@ -382,16 +421,16 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
             size - streamingTool.lastAnnouncedSize < 8192) {
             return;
         }
-        if (streamingTool.toolName === "read_file") {
-            const path = (() => {
-                const match = streamingTool.argsText.match(/"path"\s*:\s*"([^"]*)/);
-                return match?.[1] ?? null;
-            })();
-            console.log(chalk.dim(`  正在读取${path ? ` ${path}` : "项目文件"}...`));
-        }
-        else {
-            console.log(chalk.dim(`  正在执行 ${streamingTool.toolName}...`));
-        }
+        const line = streamingTool.toolName === "read_file"
+            ? (() => {
+                const path = (() => {
+                    const match = streamingTool.argsText.match(/"path"\s*:\s*"([^"]*)/);
+                    return match?.[1] ?? null;
+                })();
+                return chalk.dim(`  正在读取${path ? ` ${path}` : "项目文件"}...`);
+            })()
+            : chalk.dim(`  正在执行 ${streamingTool.toolName}...`);
+        renderTransientStatus(line);
         streamingTool.lastAnnouncedAt = now;
         streamingTool.lastAnnouncedSize = size;
     };
@@ -407,7 +446,7 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
         }
         const lineCount = Math.max(1, activeFileBlock.content.split("\n").length);
         const phase = describeDraftPhase(activeFileBlock.content);
-        console.log(chalk.dim(`  正在编写 ${activeFileBlock.path}... 草稿约 ${lineCount} 行` +
+        renderTransientStatus(chalk.dim(`  正在编写 ${activeFileBlock.path}... 草稿约 ${lineCount} 行` +
             `${phase ? `，当前在补 ${phase}` : ""}`));
         activeFileBlock.lastProgressAnnouncedAt = now;
         activeFileBlock.lastProgressAnnouncedSize = size;
@@ -416,6 +455,7 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
         if (!activeFileBlock)
             return;
         publishDraftPreview(true);
+        commitTransientStatus();
         const result = await writeGeneratedFile(activeFileBlock.path, activeFileBlock.content, cwd);
         if (result.success) {
             console.log(chalk.green(`  ✓ ${result.message || activeFileBlock.path}`));
@@ -465,11 +505,13 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
         }
         if (trimmed.startsWith("FILE:")) {
             ensureVisible();
+            commitTransientStatus();
             pendingFilePath = trimmed.slice("FILE:".length).trim();
             assistantText += `${line}\n`;
             return;
         }
         ensureVisible();
+        commitTransientStatus();
         process.stdout.write(`${line}\n`);
         assistantText += `${line}\n`;
     };
@@ -510,6 +552,7 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
                     }
                     case "3": {
                         ensureVisible();
+                        commitTransientStatus();
                         console.error(chalk.red(`  流错误: ${parsed.value}`));
                         break;
                     }
@@ -553,6 +596,7 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
                         }
                         toolArgsTextBuffer = "";
                         announceStreamingToolProgress(true);
+                        commitTransientStatus();
                         streamingTool = null;
                         const args = {};
                         if (raw) {
@@ -587,6 +631,7 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
         }
     }
     catch (err) {
+        commitTransientStatus();
         onDraftUpdate?.(null);
         if ((assistantText.trim() || toolExecutions.length > 0) &&
             err instanceof Error &&
@@ -599,6 +644,7 @@ async function streamResponse(config, messages, context, cwd, onFirstVisible, on
     if (activeFileBlock) {
         await finalizeFileBlock();
     }
+    clearTransientStatus();
     onDraftUpdate?.(null);
     return { assistantText, toolExecutions, fileWrites };
 }
