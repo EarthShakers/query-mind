@@ -9,6 +9,7 @@ export interface ModelConfig {
   modelChat: string;
   modelLight: string;
   modelAgent: string;
+  modelGame: string;
   modelRerank: string;
   modelEmbedding: string;
   embeddingDimensions: number;
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG: ModelConfig = {
   modelChat: process.env.MODEL_CHAT || "qwen-plus-2025-07-28",
   modelLight: process.env.MODEL_LIGHT || "qwen-plus-2025-07-28",
   modelAgent: process.env.MODEL_AGENT || "qwen-plus-2025-07-28",
+  modelGame: process.env.MODEL_GAME || "glm-5",
   modelRerank: process.env.MODEL_RERANK || "qwen3-rerank",
   modelEmbedding: process.env.MODEL_EMBEDDING || "text-embedding-v4",
   embeddingDimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1024", 10),
@@ -52,6 +54,7 @@ async function loadFromDb(): Promise<ModelConfig | null> {
       modelChat: String(v.modelChat ?? DEFAULT_CONFIG.modelChat),
       modelLight: String(v.modelLight ?? DEFAULT_CONFIG.modelLight),
       modelAgent: String(v.modelAgent ?? DEFAULT_CONFIG.modelAgent),
+      modelGame: String(v.modelGame ?? DEFAULT_CONFIG.modelGame),
       modelRerank: String(v.modelRerank ?? DEFAULT_CONFIG.modelRerank),
       modelEmbedding: String(v.modelEmbedding ?? DEFAULT_CONFIG.modelEmbedding),
       embeddingDimensions: Number(
@@ -117,6 +120,7 @@ function getStore(): ModelConfig {
 export const getModelChat = () => getStore().modelChat;
 export const getModelLight = () => getStore().modelLight;
 export const getModelAgent = () => getStore().modelAgent;
+export const getModelGame = () => getStore().modelGame;
 export const getModelRerank = () => getStore().modelRerank;
 export const getModelEmbedding = () => getStore().modelEmbedding;
 export const getEmbeddingDimensions = () => getStore().embeddingDimensions;

@@ -215,6 +215,11 @@ export async function startChat(config, workspaceRoot, options = {}) {
                     }
                     const hasSuccessfulWrite = toolExecutions.some((item) => item.toolName === "write_file" && item.result.success);
                     if (hasSuccessfulWrite) {
+                        const writeMessages = toolExecutions
+                            .filter((item) => item.toolName === "write_file" && item.result.success)
+                            .map((item) => item.result.message)
+                            .filter(Boolean);
+                        console.log(chalk.green(`\n  已完成代码生成${writeMessages.length ? `：${writeMessages.join("，")}` : ""}`));
                         break;
                     }
                     autoRounds += 1;

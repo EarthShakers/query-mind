@@ -5,7 +5,7 @@ import { dashscopeProvider } from "@/lib/llm/llm";
 import {
   getModelConfig,
   runWithConfigAsync,
-  getModelChat,
+  getModelGame,
 } from "@/lib/llm/model-config";
 import {
   checkRateLimit,
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
     try {
       const result = await streamText({
-        model: dashscopeProvider(getModelChat()),
+        model: dashscopeProvider(getModelGame()),
         abortSignal: abortController.signal,
         // 游戏生成通常只需要「读文件 -> 写文件 -> 可选简短收尾」几步，限制步数能减少无意义长尾输出
         maxSteps: 3,

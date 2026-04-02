@@ -10,6 +10,7 @@ interface ModelConfig {
   modelChat: string;
   modelLight: string;
   modelAgent: string;
+  modelGame: string;
   modelRerank: string;
   modelEmbedding: string;
   embeddingDimensions: number;
@@ -38,6 +39,7 @@ const CONFIG_FIELDS: {
   { key: "modelChat", label: "主对话模型", hint: "Chat、Report 生成", category: "chat" },
   { key: "modelLight", label: "轻量任务模型", hint: "Self-Query、Multi-Query、摘要、标题、ASR 语音纠错", category: "chat" },
   { key: "modelAgent", label: "Agent 模型", hint: "LangGraph 规划与执行", category: "chat" },
+  { key: "modelGame", label: "游戏代码模型", hint: "spark game 代码生成与修改", category: "chat" },
   { key: "modelRerank", label: "Rerank 模型", hint: "检索重排序", category: "rerank" },
   { key: "modelEmbedding", label: "Embedding 模型", hint: "向量化", category: "embedding" },
   { key: "embeddingDimensions", label: "Embedding 维度", hint: "256–4096", category: "number" },
