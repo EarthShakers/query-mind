@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/index.js",
     "game": "tsx src/index.ts game"
   },
   "dependencies": {
