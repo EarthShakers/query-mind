@@ -8,13 +8,15 @@
   },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsc && chmod +x dist/index.js",
+    "build:preview-app": "node scripts/build-preview-app.mjs",
+    "build": "tsc && pnpm run build:preview-app && chmod +x dist/index.js",
     "game": "tsx src/index.ts game"
   },
   "dependencies": {
     "chalk": "^5.4.1",
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
+    "diff": "^8.0.4",
     "ignore": "^7.0.3",
     "marked": "^15.0.6",
     "marked-terminal": "^7.3.0",
@@ -24,9 +26,16 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/diff": "^8.0.0",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^22.13.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.5.14",
+    "esbuild": "^0.28.0",
+    "monaco-editor": "0.52.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

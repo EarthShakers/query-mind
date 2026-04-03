@@ -23,7 +23,7 @@ const DEFAULT_CONFIG: ModelConfig = {
   modelChat: process.env.MODEL_CHAT || "qwen-plus-2025-07-28",
   modelLight: process.env.MODEL_LIGHT || "qwen-plus-2025-07-28",
   modelAgent: process.env.MODEL_AGENT || "qwen-plus-2025-07-28",
-  modelGame: process.env.MODEL_GAME || "qwen-coder-turbo-0919",
+  modelGame: process.env.MODEL_GAME || "glm-4.5",
   modelRerank: process.env.MODEL_RERANK || "qwen3-rerank",
   modelEmbedding: process.env.MODEL_EMBEDDING || "text-embedding-v4",
   embeddingDimensions: parseInt(process.env.EMBEDDING_DIMENSIONS || "1024", 10),

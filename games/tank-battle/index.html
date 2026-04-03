@@ -189,10 +189,10 @@
         // 玩家坦克
         let player = {
             x: GAME_WIDTH / 2,
-            y: GAME_HEIGHT - 100,
+            y: GAME_HEIGHT - 80,
             width: 40,
             height: 40,
-            speed: 5,
+            speed: 8,
             rotation: 0,
             bullets: [],
             reloadTime: 0,
@@ -417,6 +417,12 @@
         function isCollidingWithWalls(obj) {
             return walls.some(wall => isColliding(obj, wall));
         }
+        
+        // 检查位置是否与墙壁碰撞（用于移动前的预检测）
+        function wouldCollideWithWalls(obj, newX, newY) {
+            const testObj = { ...obj, x: newX, y: newY };
+            return walls.some(wall => isColliding(testObj, wall));
+        }
 
         // 玩家射击
         function playerShoot() {
@@ -599,7 +605,7 @@
         // 取消能量提升
         function deactivatePowerup() {
             powerupActive = false;
-            player.speed = 5;
+            player.speed = 8;
             document.getElementById('powerupIndicator').style.display = 'none';
         }
 
@@ -624,7 +630,7 @@
             level = 1;
             
             player.x = GAME_WIDTH / 2;
-            player.y = GAME_HEIGHT - 100;
+            player.y = GAME_HEIGHT - 80;
             player.bullets = [];
             player.canShoot = true;
             
@@ -651,7 +657,7 @@
             updateLevel();
             
             player.x = GAME_WIDTH / 2;
-            player.y = GAME_HEIGHT - 100;
+            player.y = GAME_HEIGHT - 80;
             player.bullets = [];
             player.canShoot = true;
             
@@ -822,13 +828,18 @@
                 
                 if (distance > 200) {
                     enemy.rotation = Math.atan2(dy, dx);
-                    enemy.x += Math.cos(enemy.rotation) * enemy.speed;
-                    enemy.y += Math.sin(enemy.rotation) * enemy.speed;
-                }
-                
-                // 避免与墙壁碰撞
-                if (isCollidingWithWalls(enemy)) {
-                    enemy.rotation += Math.PI / 2;
+                    
+                    // 预检测碰撞
+                    const newX = enemy.x + Math.cos(enemy.rotation) * enemy.speed;
+                    const newY = enemy.y + Math.sin(enemy.rotation) * enemy.speed;
+                    
+                    if (!wouldCollideWithWalls(enemy, newX, newY)) {
+                        enemy.x = newX;
+                        enemy.y = newY;
+                    } else {
+                        // 碰撞时转向
+                        enemy.rotation += Math.PI / 2;
+                    }
                 }
             });
             
@@ -904,35 +915,38 @@
                 switch (e.key.toLowerCase()) {
                     case 'w':
                         player.rotation = -Math.PI / 2;
-                        player.y -= player.speed;
+                        const newY = player.y - player.speed;
+                        if (!wouldCollideWithWalls(player, player.x, newY)) {
+                            player.y = newY;
+                        }
                         createTrailParticles(player.x + 20, player.y + 40, COLORS.playerTank);
                         break;
                     case 's':
                         player.rotation = Math.PI / 2;
-                        player.y += player.speed;
+                        const newY2 = player.y + player.speed;
+                        if (!wouldCollideWithWalls(player, player.x, newY2)) {
+                            player.y = newY2;
+                        }
                         createTrailParticles(player.x + 20, player.y, COLORS.playerTank);
                         break;
                     case 'a':
                         player.rotation = Math.PI;
-                        player.x -= player.speed;
+                        const newX = player.x - player.speed;
+                        if (!wouldCollideWithWalls(player, newX, player.y)) {
+                            player.x = newX;
+                        }
                         createTrailParticles(player.x + 40, player.y + 20, COLORS.playerTank);
                         break;
                     case 'd':
                         player.rotation = 0;
-                        player.x += player.speed;
+                        const newX2 = player.x + player.speed;
+                        if (!wouldCollideWithWalls(player, newX2, player.y)) {
+                            player.x = newX2;
+                        }
                         createTrailParticles(player.x, player.y + 20, COLORS.playerTank);
                         break;
                 }
                 
-                // 边界检查
-                player.x = Math.max(40, Math.min(GAME_WIDTH - 40, player.x));
-                player.y = Math.max(40, Math.min(GAME_HEIGHT - 40, player.y));
-                
-                // 避免与墙壁碰撞
-                if (isCollidingWithWalls(player)) {
-                    player.x = Math.max(40, Math.min(GAME_WIDTH - 40, player.x));
-                    player.y = Math.max(40, Math.min(GAME_HEIGHT - 40, player.y));
-                }
             });
         }
 

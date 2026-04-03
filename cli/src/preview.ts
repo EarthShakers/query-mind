@@ -2,15 +2,25 @@ import fs from "node:fs";
 import pathMod from "node:path";
 import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { watch } from "chokidar";
 import { lookup } from "mime-types";
+import { applyPatch, createTwoFilesPatch } from "diff";
 import { normalizeGameSlug } from "./game-root.js";
+
+const THIS_FILE = fileURLToPath(import.meta.url);
+const THIS_DIR = pathMod.dirname(THIS_FILE);
+const PREVIEW_APP_BUNDLE = pathMod.resolve(THIS_DIR, "../dist/preview-app/app.js");
+const MONACO_LOCAL_MIN = pathMod.resolve(
+  THIS_DIR,
+  "../node_modules/monaco-editor/min"
+);
 
 export interface PreviewServer {
   port: number;
   close: () => void;
-  setDraft: (draft: { path: string; content: string; note?: string } | null) => void;
+  setDraft: (draft: { path: string; content: string; isDiff?: boolean; note?: string } | null) => void;
 }
 
 function listGameSlugs(gamesParent: string): string[] {
@@ -157,6 +167,25 @@ function listSparkProjectFiles(root: string): string[] {
 const MONACO_CDN =
   "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min";
 
+function splitReactShellHtml(port: number, initialGame: string): string {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>spark — React Preview</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    window.__SPARK_PORT__ = ${port};
+    window.__SPARK_INITIAL_GAME__ = ${JSON.stringify(initialGame)};
+  </script>
+  <script src="/__spark/app.js"></script>
+</body>
+</html>`;
+}
+
 function splitShellHtml(port: number, initialGame: string): string {
   const initialGamePath = `/__spark/game/${encodeURIComponent(initialGame)}/index.html`;
   return `<!DOCTYPE html>
@@ -297,6 +326,46 @@ function splitShellHtml(port: number, initialGame: string): string {
     #pane-preview { flex: 1 1 auto; min-width: 200px; display: flex; flex-direction: column; background: #111; min-height: 0; }
     #pane-preview iframe { flex: 1; width: 100%; border: 0; background: #1a1a1a; }
     .label { font-weight: 600; letter-spacing: 0.02em; }
+    /* Diff Styles */
+    .diff-line-addition { background: rgba(46, 160, 67, 0.25) !important; }
+    .diff-line-addition-sidebar { background: #2ea043; width: 5px !important; }
+    .diff-line-deletion { background: rgba(248, 81, 73, 0.25) !important; }
+    .diff-line-deletion-sidebar { background: #f85149; width: 5px !important; }
+    
+    .diff-hunk-widget {
+      background: #1a1a1a; border: 1px solid #2ea043; border-radius: 6px;
+      padding: 4px 8px; display: flex; flex-direction: row; align-items: center; gap: 8px; z-index: 500;
+      box-shadow: 0 8px 32px rgba(0,0,0,1);
+      white-space: nowrap; width: fit-content;
+      pointer-events: auto;
+      margin-top: -34px;
+    }
+    .diff-btn {
+      padding: 3px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 0;
+      color: #fff; font-family: system-ui, -apple-system, sans-serif; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .diff-btn-apply { background: #238636; }
+    .diff-btn-apply:hover { background: #2ea043; }
+    .diff-btn-reject { background: #da3633; }
+    .diff-btn-reject:hover { background: #f85149; }
+    
+    #diff-toolbar {
+      position: absolute; top: 10px; right: 20px; z-index: 1000;
+      background: #1a1a1a; border: 1px solid #3b82f6; border-radius: 6px;
+      padding: 8px 12px; display: none; align-items: center; gap: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+    }
+    #diff-toolbar.visible { display: flex; }
+    
+    .diff-review-banner {
+      position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #238636; color: white; padding: 12px 28px; border-radius: 40px;
+      font-weight: bold; font-size: 15px; z-index: 1500; box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+      pointer-events: none; opacity: 0; transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+    #diff-toolbar.visible ~ .diff-review-banner { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
@@ -338,7 +407,13 @@ function splitShellHtml(port: number, initialGame: string): string {
       </div>
       <div id="editor-wrap">
         <div id="editor"></div>
+        <div id="diff-toolbar">
+          <span style="font-size: 12px; color: #60a5fa; font-weight: 600;">检测到增量补丁</span>
+          <button type="button" class="diff-btn diff-btn-apply" id="btn-accept-all">全部接受</button>
+          <button type="button" class="diff-btn diff-btn-reject" id="btn-reject-all">全部丢弃</button>
+        </div>
         <textarea id="editor-fallback" spellcheck="false" class="fallback-visible"></textarea>
+        <div class="diff-review-banner">正在预览改动 - 请选择接受或丢弃</div>
       </div>
     </div>
     <div id="splitter" role="separator" aria-orientation="vertical" aria-label="调整代码区与预览区宽度"></div>
@@ -377,6 +452,8 @@ function splitShellHtml(port: number, initialGame: string): string {
   var draftState = null;
   /** 编辑器内容与当前加载时的 game 一致时才允许 openFile 短路；换游戏后必须重新拉取 */
   var lastLoadedGame = null;
+  /** 用于 Diff 预览时的内容回滚备份 */
+  var originalValueForDiff = null;
   var MON_BASE = "${MONACO_CDN}";
 
   pathEl.textContent = currentFile;
@@ -1076,6 +1153,18 @@ function splitShellHtml(port: number, initialGame: string): string {
           automaticLayout: true,
           tabSize: 2,
           insertSpaces: true,
+          overviewRulerLanes: 3,
+          overviewRulerBorder: true,
+          glyphMargin: true,
+          renderLineHighlight: "all",
+          scrollbar: {
+            vertical: "visible",
+            horizontal: "visible",
+            useShadows: true,
+            verticalHasArrows: false,
+            horizontalHasArrows: false,
+            verticalScrollbarSize: 14,
+          }
         });
         wireMonacoChange();
         fallbackEditorEl.classList.remove("fallback-visible");
@@ -1094,6 +1183,247 @@ function splitShellHtml(port: number, initialGame: string): string {
     boot();
   }
 
+  function parseUnifiedDiff(diffText) {
+    var lines = diffText.split("\\n");
+    var hunks = [];
+    var currentHunk = null;
+    console.log("[spark] Starting parse: " + lines.length + " lines");
+    
+    for (var i = 0; i < lines.length; i++) {
+      var rawLine = lines[i];
+      var line = rawLine.trim();
+      if (!line && !currentHunk) continue;
+
+      // 超强鲁棒性正则：允许 @@ 前后有空格，允许数字间空格不一致
+      var m = line.match(/@@\\s+-(\\d+),?(\\d*)\\s+\\+(\\d+),?(\\d*)\\s+@@/);
+      if (m) {
+        if (currentHunk) hunks.push(currentHunk);
+        currentHunk = {
+          oldStart: parseInt(m[1], 10),
+          oldLines: parseInt(m[2] || "1", 10),
+          newStart: parseInt(m[3], 10),
+          newLines: parseInt(m[4] || "1", 10),
+          lines: [],
+        };
+        console.log("[spark] Found hunk header:", line);
+        continue;
+      }
+
+      if (currentHunk) {
+        // 由于上面执行过 line = rawLine.trim()，我们要重新看 rawLine 的内容
+        if (rawLine.startsWith("+") || rawLine.startsWith("-") || rawLine.startsWith(" ")) {
+          currentHunk.lines.push(rawLine);
+        } else if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("\\\\")) {
+          // skip metadata
+        } else if (line) {
+          // 适配 AI 漏写空格的情况，但要保护原有的 + 和 - 标记
+          if (!line.startsWith("DIFF:")) {
+            var prefix = (line.startsWith("+") || line.startsWith("-")) ? "" : " ";
+            currentHunk.lines.push(prefix + rawLine);
+          }
+        }
+      }
+    }
+    if (currentHunk) hunks.push(currentHunk);
+    console.log("[spark] Parse complete, hunks found:", hunks.length);
+    return hunks;
+  }
+
+  var diffDecorations = [];
+  var hunkWidgets = [];
+
+  function clearDiffDecorations() {
+    if (monacoEditor) {
+      diffDecorations = monacoEditor.deltaDecorations(diffDecorations, []);
+      hunkWidgets.forEach(function (w) {
+        monacoEditor.removeContentWidget(w);
+      });
+      hunkWidgets = [];
+      document.getElementById("diff-toolbar").classList.remove("visible");
+    }
+  }
+
+  function applyHunk(hunk) {
+    if (!monacoEditor) return;
+    refreshDiffViewManually(); 
+  }
+
+  function refreshDiffViewManually() {
+    clearDiffDecorations();
+    applyDraftToEditor();
+  }
+
+  function computeHybridContent(original, hunks) {
+    var lines = original.split(/\\r?\\n/);
+    var sortedHunks = hunks.slice().sort(function(a, b) {
+      return b.oldStart - a.oldStart;
+    });
+    var lineTypes = lines.map(function() { return 0; });
+
+    sortedHunks.forEach(function(hunk) {
+      var startIdx = hunk.oldStart - 1;
+      var hybridHunkLines = hunk.lines.map(function(l) { return l.slice(1); });
+      var hybridHunkTypes = hunk.lines.map(function(l) { return l.startsWith("+") ? 1 : (l.startsWith("-") ? -1 : 0); });
+      
+      var spliceArgsLines = [startIdx, hunk.oldLines].concat(hybridHunkLines);
+      var spliceArgsTypes = [startIdx, hunk.oldLines].concat(hybridHunkTypes);
+      
+      lines.splice.apply(lines, spliceArgsLines);
+      lineTypes.splice.apply(lineTypes, spliceArgsTypes);
+    });
+    return { content: lines.join("\n"), types: lineTypes };
+  }
+
+  function renderDiffHunks(hunks, lineTypes) {
+    if (!monacoEditor) return;
+    document.getElementById("diff-toolbar").classList.add("visible");
+    var decorations = [];
+    
+    // 对 lineTypes 建立渲染装饰
+    lineTypes.forEach(function(type, idx) {
+      var lineNum = idx + 1;
+      if (type === 1) { // Added
+        decorations.push({
+          range: new monaco.Range(lineNum, 1, lineNum, 1),
+          options: { 
+            isWholeLine: true, 
+            className: "diff-line-addition", 
+            glyphMarginClassName: "diff-line-addition-sidebar",
+            overviewRuler: { color: "#2ea043", position: 7 }
+          }
+        });
+      } else if (type === -1) { // Deleted
+        decorations.push({
+          range: new monaco.Range(lineNum, 1, lineNum, 1),
+          options: { 
+            isWholeLine: true, 
+            className: "diff-line-deletion", 
+            glyphMarginClassName: "diff-line-deletion-sidebar",
+            overviewRuler: { color: "#f85149", position: 7 }
+          }
+        });
+      }
+    });
+
+    var sortedHunks = hunks.slice().sort(function(a, b) { return a.oldStart - b.oldStart; });
+    sortedHunks.forEach(function(hunk, hunkIdx) {
+      // 寻找该 hunk 在 lineTypes 中的逻辑起始行
+      var hybridStartLine = 1;
+      var matchesNeeded = hunk.oldStart;
+      var originalLinesFound = 0;
+      
+      for (var i = 0; i < lineTypes.length; i++) {
+        if (lineTypes[i] === 0 || lineTypes[i] === -1) { 
+          originalLinesFound++;
+        }
+        if (originalLinesFound === matchesNeeded) {
+          hybridStartLine = i + 1;
+          // 向上溯源到该块的第一个变动行（处理前面全是 + 的情况）
+          while (hybridStartLine > 1 && lineTypes[hybridStartLine - 2] !== 0) {
+            hybridStartLine--;
+          }
+          break;
+        }
+      }
+
+      var widgetId = "hunk-widget-" + hunkIdx;
+      var domNode = document.createElement("div");
+      domNode.className = "diff-hunk-widget";
+      var btnApply = document.createElement("button");
+      btnApply.className = "diff-btn diff-btn-apply";
+      btnApply.textContent = "Apply";
+      btnApply.onclick = function() { applyHunk(hunk); };
+      var btnReject = document.createElement("button");
+      btnReject.className = "diff-btn diff-btn-reject";
+      btnReject.textContent = "Reject";
+      btnReject.onclick = function() { refreshDiffViewManually(); };
+      domNode.appendChild(btnApply);
+      domNode.appendChild(btnReject);
+
+      var widget = {
+        getId: function() { return widgetId; },
+        getDomNode: function() { return domNode; },
+        getPosition: function() {
+          return {
+            position: { lineNumber: Math.max(1, hybridStartLine), column: 1 },
+            preference: [1, 2] 
+          };
+        }
+      };
+      monacoEditor.addContentWidget(widget);
+      hunkWidgets.push(widget);
+    });
+
+    diffDecorations = monacoEditor.deltaDecorations(diffDecorations, decorations);
+  }
+
+  document.getElementById("btn-accept-all").onclick = function() {
+    if (draftState && draftState.isDiff) {
+      var hunks = parseUnifiedDiff(draftState.content);
+      var patched = computePatchedContent(originalValueForDiff, hunks);
+      setCurrentEditorValue(patched);
+      originalValueForDiff = null;
+      clearDiffDecorations();
+      draftState = null;
+      btnSave.disabled = false;
+      setStatus("已接受所有更改", true);
+    }
+  };
+  document.getElementById("btn-reject-all").onclick = function() {
+    if (originalValueForDiff !== null) {
+      setCurrentEditorValue(originalValueForDiff);
+      originalValueForDiff = null;
+    }
+    clearDiffDecorations();
+    draftState = null;
+    btnSave.disabled = false;
+    setStatus("已放弃所有更改", true);
+  };
+
+  function computePatchedContent(original, hunks) {
+    var lines = original.split(/\\r?\\n/);
+    var sortedHunks = hunks.slice().sort(function(a, b) {
+      return b.oldStart - a.oldStart;
+    });
+
+    sortedHunks.forEach(function(hunk) {
+      var startIdx = hunk.oldStart - 1;
+      var deleteCount = hunk.oldLines;
+      var newHunkLines = hunk.lines.filter(function(l) { return !l.startsWith("-"); })
+                                   .map(function(l) { return l.slice(1); });
+      lines.splice.apply(lines, [startIdx, deleteCount].concat(newHunkLines));
+    });
+    return lines.join("\n");
+  }
+
+  function applyDraftToEditor() {
+    if (!hasDraftForCurrentFile()) return false;
+    if (draftState.isDiff && monacoEditor) {
+      var hunks = parseUnifiedDiff(draftState.content);
+      if (originalValueForDiff === null) {
+        originalValueForDiff = getCurrentEditorValue();
+      }
+
+      if (hunks.length === 0 && draftState.content.trim().length > 0) {
+        setStatus("补丁解析失败：格式不规范", false);
+        setCurrentEditorValue(draftState.content);
+      } else {
+        var hybrid = computeHybridContent(originalValueForDiff, hunks);
+        setCurrentEditorValue(hybrid.content);
+        setTimeout(function() {
+          renderDiffHunks(hunks, hybrid.types);
+        }, 50);
+        setStatus(draftState.note || "正在预览行内补丁", true);
+      }
+      return true;
+    }
+    setCurrentEditorValue(draftState.content || "");
+    dirty = false;
+    btnSave.disabled = true;
+    setStatus(draftState.note || "正在显示生成草稿", true);
+    return true;
+  }
+
   try {
     var ws = new WebSocket("ws://" + location.hostname + ":" + port);
     ws.onmessage = function (event) {
@@ -1101,23 +1431,32 @@ function splitShellHtml(port: number, initialGame: string): string {
         var data = JSON.parse(event.data);
         if (data && data.type === "draft") {
           if (data.payload && data.payload.path) {
+            var oldPath = draftState ? draftState.path : null;
             draftState = data.payload;
             if (!currentFile || currentFile === "index.html" || currentFile === draftState.path) {
-              currentFile = draftState.path;
-              pathEl.textContent = currentFile;
-              updateUrl();
-              highlightTreeActive();
+              if (currentFile !== draftState.path) {
+                currentFile = draftState.path;
+                pathEl.textContent = currentFile;
+                updateUrl();
+                highlightTreeActive();
+              }
+              if (oldPath !== draftState.path) {
+                clearDiffDecorations();
+              }
               applyDraftToEditor();
             }
           } else {
-            draftState = null;
-            btnSave.disabled = false;
-            setStatus("草稿已完成，已切回真实文件", true);
-            fetchFileList().then(function () {
-              return loadSourceDisk();
-            }).then(function () {
-              bumpIframe();
-            });
+            // 如果是 diff 模式，流结束时不要立刻清除 draftState，给用户处理的机会
+            if (draftState && draftState.isDiff) {
+              setStatus("补丁生成已完成，等待审核应用", true);
+              btnSave.disabled = true; // 依然不让保存，直到处理补丁
+            } else {
+              draftState = null;
+              clearDiffDecorations();
+              btnSave.disabled = false;
+              setStatus("草稿已完成，已切回真实文件", true);
+            }
+            fetchFileList().then(loadSourceDisk).then(bumpIframe);
           }
           return;
         }
@@ -1148,6 +1487,221 @@ function isPathInsideRoot(filePath: string, root: string): boolean {
   const resolved = pathMod.resolve(filePath);
   const rootResolved = pathMod.resolve(root);
   return resolved === rootResolved || resolved.startsWith(rootResolved + pathMod.sep);
+}
+
+interface DiffHunk {
+  index: number;
+  rawHeader: string;
+  rawLines: string[];
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+}
+
+function parseUnifiedDiff(diffText: string): DiffHunk[] {
+  const lines = diffText.replace(/\r\n/g, "\n").split("\n");
+  const hunks: DiffHunk[] = [];
+  let current: DiffHunk | null = null;
+  let idx = 0;
+  const headerRe = /^@@\s*-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s*@@/;
+  for (const line of lines) {
+    const m = line.match(headerRe);
+    if (m) {
+      if (current) hunks.push(current);
+      current = {
+        index: idx++,
+        rawHeader: line,
+        rawLines: [],
+        oldStart: Number(m[1]),
+        oldLines: m[2] ? Number(m[2]) : 1,
+        newStart: Number(m[3]),
+        newLines: m[4] ? Number(m[4]) : 1,
+      };
+      continue;
+    }
+    if (!current) continue;
+    if (
+      line.startsWith(" ") ||
+      line.startsWith("+") ||
+      line.startsWith("-")
+    ) {
+      current.rawLines.push(line);
+    }
+  }
+  if (current) hunks.push(current);
+  return hunks;
+}
+
+function normalizeSparkText(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function findHunkStart(
+  lines: string[],
+  startIdx: number,
+  expectedOld: string[]
+): number {
+  const maxDrift = 200;
+  const n = expectedOld.length;
+  const start = Math.max(0, startIdx - maxDrift);
+  const end = Math.min(lines.length - n, startIdx + maxDrift);
+  for (let i = start; i <= end; i += 1) {
+    let ok = true;
+    for (let j = 0; j < n; j += 1) {
+      if (lines[i + j] !== expectedOld[j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return i;
+  }
+  return -1;
+}
+
+function applyHunksToText(original: string, hunks: DiffHunk[]): string {
+  const normalized = normalizeSparkText(original);
+  const lines = normalized.split("\n");
+  const hasTrailingNewline = normalized.endsWith("\n") || normalized.length === 0;
+  const sorted = hunks.slice().sort((a, b) => b.oldStart - a.oldStart);
+  for (const hunk of sorted) {
+    const expectedOld = hunk.rawLines
+      .filter((line) => !line.startsWith("+"))
+      .map((line) => line.slice(1));
+    const replacement = hunk.rawLines
+      .filter((line) => !line.startsWith("-"))
+      .map((line) => line.slice(1));
+    let startIdx = Math.max(0, hunk.oldStart - 1);
+    if (expectedOld.length > 0) {
+      const candidate = lines.slice(startIdx, startIdx + expectedOld.length);
+      const exact = candidate.length === expectedOld.length &&
+        candidate.every((line, i) => line === expectedOld[i]);
+      if (!exact) {
+        const found = findHunkStart(lines, startIdx, expectedOld);
+        if (found < 0) {
+          throw new Error(`hunk mismatch around ${hunk.rawHeader}`);
+        }
+        startIdx = found;
+      }
+    } else {
+      startIdx = Math.min(lines.length, startIdx);
+    }
+    lines.splice(startIdx, expectedOld.length, ...replacement);
+  }
+  const result = lines.join("\n");
+  return hasTrailingNewline && !result.endsWith("\n") ? `${result}\n` : result;
+}
+
+function formatUnifiedHunkHeader(
+  oldStart: number,
+  oldLines: number,
+  newStart: number,
+  newLines: number
+): string {
+  const o =
+    oldLines === 0
+      ? `${oldStart},0`
+      : oldLines === 1
+        ? `${oldStart}`
+        : `${oldStart},${oldLines}`;
+  const n =
+    newLines === 0
+      ? `${newStart},0`
+      : newLines === 1
+        ? `${newStart}`
+        : `${newStart},${newLines}`;
+  return `@@ -${o} +${n} @@`;
+}
+
+/** 将 hunk 视为 disk→goal 的变换；取逆后应用到 goal 可去掉该片段（用于「拒绝」单段） */
+function invertDiffHunk(h: DiffHunk): DiffHunk {
+  const flipped = h.rawLines.map((line) => {
+    if (line.startsWith("+")) return `-${line.slice(1)}`;
+    if (line.startsWith("-")) return `+${line.slice(1)}`;
+    return line;
+  });
+  return {
+    index: h.index,
+    rawHeader: formatUnifiedHunkHeader(
+      h.newStart,
+      h.newLines,
+      h.oldStart,
+      h.oldLines
+    ),
+    rawLines: flipped,
+    oldStart: h.newStart,
+    oldLines: h.newLines,
+    newStart: h.oldStart,
+    newLines: h.oldLines,
+  };
+}
+
+function diffHunksDiskToGoal(disk: string, goal: string, pathLabel: string): DiffHunk[] {
+  const d = normalizeSparkText(disk);
+  const g = normalizeSparkText(goal);
+  const unified = createTwoFilesPatch(pathLabel, pathLabel, d, g, "", "");
+  const hunks = parseUnifiedDiff(unified);
+  hunks.forEach((h, i) => {
+    h.index = i;
+  });
+  return hunks;
+}
+
+/** 单文件 unified 片段，供 applyPatch（支持 fuzz） */
+function singleHunkUnifiedPatch(relPath: string, h: DiffHunk): string {
+  const name = relPath.replace(/\\/g, "/");
+  const body = `${h.rawHeader}\n${h.rawLines.join("\n")}`;
+  return `--- a/${name}\n+++ b/${name}\n${body}\n`;
+}
+
+function rehydrateTrailingNewline(before: string, afterNorm: string): string {
+  const hadTrailing = normalizeSparkText(before).endsWith("\n");
+  let r = afterNorm;
+  if (hadTrailing && !r.endsWith("\n")) r = `${r}\n`;
+  return r;
+}
+
+const PATCH_APPLY_FUZZ = 8;
+
+/**
+ * 将 disk 上的一段 hunk 应用为更接近 goal 的中间结果；优先用 diff.applyPatch（模糊匹配），失败再回退 applyHunksToText。
+ */
+function applyOneHunkToDisk(disk: string, relPath: string, h: DiffHunk): string {
+  const norm = normalizeSparkText(disk);
+  const uni = singleHunkUnifiedPatch(relPath, h);
+  const patched = applyPatch(norm, uni, {
+    fuzzFactor: PATCH_APPLY_FUZZ,
+    autoConvertLineEndings: true,
+  });
+  if (typeof patched === "string") {
+    return rehydrateTrailingNewline(disk, patched);
+  }
+  try {
+    return rehydrateTrailingNewline(disk, applyHunksToText(norm, [h]));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `${msg}（若仍失败，请用顶部「选择全部」一次写入完整目标文件）`
+    );
+  }
+}
+
+function applyOneHunkToText(base: string, relPath: string, h: DiffHunk): string {
+  const norm = normalizeSparkText(base);
+  const uni = singleHunkUnifiedPatch(relPath, h);
+  const patched = applyPatch(norm, uni, {
+    fuzzFactor: PATCH_APPLY_FUZZ,
+    autoConvertLineEndings: true,
+  });
+  if (typeof patched === "string") {
+    return rehydrateTrailingNewline(base, patched);
+  }
+  try {
+    return rehydrateTrailingNewline(base, applyHunksToText(norm, [h]));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`${msg}（拒绝该片段时无法对齐上下文，可改用「拒绝全部」）`);
+  }
 }
 
 const GAME_COVER_CANDIDATES = [
@@ -1323,13 +1877,25 @@ export function startPreviewServer(
   const initialGameRoot = pathMod.resolve(gameDir);
   const gamesParent = pathMod.dirname(initialGameRoot);
   const initialGame = pathMod.basename(initialGameRoot);
-  let draftState: { path: string; content: string; note?: string } | null = null;
+  let draftState: { path: string; content: string; isDiff?: boolean; note?: string } | null = null;
+  type SparkQueuedPatch = {
+    id: string;
+    path: string;
+    diff: string;
+    /** 采纳全部片段后的目标全文；拒绝片段时会缩短 */
+    goalContent: string;
+  };
+  const pendingPatches = new Map<string, SparkQueuedPatch[]>();
 
   const server = http.createServer((req, res) => {
     const method = req.method || "GET";
     const rawUrl = req.url || "/";
     const q = rawUrl.indexOf("?");
-    const pathname = decodeURIComponent(q >= 0 ? rawUrl.slice(0, q) : rawUrl);
+    let pathname = decodeURIComponent(q >= 0 ? rawUrl.slice(0, q) : rawUrl);
+    // 避免 /__spark/.../ 未命中严格相等而落到静态逻辑、误返回游戏 index.html
+    if (pathname.length > 1 && pathname.endsWith("/")) {
+      pathname = pathname.slice(0, -1);
+    }
     const search = q >= 0 ? rawUrl.slice(q + 1) : "";
     const searchParams = new URLSearchParams(search);
     const gamePathPrefix = "/__spark/game/";
@@ -1385,6 +1951,12 @@ export function startPreviewServer(
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         try {
           const files = listSparkProjectFiles(gameRoot);
+          if (
+            files.length === 0 &&
+            fs.existsSync(pathMod.join(gameRoot, "index.html"))
+          ) {
+            files.push("index.html");
+          }
           res.writeHead(200);
           res.end(JSON.stringify({ files }));
         } catch (e) {
@@ -1413,9 +1985,355 @@ export function startPreviewServer(
       return;
     }
 
+    if (pathname === "/__spark/patch") {
+      if (method === "GET") {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        const gameSlug = currentGame;
+        const queue = pendingPatches.get(gameSlug) || [];
+        const gameRootBySlug = pathMod.resolve(gamesParent, gameSlug);
+        while (queue.length > 0) {
+          const head = queue[0];
+          const full = pathMod.resolve(gameRootBySlug, head.path);
+          if (!isPathInsideRoot(full, gameRootBySlug)) break;
+          const disk = fs.existsSync(full) ? fs.readFileSync(full, "utf8") : "";
+          if (normalizeSparkText(disk) === normalizeSparkText(head.goalContent)) {
+            queue.shift();
+            broadcast({ type: "patch", game: gameSlug, count: queue.length });
+            broadcast({ type: "reload", game: gameSlug });
+          } else {
+            break;
+          }
+        }
+        pendingPatches.set(gameSlug, queue);
+        const next = queue[0] || null;
+        let payload: Record<string, unknown> | null = null;
+        if (next) {
+          const full = pathMod.resolve(gameRootBySlug, next.path);
+          const disk = fs.existsSync(full) ? fs.readFileSync(full, "utf8") : "";
+          let hunks: DiffHunk[] = [];
+          try {
+            hunks = diffHunksDiskToGoal(disk, next.goalContent, next.path);
+          } catch {
+            hunks = [];
+          }
+          payload = {
+            id: next.id,
+            path: next.path,
+            goalContent: next.goalContent,
+            hunks,
+          };
+        }
+        res.writeHead(200);
+        res.end(JSON.stringify({ patch: payload, count: queue.length }));
+        return;
+      }
+      if (method === "POST") {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        req.on("data", (c: Buffer) => {
+          size += c.length;
+          if (size > SAVE_MAX_BYTES) {
+            req.destroy();
+            return;
+          }
+          chunks.push(c);
+        });
+        req.on("end", () => {
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          try {
+            const raw = Buffer.concat(chunks).toString("utf-8");
+            const body = JSON.parse(raw) as { game?: string; path?: string; diff?: string };
+            const gameSlug = normalizeGameSlug(body.game || currentGame);
+            const rel = (body.path || "").trim().replace(/^[/\\]+/, "");
+            if (!rel || rel.includes("..")) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ ok: false, error: "invalid path" }));
+              return;
+            }
+            if (!isSparkUserEditableRel(rel)) {
+              res.writeHead(403);
+              res.end(JSON.stringify({ ok: false, error: "forbidden path" }));
+              return;
+            }
+            const diff = String(body.diff || "");
+            const hunks = parseUnifiedDiff(diff);
+            if (hunks.length === 0) {
+              res.writeHead(400);
+              res.end(JSON.stringify({ ok: false, error: "invalid unified diff" }));
+              return;
+            }
+            const gameRootBySlug = pathMod.resolve(gamesParent, gameSlug);
+            const full = pathMod.resolve(gameRootBySlug, rel);
+            if (!isPathInsideRoot(full, gameRootBySlug)) {
+              res.writeHead(403);
+              res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+              return;
+            }
+            const original = fs.existsSync(full) ? fs.readFileSync(full, "utf8") : "";
+            let goalContent: string;
+            try {
+              goalContent = normalizeSparkText(
+                applyHunksToText(normalizeSparkText(original), hunks)
+              );
+            } catch (e) {
+              res.writeHead(400);
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  error: e instanceof Error ? e.message : "diff does not apply to current file",
+                })
+              );
+              return;
+            }
+            const patch: SparkQueuedPatch = {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+              path: rel,
+              diff,
+              goalContent,
+            };
+            const queue = pendingPatches.get(gameSlug) || [];
+            queue.push(patch);
+            pendingPatches.set(gameSlug, queue);
+            broadcast({ type: "patch", game: gameSlug, count: queue.length });
+            res.writeHead(200);
+            res.end(JSON.stringify({ ok: true, patch }));
+          } catch (e) {
+            res.writeHead(500);
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : String(e),
+              })
+            );
+          }
+        });
+        return;
+      }
+      res.writeHead(405, { Allow: "GET, POST" });
+      res.end();
+      return;
+    }
+
+    if (pathname === "/__spark/patch/apply-hunk" || pathname === "/__spark/patch/reject-hunk") {
+      if (method !== "POST") {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.writeHead(405, { Allow: "POST" });
+        res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        try {
+          const raw = Buffer.concat(chunks).toString("utf-8");
+          const body = JSON.parse(raw) as { game?: string; id?: string; hunkIndex?: number };
+          const gameSlug = normalizeGameSlug(body.game || currentGame);
+          const queue = pendingPatches.get(gameSlug) || [];
+          const pidx = queue.findIndex((p) => p.id === body.id);
+          if (pidx < 0) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ ok: false, error: "patch not found" }));
+            return;
+          }
+          const patch = queue[pidx];
+          if (!isSparkUserEditableRel(patch.path)) {
+            res.writeHead(403);
+            res.end(JSON.stringify({ ok: false, error: "forbidden path" }));
+            return;
+          }
+          const gameRootBySlug = pathMod.resolve(gamesParent, gameSlug);
+          const full = pathMod.resolve(gameRootBySlug, patch.path);
+          if (!isPathInsideRoot(full, gameRootBySlug)) {
+            res.writeHead(403);
+            res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+            return;
+          }
+          const disk = fs.existsSync(full) ? fs.readFileSync(full, "utf8") : "";
+          let hunks: DiffHunk[];
+          try {
+            hunks = diffHunksDiskToGoal(disk, patch.goalContent, patch.path);
+          } catch (e) {
+            res.writeHead(400);
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "diff failed",
+              })
+            );
+            return;
+          }
+          const hi = Number(body.hunkIndex ?? 0);
+          if (!Number.isFinite(hi) || hi < 0 || hi >= hunks.length) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ ok: false, error: "bad hunk index" }));
+            return;
+          }
+          const H = hunks[hi];
+          const isApplyHunk = pathname === "/__spark/patch/apply-hunk";
+          if (isApplyHunk) {
+            let disk2: string;
+            try {
+              disk2 = applyOneHunkToDisk(disk, patch.path, H);
+            } catch (e) {
+              res.writeHead(400);
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  error: e instanceof Error ? e.message : String(e),
+                })
+              );
+              return;
+            }
+            const goalNorm = normalizeSparkText(patch.goalContent);
+            fs.mkdirSync(pathMod.dirname(full), { recursive: true });
+            fs.writeFileSync(full, disk2, "utf8");
+            if (normalizeSparkText(disk2) === goalNorm) {
+              queue.splice(pidx, 1);
+            }
+          } else {
+            const inv = invertDiffHunk(H);
+            try {
+              patch.goalContent = applyOneHunkToText(patch.goalContent, patch.path, inv);
+            } catch (e) {
+              res.writeHead(400);
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  error: e instanceof Error ? e.message : String(e),
+                })
+              );
+              return;
+            }
+            if (normalizeSparkText(disk) === normalizeSparkText(patch.goalContent)) {
+              queue.splice(pidx, 1);
+            }
+          }
+          pendingPatches.set(gameSlug, queue);
+          broadcast({ type: "patch", game: gameSlug, count: queue.length });
+          broadcast({ type: "reload", game: gameSlug });
+          res.writeHead(200);
+          res.end(JSON.stringify({ ok: true }));
+        } catch (e) {
+          res.writeHead(500);
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    if (pathname === "/__spark/patch/apply" || pathname === "/__spark/patch/reject") {
+      if (method !== "POST") {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.writeHead(405, { Allow: "POST" });
+        res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        try {
+          const raw = Buffer.concat(chunks).toString("utf-8");
+          const body = JSON.parse(raw) as { game?: string; id?: string };
+          const gameSlug = normalizeGameSlug(body.game || currentGame);
+          const queue = pendingPatches.get(gameSlug) || [];
+          const idx = queue.findIndex((p) => p.id === body.id);
+          if (idx < 0) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ ok: false, error: "patch not found" }));
+            return;
+          }
+          const patch = queue[idx];
+          const isApply = pathname === "/__spark/patch/apply";
+          if (isApply) {
+            if (!isSparkUserEditableRel(patch.path)) {
+              res.writeHead(403);
+              res.end(JSON.stringify({ ok: false, error: "forbidden path" }));
+              return;
+            }
+            const gameRootBySlug = pathMod.resolve(gamesParent, gameSlug);
+            const full = pathMod.resolve(gameRootBySlug, patch.path);
+            if (!isPathInsideRoot(full, gameRootBySlug)) {
+              res.writeHead(403);
+              res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+              return;
+            }
+            fs.mkdirSync(pathMod.dirname(full), { recursive: true });
+            fs.writeFileSync(full, normalizeSparkText(patch.goalContent), "utf8");
+          }
+          queue.splice(idx, 1);
+          pendingPatches.set(gameSlug, queue);
+          broadcast({ type: "patch", game: gameSlug, count: queue.length });
+          if (isApply) {
+            broadcast({ type: "reload", game: gameSlug });
+          }
+          res.writeHead(200);
+          res.end(JSON.stringify({ ok: true }));
+        } catch (e) {
+          res.writeHead(500);
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    if (pathname.startsWith("/__spark/vendor/monaco/")) {
+      const rel = pathname
+        .slice("/__spark/vendor/monaco/".length)
+        .replace(/^[/\\]+/, "");
+      if (!rel || rel.includes("..")) {
+        res.writeHead(400);
+        res.end("Bad path");
+        return;
+      }
+      const full = pathMod.resolve(MONACO_LOCAL_MIN, rel);
+      if (!isPathInsideRoot(full, MONACO_LOCAL_MIN)) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+      if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+      const mime = lookup(full) || "application/octet-stream";
+      res.writeHead(200, { "Content-Type": `${mime}; charset=utf-8` });
+      res.end(fs.readFileSync(full));
+      return;
+    }
+
+    if (pathname === "/__spark/app.js") {
+      if (!fs.existsSync(PREVIEW_APP_BUNDLE)) {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end(
+          "preview-app bundle missing. Run: pnpm --dir cli run build:preview-app"
+        );
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+      res.end(fs.readFileSync(PREVIEW_APP_BUNDLE, "utf-8"));
+      return;
+    }
+
     if (pathname === "/spark" || pathname === "/spark/") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(splitShellHtml(port, currentGame));
+      if (fs.existsSync(PREVIEW_APP_BUNDLE)) {
+        res.end(splitReactShellHtml(port, currentGame));
+      } else {
+        res.end(splitShellHtml(port, currentGame));
+      }
       return;
     }
 
@@ -1444,6 +2362,20 @@ export function startPreviewServer(
       }
       res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
       res.end(fs.readFileSync(full, "utf-8"));
+      return;
+    }
+
+    /** 其余 /__spark/*（不含已处理的 API 与 /__spark/game/ 静态）勿回退为游戏 index.html */
+    if (pathname.startsWith("/__spark/") && !pathname.startsWith("/__spark/game/")) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error:
+            "预览服务不识别的 __spark 路径（升级后请执行: pnpm --dir cli run build && 重启 spark preview）",
+          path: pathname,
+        })
+      );
       return;
     }
 
@@ -1518,9 +2450,9 @@ export function startPreviewServer(
     if (err.code === "EADDRINUSE") {
       console.error(
         `\n[spark] 端口 ${port} 已被占用。\n` +
-          `  • 若已在运行 spark preview 或 spark game，直接打开 http://localhost:${port}/spark\n` +
-          `  • 要再起一个预览请换端口：spark preview -p 4322\n` +
-          `  • 查看占用（macOS）：lsof -nP -iTCP:${port} -sTCP:LISTEN\n`
+        `  • 若已在运行 spark preview 或 spark game，直接打开 http://localhost:${port}/spark\n` +
+        `  • 要再起一个预览请换端口：spark preview -p 4322\n` +
+        `  • 查看占用（macOS）：lsof -nP -iTCP:${port} -sTCP:LISTEN\n`
       );
     } else {
       console.error("\n[spark] 预览服务监听失败:", err.message);

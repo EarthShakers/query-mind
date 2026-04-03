@@ -58,6 +58,7 @@ interface StreamingFileBlock {
   path: string;
   language: string;
   content: string;
+  isDiff: boolean;
   lastDraftPublishedAt: number;
   lastDraftPublishedSize: number;
   lastProgressAnnouncedAt: number;
@@ -268,7 +269,7 @@ export async function startChat(
       }).start();
 
       // 生成期间暂停 readline，避免与流式输出争抢 stdin（否则会表现为卡住、只剩 >、或偶发无输出）
-      rl.pause();
+      // spinner.start();
 
       try {
         const context = collectLocalContext(gameRoot);
@@ -308,6 +309,7 @@ export async function startChat(
               messages,
               context,
               gameRoot,
+              ensurePreview,
               () => {
                 firstVisibleInRound = true;
                 spinner.stop();
@@ -406,7 +408,9 @@ export async function startChat(
         );
       } finally {
         spinner.stop();
-        rl.resume();
+        if (process.stdin.isTTY) {
+          process.stdin.resume();
+        }
       }
 
       console.log(); // blank line
@@ -441,9 +445,10 @@ async function streamResponse(
   messages: Message[],
   context: FileContext,
   cwd: string,
+  ensureSparkPreviewPort: () => Promise<number>,
   onFirstVisible: () => void,
   onFileWritten: () => void | Promise<void>,
-  onDraftUpdate?: (draft: { path: string; content: string; note?: string } | null) => void
+  onDraftUpdate?: (draft: { path: string; content: string; isDiff?: boolean; note?: string } | null) => void
 ): Promise<StreamResponseResult> {
   const url = gameApiUrl(config.apiBase);
   /** 略长于服务端 300s abort，避免永远卡在「思考中」 */
@@ -502,6 +507,49 @@ async function streamResponse(
   let transientStatusText = "";
   let transientStatusActive = false;
   let transientStatusNeedsNewline = false;
+
+  const gameSlugForPreview = normalizeGameSlug(path.basename(cwd));
+
+  const pushSparkPatchToPreview = async (
+    relPath: string,
+    diffText: string
+  ): Promise<boolean> => {
+    try {
+      const port = await ensureSparkPreviewPort();
+      const res = await fetch(`http://127.0.0.1:${port}/__spark/patch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          game: gameSlugForPreview,
+          path: relPath,
+          diff: diffText,
+        }),
+      });
+      const text = await res.text();
+      let j: { ok?: boolean; error?: string } = {};
+      try {
+        j = JSON.parse(text) as { ok?: boolean; error?: string };
+      } catch {
+        /* ignore */
+      }
+      if (!res.ok || j.ok === false) {
+        console.log(
+          chalk.yellow(
+            `  补丁未进入预览: ${j.error || text.slice(0, 160).trim() || `HTTP ${res.status}`}`
+          )
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.log(
+        chalk.yellow(
+          `  补丁推送失败: ${e instanceof Error ? e.message : String(e)}`
+        )
+      );
+      return false;
+    }
+  };
 
   const ensureVisible = () => {
     if (firstVisibleEvent) return;
@@ -587,8 +635,9 @@ async function streamResponse(
     onDraftUpdate({
       path: activeFileBlock.path,
       content: activeFileBlock.content,
+      isDiff: activeFileBlock.isDiff,
       note:
-        `正在生成草稿` +
+        `正在生成${activeFileBlock.isDiff ? "补丁" : "草稿"}` +
         `${lineCount ? `，约 ${lineCount} 行` : ""}` +
         `${phase ? `，当前在补 ${phase}` : ""}`,
     });
@@ -652,16 +701,33 @@ async function streamResponse(
     if (!activeFileBlock) return;
     publishDraftPreview(true);
     commitTransientStatus();
-    const result = await writeGeneratedFile(
-      activeFileBlock.path,
-      activeFileBlock.content,
-      cwd
-    );
+    let result: { success: boolean; message?: string; error?: string } = { success: true };
+    if (!activeFileBlock.isDiff) {
+      result = await writeGeneratedFile(
+        activeFileBlock.path,
+        activeFileBlock.content,
+        cwd
+      );
+    } else {
+      const ok = await pushSparkPatchToPreview(
+        activeFileBlock.path,
+        activeFileBlock.content
+      );
+      result = {
+        success: ok,
+        message: ok ? "补丁已推送" : undefined,
+        error: ok ? undefined : "预览服务未接收补丁",
+      };
+    }
     if (result.success) {
-      console.log(chalk.green(`  ✓ ${result.message || activeFileBlock.path}`));
+      if (!activeFileBlock.isDiff) {
+        console.log(chalk.green(`  ✓ ${result.message || activeFileBlock.path}`));
+      } else {
+        console.log(chalk.green(`  ✓ ${result.message || "补丁已进入预览队列"}`));
+      }
       fileWrites.push({
         path: activeFileBlock.path,
-        message: result.message || `写入 ${activeFileBlock.path}`,
+        message: result.message || `${activeFileBlock.isDiff ? "补丁已推送" : "写入 " + activeFileBlock.path}`,
       });
       onDraftUpdate?.(null);
       await onFileWritten();
@@ -691,13 +757,17 @@ async function streamResponse(
           path: pendingFilePath,
           language: trimmed.slice(3).trim(),
           content: "",
+          isDiff: pendingFilePath.startsWith("__DIFF__"),
           lastDraftPublishedAt: 0,
           lastDraftPublishedSize: 0,
           lastProgressAnnouncedAt: 0,
           lastProgressAnnouncedSize: 0,
         };
+        if (activeFileBlock.isDiff) {
+          activeFileBlock.path = pendingFilePath.slice("__DIFF__".length);
+        }
         pendingFilePath = null;
-        console.log(chalk.dim(`  开始生成 ${activeFileBlock.path}...`));
+        console.log(chalk.dim(`  开始生成 ${activeFileBlock.path}${activeFileBlock.isDiff ? " (补丁)" : ""}...`));
         publishDraftPreview(true);
         return;
       }
@@ -705,6 +775,14 @@ async function streamResponse(
       if (trimmed.length === 0) {
         return;
       }
+    }
+
+    if (trimmed.startsWith("DIFF:")) {
+      ensureVisible();
+      commitTransientStatus();
+      pendingFilePath = "__DIFF__" + trimmed.slice("DIFF:".length).trim();
+      assistantText += `${line}\n`;
+      return;
     }
 
     if (trimmed.startsWith("FILE:")) {
