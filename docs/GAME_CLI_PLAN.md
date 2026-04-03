@@ -553,6 +553,48 @@ src/lib/game/
   prompts.ts                    # 游戏 system prompt + few-shot 模板
 ```
 
+### 代码 diff 方案
+
+3. 语义化 Unified Diff (业界天花板)
+   这是 Cursor 的 Fast Edit (Cerebras/Custom Model) 和 Claude Code 正在使用的方案。它们让模型直接输出标准或简化的 diff 格式：
+
+Diff
+--- path/to/file.js
++++ path/to/file.js
+@@ -10,5 +10,6 @@
+
+- console.log("old");
+
+* console.log("new");
+* console.log("incremental");
+  实现原理：
+
+专用小模型：Cursor 使用了一个极快的小模型，专门训练它去理解代码结构并生成 diff。
+
+流式 Patch：客户端（编辑器）在接收到 diff 流的同时，就开始在内存中计算新的文件状态，并以“虚影代码”（Ghost Text）的形式渲染。
+
+优点：抗干扰能力强。即便行号稍微对不上，通过 diff 上下文（Context lines）也能准确定位。
+
+业界产品的具体实践链路
+A. 预处理：生成前的“裁剪”
+在请求 LLM 之前，系统先通过 Tree-sitter 解析代码结构，只把相关的函数签名和上下文发给模型，而不是整个文件。
+
+B. 协议层：工具调用 (Tool Use)
+目前最稳健的架构是给 LLM 提供一组精细化的文件操作工具：
+
+read_file(path)：只读文件。
+
+apply_diff(path, hunk)：执行一个特定的 diff 块。
+
+undo()：撤销上一次增量修改（非常重要，给用户容错空间）。
+
+C. 后处理：模糊匹配 (Fuzzy Matching)
+由于 LLM 经常会产生细微的缩进错误，业界领先的产品在应用 Diff 时，不会使用严格的字符串相等判断，而是：
+
+忽略空白字符进行匹配。
+
+使用 Levenshtein 距离（编辑距离）：如果匹配度超过 90%，就认为找到了正确位置并强制应用。
+
 ## 10. 实施路线
 
 ### Phase 1: MVP — 跑通核心闭环
