@@ -92,7 +92,13 @@ const PRICING = [
     name: "专业版",
     price: "¥299",
     period: "/月",
-    features: ["无限提问", "5 个空间", "完整报告生成", "Agent 编辑", "报告导出 PDF/Word"],
+    features: [
+      "无限提问",
+      "5 个空间",
+      "完整报告生成",
+      "Agent 编辑",
+      "报告导出 PDF/Word",
+    ],
     cta: "立即订阅",
     primary: true,
   },
@@ -144,7 +150,7 @@ export default function LandingPage() {
               知识库
             </Link>
             <Link
-              href="/games"
+              href="/games/public"
               className="text-slate-500 hover:text-slate-800 transition-colors"
             >
               游戏广场
@@ -188,8 +194,8 @@ export default function LandingPage() {
             data-hero="desc"
             className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed"
           >
-            QueryMind
-            让 AI 自动查询数据、生成图表、撰写分析，输出多章节数据报告。不满意？对任意章节下达修改指令，Agent
+            QueryMind 让 AI
+            自动查询数据、生成图表、撰写分析，输出多章节数据报告。不满意？对任意章节下达修改指令，Agent
             自动推理、查数据、重写、校验，全程可视化。
           </p>
           <div
@@ -300,7 +306,9 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10 md:mb-16" data-anim="heading">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">核心能力</h2>
-            <p className="text-slate-500">AI 报告生成 + Agent 编辑 + 对话分析</p>
+            <p className="text-slate-500">
+              AI 报告生成 + Agent 编辑 + 对话分析
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map((f) => (

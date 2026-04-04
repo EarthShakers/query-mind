@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { SparkPublicGame } from "@/lib/spark/public-games";
 
 function formatTime(value: string): string {
@@ -21,9 +21,13 @@ function formatTime(value: string): string {
 function GameCard({
   game,
   isOwner,
+  onDeleted,
+  showAuthor,
 }: {
   game: SparkPublicGame;
   isOwner: boolean;
+  onDeleted: (id: string) => void;
+  showAuthor: boolean;
 }) {
   const [description, setDescription] = useState(game.description || "");
   const [coverUrl, setCoverUrl] = useState(game.cover_url || "");
@@ -32,6 +36,9 @@ function GameCard({
   const [message, setMessage] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isPublic, setIsPublic] = useState(game.is_public !== false);
+  const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -98,11 +105,59 @@ function GameCard({
     }
   }
 
+  async function removeGame() {
+    if (!isOwner || isDeleting) return;
+    const ok = window.confirm("确认删除这个游戏吗？删除后不可恢复。");
+    if (!ok) return;
+    setMessage(null);
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/spark/games/${game.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setMessage(data?.error || "删除失败");
+        return;
+      }
+      onDeleted(game.id);
+    } catch {
+      setMessage("删除失败，请稍后再试");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  async function togglePublic() {
+    if (!isOwner || isTogglingPublic) return;
+    setMessage(null);
+    setIsTogglingPublic(true);
+    try {
+      const next = !isPublic;
+      const res = await fetch(`/api/spark/games/${game.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setMessage(data?.error || "操作失败");
+        return;
+      }
+      setIsPublic(Boolean(data?.game?.isPublic ?? next));
+      setMessage(next ? "已上架" : "已下架");
+    } catch {
+      setMessage("操作失败，请稍后再试");
+    } finally {
+      setIsTogglingPublic(false);
+    }
+  }
+
   return (
     <>
-      <div className="overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 transition hover:border-cyan-400/60 hover:shadow-[0_20px_80px_rgba(34,211,238,0.12)]">
-        <Link href={`/games/${game.id}`} className="group block">
-          <div className="mb-5 aspect-[16/10] overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+      <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 p-5 transition hover:shadow-[0_20px_80px_rgba(34,211,238,0.12)]">
+        <div className="group relative mb-5 aspect-[16/10] overflow-hidden rounded-2xl bg-slate-900">
+          <Link href={`/games/${game.id}`} className="block h-full w-full">
             {savedCoverUrl ? (
               <img
                 src={savedCoverUrl}
@@ -112,52 +167,107 @@ function GameCard({
             ) : (
               <div className="flex h-full items-end bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_45%),radial-gradient(circle_at_bottom_right,_rgba(99,102,241,0.22),_transparent_40%),linear-gradient(180deg,_rgba(15,23,42,0.6),_rgba(2,6,23,0.95))] p-4">
                 <div className="rounded-full border border-white/10 bg-slate-950/40 px-3 py-1 text-xs uppercase tracking-[0.24em] text-cyan-100/80">
-                  Spark Game
+                  Featured
                 </div>
               </div>
             )}
-          </div>
-        </Link>
+          </Link>
+          <Link
+            href={`/games/${game.id}`}
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/35 bg-slate-950/45 px-3 py-1 text-xs text-white backdrop-blur-sm transition md:opacity-0 md:group-hover:opacity-100 hover:bg-slate-950/60"
+          >
+            立即试玩
+          </Link>
+        </div>
 
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-xs uppercase tracking-[0.24em] text-cyan-300/70">
-              {game.slug}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/games/${game.id}`}
+                className="block truncate text-xl font-semibold text-white hover:text-cyan-200"
+                title={game.title}
+              >
+                {game.title}
+              </Link>
+              <span className="shrink-0 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[11px] text-cyan-200">
+                {game.slug}
+              </span>
             </div>
-            <Link href={`/games/${game.id}`} className="mt-1 block text-xl font-semibold text-white hover:text-cyan-200">
-              {game.title}
-            </Link>
           </div>
-          <div className="flex items-center gap-2">
-            {isOwner ? (
+          {isOwner ? (
+            <div
+              className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
+                isPublic
+                  ? "border-emerald-400/55 bg-emerald-500/10"
+                  : "border-slate-500/60 bg-slate-700/25"
+              }`}
+              title={isPublic ? "已上架" : "已下架"}
+              aria-label={isPublic ? "已上架" : "已下架"}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  isPublic ? "bg-emerald-300" : "bg-slate-400"
+                }`}
+              />
+            </div>
+          ) : (
+            <div />
+          )}
+        </div>
+
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          {savedDescription || "一款轻量好玩的网页小游戏，点击即可开始。"}
+        </p>
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs text-slate-500">
+          <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {showAuthor ? (
+              <span className="whitespace-nowrap">作者：{game.author_name}</span>
+            ) : null}
+            <span>{formatTime(game.updated_at)}</span>
+          </div>
+          {isOwner ? (
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:text-cyan-200"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 transition hover:border-cyan-400 hover:text-cyan-200"
                 aria-label="编辑游戏"
-                title="编辑游戏"
+                title="编辑"
               >
-                <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.8]">
                   <path d="M4 20h4l10-10a2.12 2.12 0 0 0-3-3L5 17l-1 3Z" />
                   <path d="m13.5 6.5 4 4" />
                 </svg>
               </button>
-            ) : null}
-            <Link
-              href={`/games/${game.id}`}
-              className="rounded-full border border-cyan-400/40 px-3 py-1 text-xs text-cyan-200 transition hover:border-cyan-300 hover:text-cyan-100"
-            >
-              点击即玩
-            </Link>
-          </div>
-        </div>
-
-        <p className="mt-3 min-h-12 text-sm leading-6 text-slate-400">
-          {savedDescription || "这是一款通过 spark CLI 生成并发布到线上展示的 HTML5 游戏。"}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-          <span>作者：{game.author_name}</span>
-          <span>最近更新：{formatTime(game.updated_at)}</span>
+              <button
+                type="button"
+                onClick={() => void togglePublic()}
+                disabled={isTogglingPublic}
+                className="inline-flex h-8 items-center justify-center rounded-full border border-amber-400/40 px-3 text-xs text-amber-200 transition hover:border-amber-300 hover:text-amber-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+                aria-label={isPublic ? "下架游戏" : "上架游戏"}
+                title={isPublic ? "下架" : "上架"}
+              >
+                {isTogglingPublic ? "处理中" : isPublic ? "下架" : "上架"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeGame()}
+                disabled={isDeleting}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-400/40 text-rose-200 transition hover:border-rose-300 hover:text-rose-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+                aria-label="删除游戏"
+                title="删除"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.8]">
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4h8v2" />
+                  <path d="M19 6l-1 14H6L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -284,29 +394,49 @@ function GameCard({
 export function GamesGallery({
   games,
   currentUserId,
+  editable = true,
+  showAuthor = true,
+  layout = "grid",
+  emptyText,
 }: {
   games: SparkPublicGame[];
   currentUserId: string | null;
+  editable?: boolean;
+  showAuthor?: boolean;
+  layout?: "grid" | "list";
+  emptyText?: string;
 }) {
-  if (games.length === 0) {
+  const [localGames, setLocalGames] = useState(games);
+
+  useEffect(() => {
+    setLocalGames(games);
+  }, [games]);
+
+  if (localGames.length === 0) {
     return (
       <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-8 text-sm text-slate-400">
-        还没有可公开展示的游戏。先用{" "}
-        <code className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-200">
-          spark push -g your-game
-        </code>{" "}
-        把本地游戏同步到 Supabase。
+        {emptyText || "还没有可展示的游戏，先去创作你的第一款作品吧。"}
       </div>
     );
   }
 
   return (
-    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-      {games.map((game) => (
+    <div
+      className={
+        layout === "list"
+          ? "grid gap-4 grid-cols-1"
+          : "grid gap-5 md:grid-cols-2 xl:grid-cols-3"
+      }
+    >
+      {localGames.map((game) => (
         <GameCard
           key={game.id}
           game={game}
-          isOwner={Boolean(currentUserId && currentUserId === game.user_id)}
+          isOwner={editable && Boolean(currentUserId && currentUserId === game.user_id)}
+          showAuthor={showAuthor}
+          onDeleted={(id) =>
+            setLocalGames((prev) => prev.filter((item) => item.id !== id))
+          }
         />
       ))}
     </div>

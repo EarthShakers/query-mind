@@ -1,26 +1,24 @@
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth/auth";
-import { GamesGallery } from "@/components/games/games-gallery";
-import { getPublicGames } from "@/lib/spark/public-games";
+import { GamesCollectionPanel } from "@/components/games/games-collection-panel";
+import { getUserGames } from "@/lib/spark/public-games";
 
 export default async function GamesPage() {
-  const [games, user] = await Promise.all([getPublicGames(), getSessionUser()]);
+  const user = await getSessionUser();
+  const games = user ? await getUserGames(user.userId) : [];
+  const liveCount = games.filter((g) => g.is_public !== false).length;
+  const hiddenCount = games.filter((g) => g.is_public === false).length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="mb-2 text-sm uppercase tracking-[0.28em] text-cyan-300/80">
-              Spark Games
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              在线游戏广场
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-              这里展示已经同步到 Supabase 的公开游戏快照。点击任意卡片即可在线试玩；如果是你自己发布的游戏，还可以直接补充封面和描述。
-            </p>
-          </div>
+    <div className="h-[100dvh] overflow-hidden bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(34,211,238,0.14),transparent_55%),radial-gradient(900px_500px_at_100%_0%,rgba(16,185,129,0.12),transparent_58%),linear-gradient(180deg,#020617,#0b1220_55%,#0a0f1a)] text-slate-100">
+      <div className="mx-auto flex h-full max-w-7xl flex-col px-6 pt-6 pb-4">
+        <div className="mb-6 flex items-center justify-end gap-2">
+          <Link
+            href="/games/public"
+            className="rounded-full border border-emerald-500/40 px-4 py-2 text-sm text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100"
+          >
+            去逛广场
+          </Link>
           <Link
             href="/"
             className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-cyan-300"
@@ -29,7 +27,58 @@ export default async function GamesPage() {
           </Link>
         </div>
 
-        <GamesGallery games={games} currentUserId={user?.userId ?? null} />
+        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-6 lg:h-fit">
+            <div className="rounded-3xl border border-emerald-400/20 bg-slate-900/60 p-5">
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300/80">
+                My Studio
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+                我的游戏
+              </h1>
+              <p className="mt-3 text-sm leading-6 text-slate-300/85">
+                维护你的作品状态，随时上架、下架或继续打磨。
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2">
+                  <div className="text-xs text-emerald-200/85">已上架</div>
+                  <div className="mt-1 text-xl font-semibold text-emerald-100">{liveCount}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-600/70 bg-slate-800/50 px-3 py-2">
+                  <div className="text-xs text-slate-300/85">已下架</div>
+                  <div className="mt-1 text-xl font-semibold text-slate-100">{hiddenCount}</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <section className="min-h-0">
+            <div className="mb-4 rounded-3xl border border-slate-700/70 bg-slate-900/45 px-5 py-4">
+              <h2 className="text-lg font-semibold text-slate-100">作品列表</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                点击封面中心可直接试玩，底部可快速编辑与上下架。
+              </p>
+            </div>
+            {user ? (
+              <GamesCollectionPanel
+                games={games}
+                currentUserId={user.userId}
+                editable
+                showAuthor={false}
+                layout="grid"
+                searchPlaceholder="搜索我的游戏（标题 / slug / 描述）"
+              />
+            ) : (
+              <div className="rounded-3xl border border-slate-700/80 bg-slate-900/75 p-8 text-sm text-slate-300">
+                登录后即可管理你的作品。你也可以先去{" "}
+                <Link className="text-emerald-300 hover:text-emerald-200" href="/games/public">
+                  游戏广场
+                </Link>{" "}
+                看看大家在玩什么。
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </div>
   );

@@ -89,6 +89,26 @@ async function chooseGameSlugForPush(workspaceRoot: string): Promise<string> {
   });
 }
 
+function sanitizeVersionTag(raw: string): string {
+  const t = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return t || "v1";
+}
+
+function autoVersionTag(): string {
+  const now = new Date();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const p3 = (n: number) => String(n).padStart(3, "0");
+  return `v${now.getFullYear()}${p2(now.getMonth() + 1)}${p2(now.getDate())}-${p2(
+    now.getHours()
+  )}${p2(now.getMinutes())}${p2(now.getSeconds())}${p3(now.getMilliseconds())}`;
+}
+
 program
   .name("spark")
   .description("AI-powered game code generator")
@@ -274,6 +294,16 @@ program
   )
   .option("-s, --slug <slug>", "云端快照 slug（与本地游戏名无关）", "default")
   .option("--all", "一键推送 ./${GAMES_PARENT_DIR}/ 下所有游戏")
+  .option(
+    "-m, --mode <mode>",
+    "发布模式：replace（覆盖旧版本）或 parallel（并行多版本）",
+    "replace"
+  )
+  .option("--parallel", "等价于 --mode parallel")
+  .option(
+    "-v, --version <tag>",
+    "并行发布时的版本标识（如 v2、20260404）"
+  )
   .addHelpText(
     "after",
     `
@@ -283,13 +313,28 @@ program
   spark push all
   spark push -g flappy-bird
   spark push -g tank-battle -s tank-battle-v2
+  spark push -g tank-battle --mode replace
+  spark push -g tank-battle --mode parallel --version v3
 
 提示:
   - spark push：自动列出 games/ 下现有游戏让你选
   - spark push all：一键推送所有 slug
+  - replace：覆盖云端同 slug 旧版本（默认）
+  - parallel：生成新 slug（如 xxx--v20260404-120000）并行保留旧版本
 `
   )
-  .action(async (target: string, opts: { slug?: string; game?: string; all?: boolean }) => {
+  .action(
+    async (
+      target: string,
+      opts: {
+        slug?: string;
+        game?: string;
+        all?: boolean;
+        mode?: string;
+        parallel?: boolean;
+        version?: string;
+      }
+    ) => {
     const config = loadConfig();
     const rawTarget = (target || ".").trim();
     const workspaceRoot =
@@ -297,17 +342,33 @@ program
         ? path.resolve(process.cwd(), rawTarget)
         : process.cwd();
 
+    const rawMode = (opts.parallel ? "parallel" : opts.mode || "replace").toLowerCase();
+    if (rawMode !== "replace" && rawMode !== "parallel") {
+      console.log(chalk.red(`✗ 无效 mode: ${rawMode}（仅支持 replace / parallel）`));
+      process.exitCode = 1;
+      return;
+    }
+    const mode = rawMode as "replace" | "parallel";
+
     const pushOne = async (gameSlug: string, remoteSlug?: string) => {
       const gameDir = resolveGameRoot(workspaceRoot, gameSlug);
+      const baseSlug = (remoteSlug || gameSlug).trim() || gameSlug;
+      const finalSlug =
+        mode === "parallel"
+          ? normalizeGameSlug(
+              `${baseSlug}--${sanitizeVersionTag(opts.version || autoVersionTag())}`
+            )
+          : baseSlug;
       const r = await pushSparkSnapshot(
         config,
         gameDir,
-        (remoteSlug || gameSlug).trim() || gameSlug
+        finalSlug,
+        { publishMode: mode }
       );
       if (r.ok) {
         console.log(
           chalk.green(
-            `✓ 已推送游戏 ${gameSlug} → 云端 slug=${(remoteSlug || gameSlug).trim() || gameSlug}`
+            `✓ 已推送游戏 ${gameSlug} → 云端 slug=${finalSlug}（${mode}）`
           )
         );
         return true;
@@ -341,10 +402,7 @@ program
         ? normalizeGameSlug(rawTarget)
         : await chooseGameSlugForPush(workspaceRoot);
 
-    const ok = await pushOne(
-      gameSlug,
-      opts.slug?.trim() ? String(opts.slug) : gameSlug
-    );
+    const ok = await pushOne(gameSlug, opts.slug?.trim() ? String(opts.slug) : gameSlug);
     if (!ok) {
       process.exitCode = 1;
     }

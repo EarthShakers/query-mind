@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 const patchSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   coverUrl: z.string().trim().url().max(2048).nullable().optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -59,10 +60,12 @@ export async function PATCH(
     parsed.data.coverUrl === undefined
       ? undefined
       : parsed.data.coverUrl?.trim() || null;
+  const isPublic = parsed.data.isPublic;
 
-  const updates: Record<string, string | null> = {};
+  const updates: Record<string, string | boolean | null> = {};
   if (description !== undefined) updates.description = description;
   if (coverUrl !== undefined) updates.cover_url = coverUrl;
+  if (typeof isPublic === "boolean") updates.is_public = isPublic;
 
   if (Object.keys(updates).length === 0) {
     return Response.json({ error: "没有可更新的字段" }, { status: 400 });
@@ -73,7 +76,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.userId)
-    .select("id, description, cover_url")
+    .select("id, description, cover_url, is_public")
     .single();
 
   if (error) {
@@ -87,6 +90,51 @@ export async function PATCH(
       description:
         typeof data.description === "string" ? data.description : null,
       coverUrl: typeof data.cover_url === "string" ? data.cover_url : null,
+      isPublic: data.is_public !== false,
     },
   });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const user = await getSessionUser();
+  if (!user) {
+    return Response.json({ error: "未登录" }, { status: 401 });
+  }
+  if (!supabaseAdmin) {
+    return Response.json(
+      { error: "服务器未配置 SUPABASE_SERVICE_ROLE_KEY" },
+      { status: 503 }
+    );
+  }
+
+  const { id } = await params;
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("spark_snapshots")
+    .select("id, user_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingError) {
+    return Response.json({ error: existingError.message }, { status: 500 });
+  }
+  if (!existing) {
+    return Response.json({ error: "游戏不存在" }, { status: 404 });
+  }
+  if (existing.user_id !== user.userId) {
+    return Response.json({ error: "无权删除该游戏" }, { status: 403 });
+  }
+
+  const { error } = await supabaseAdmin
+    .from("spark_snapshots")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.userId);
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+  return Response.json({ ok: true });
 }

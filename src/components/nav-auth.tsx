@@ -142,18 +142,27 @@ export function NavAuth() {
             </>
           )}
           {user.tenantRole === "admin" && (
-            <Link
-              href="/admin/requests"
-              className="flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-              onClick={() => setOpen(false)}
-            >
-              <span>审批申请</span>
-              {pendingCount > 0 && (
-                <span className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] text-center">
-                  {pendingCount}
-                </span>
-              )}
-            </Link>
+            <>
+              <Link
+                href="/admin/requests"
+                className="flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                <span>审批申请</span>
+                {pendingCount > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] text-center">
+                    {pendingCount}
+                  </span>
+                )}
+              </Link>
+              <Link
+                href="/admin/games"
+                className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                游戏审核
+              </Link>
+            </>
           )}
           <button
             onClick={() => {

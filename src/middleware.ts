@@ -13,7 +13,10 @@ function getSecret() {
 // 安全策略：设置 HTTP 响应头
 function applySecurityHeaders(res: NextResponse, pathname?: string) {
   const allowGameEmbed =
-    pathname?.startsWith("/games/") || pathname?.startsWith("/api/spark/public/");
+    pathname?.startsWith("/games/") ||
+    pathname?.startsWith("/api/spark/public/") ||
+    pathname?.startsWith("/api/admin/spark/public/") ||
+    pathname?.startsWith("/api/spark/private/");
 
   if (allowGameEmbed) {
     res.headers.set("X-Frame-Options", "SAMEORIGIN");
@@ -100,7 +103,7 @@ export async function middleware(req: NextRequest) {
       if (!isSuperAdmin) {
         return NextResponse.redirect(new URL("/", req.url));
       }
-    } else if (pathname.startsWith("/admin") && !isTenantAdmin) {
+    } else if (pathname.startsWith("/admin") && !isTenantAdmin && !isSuperAdmin) {
       return NextResponse.redirect(new URL("/", req.url));
     }
 

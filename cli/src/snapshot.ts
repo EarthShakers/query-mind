@@ -91,7 +91,8 @@ export function collectSparkGameFiles(cwd: string): Record<string, string> {
 export async function pushSparkSnapshot(
   config: AppConfig,
   cwd: string,
-  slug = "default"
+  slug = "default",
+  options?: { publishMode?: "replace" | "parallel" }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!config.token?.trim()) {
     return { ok: false, error: "未设置 token：请先 spark login（浏览器 Cookie qm_session）" };
@@ -107,7 +108,12 @@ export async function pushSparkSnapshot(
       "Content-Type": "application/json",
       Cookie: `qm_session=${config.token.trim()}`,
     },
-    body: JSON.stringify({ slug, files }),
+    body: JSON.stringify({
+      slug,
+      files,
+      publishMode:
+        options?.publishMode === "parallel" ? "parallel" : "replace",
+    }),
   });
   const text = await res.text();
   let body: { error?: string } = {};

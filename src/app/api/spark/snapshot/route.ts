@@ -8,6 +8,7 @@ const bodySchema = z.object({
   description: z.string().trim().max(500).optional(),
   coverUrl: z.string().trim().url().max(2048).optional(),
   isPublic: z.boolean().optional(),
+  publishMode: z.enum(["replace", "parallel"]).optional(),
   files: z.record(z.string(), z.string()),
 });
 
@@ -55,9 +56,13 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("spark_snapshots")
-    .select("slug, title, description, cover_url, is_public, files, updated_at")
+    .select(
+      "id, slug, title, description, cover_url, is_public, files, updated_at, review_status, review_note, reviewed_at"
+    )
     .eq("user_id", user.userId)
     .eq("slug", slug)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
@@ -72,9 +77,13 @@ export async function GET(req: Request) {
       is_public: true,
       files: null,
       updated_at: null,
+      review_status: "pending",
+      review_note: null,
+      reviewed_at: null,
     });
   }
   return Response.json({
+    id: data.id,
     slug: data.slug,
     title: (data as { title?: string | null }).title ?? prettifySlug(data.slug),
     description: (data as { description?: string | null }).description ?? null,
@@ -82,6 +91,14 @@ export async function GET(req: Request) {
     is_public: (data as { is_public?: boolean }).is_public ?? true,
     files: data.files as Record<string, string>,
     updated_at: data.updated_at,
+    review_status:
+      data.review_status === "pending" ||
+      data.review_status === "approved" ||
+      data.review_status === "rejected"
+        ? data.review_status
+        : "pending",
+    review_note: typeof data.review_note === "string" ? data.review_note : null,
+    reviewed_at: typeof data.reviewed_at === "string" ? data.reviewed_at : null,
   });
 }
 
@@ -134,6 +151,10 @@ export async function POST(req: Request) {
       is_public: isPublic,
       files,
       updated_at: now,
+      review_status: "pending",
+      review_note: null,
+      reviewed_by: null,
+      reviewed_at: null,
     },
     { onConflict: "user_id,slug" }
   );
@@ -149,5 +170,6 @@ export async function POST(req: Request) {
     cover_url: coverUrl,
     is_public: isPublic,
     updated_at: now,
+    review_status: "pending",
   });
 }
