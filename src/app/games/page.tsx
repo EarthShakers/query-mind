@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth/auth";
+import { CreateGameButton } from "@/components/games/create-game-button";
 import { GamesCollectionPanel } from "@/components/games/games-collection-panel";
 import { getUserGames } from "@/lib/spark/public-games";
 
@@ -49,6 +50,14 @@ export default async function GamesPage() {
                   <div className="mt-1 text-xl font-semibold text-slate-100">{hiddenCount}</div>
                 </div>
               </div>
+              <div className="mt-5 rounded-2xl border border-slate-700/70 bg-slate-900/55 p-3">
+                <div className="text-xs font-medium text-slate-200">创作与发布</div>
+                {user ? <div className="mt-3"><CreateGameButton /></div> : null}
+                <div className="mt-3 space-y-1 text-xs leading-5 text-slate-300/90">
+                  <p>在卡片里点击编辑可改封面/描述，点击上架即可进入审核流程。</p>
+                  <p>审核通过后会自动出现在游戏广场。</p>
+                </div>
+              </div>
             </div>
           </aside>
 
@@ -56,7 +65,7 @@ export default async function GamesPage() {
             <div className="mb-4 rounded-3xl border border-slate-700/70 bg-slate-900/45 px-5 py-4">
               <h2 className="text-lg font-semibold text-slate-100">作品列表</h2>
               <p className="mt-1 text-sm text-slate-400">
-                点击封面中心可直接试玩，底部可快速编辑与上下架。
+                点击封面中心可直接试玩，底部可快速编辑与上下架。发布后通过审核会出现在游戏广场。
               </p>
             </div>
             {user ? (

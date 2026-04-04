@@ -1,21 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { SparkPublicGame } from "@/lib/spark/public-games";
 
-function formatTime(value: string): string {
-  try {
-    return new Date(value).toLocaleString("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return value;
-  }
+function resolveToastTone(message: string): "success" | "warning" | "error" | "info" {
+  if (/已下架/.test(message)) return "info";
+  if (/请勿重复发布|审核中|无需重复|重复/.test(message)) return "warning";
+  if (/失败|错误|无权|不能|请先|不存在|禁止|非法/.test(message)) return "error";
+  if (/已|成功|完成|通过|上架|下架|提交/.test(message)) return "success";
+  return "info";
 }
 
 function GameCard({
@@ -38,9 +33,27 @@ function GameCard({
   const [isUploading, setIsUploading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPublic, setIsPublic] = useState(game.is_public !== false);
+  const [reviewStatus, setReviewStatus] = useState<
+    "pending" | "approved" | "rejected"
+  >(
+    game.review_status === "approved" || game.review_status === "rejected"
+      ? game.review_status
+      : "pending"
+  );
   const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const router = useRouter();
+  const viewHref = isOwner ? `/games/${game.id}/studio` : `/games/${game.id}`;
+  const playHref = isOwner
+    ? `/api/spark/private/${game.id}/index.html`
+    : `/api/spark/public/${game.id}/index.html`;
+
+  useEffect(() => {
+    if (!message) return;
+    const t = window.setTimeout(() => setMessage(null), 2200);
+    return () => window.clearTimeout(t);
+  }, [message]);
 
   const hasChanges =
     description.trim() !== (savedDescription || "").trim() ||
@@ -72,6 +85,7 @@ function GameCard({
         setDescription(data.game?.description || "");
         setCoverUrl(data.game?.coverUrl || "");
         setMessage("已保存");
+        setIsEditing(false);
       } catch {
         setMessage("保存失败，请稍后再试");
       }
@@ -134,6 +148,25 @@ function GameCard({
     setIsTogglingPublic(true);
     try {
       const next = !isPublic;
+      if (next) {
+        if (reviewStatus !== "approved") {
+          setMessage("请先发布并通过审核，再上架");
+          return;
+        }
+        const checkRes = await fetch(`/api/spark/editor/${game.id}`, {
+          cache: "no-store",
+        });
+        const checkData = await checkRes.json().catch(() => null);
+        if (!checkRes.ok) {
+          setMessage(checkData?.error || "发布检查失败");
+          return;
+        }
+        const html = (checkData?.files?.["index.html"] || "").trim();
+        if (!html) {
+          setMessage("请先在创作台完善 index.html 后再发布");
+          return;
+        }
+      }
       const res = await fetch(`/api/spark/games/${game.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -145,6 +178,9 @@ function GameCard({
         return;
       }
       setIsPublic(Boolean(data?.game?.isPublic ?? next));
+      if (data?.game?.reviewStatus) {
+        setReviewStatus(data.game.reviewStatus);
+      }
       setMessage(next ? "已上架" : "已下架");
     } catch {
       setMessage("操作失败，请稍后再试");
@@ -157,7 +193,7 @@ function GameCard({
     <>
       <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 p-5 transition hover:shadow-[0_20px_80px_rgba(34,211,238,0.12)]">
         <div className="group relative mb-5 aspect-[16/10] overflow-hidden rounded-2xl bg-slate-900">
-          <Link href={`/games/${game.id}`} className="block h-full w-full">
+          <Link href={viewHref} className="block h-full w-full">
             {savedCoverUrl ? (
               <img
                 src={savedCoverUrl}
@@ -173,7 +209,9 @@ function GameCard({
             )}
           </Link>
           <Link
-            href={`/games/${game.id}`}
+            href={playHref}
+            target="_blank"
+            rel="noopener noreferrer"
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/35 bg-slate-950/45 px-3 py-1 text-xs text-white backdrop-blur-sm transition md:opacity-0 md:group-hover:opacity-100 hover:bg-slate-950/60"
           >
             立即试玩
@@ -184,7 +222,7 @@ function GameCard({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Link
-                href={`/games/${game.id}`}
+                href={viewHref}
                 className="block truncate text-xl font-semibold text-white hover:text-cyan-200"
                 title={game.title}
               >
@@ -196,12 +234,15 @@ function GameCard({
             </div>
           </div>
           {isOwner ? (
-            <div
+            <button
+              type="button"
+              onClick={() => void togglePublic()}
+              disabled={isTogglingPublic}
               className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
                 isPublic
                   ? "border-emerald-400/55 bg-emerald-500/10"
                   : "border-slate-500/60 bg-slate-700/25"
-              }`}
+              } disabled:cursor-not-allowed`}
               title={isPublic ? "已上架" : "已下架"}
               aria-label={isPublic ? "已上架" : "已下架"}
             >
@@ -210,24 +251,23 @@ function GameCard({
                   isPublic ? "bg-emerald-300" : "bg-slate-400"
                 }`}
               />
-            </div>
+            </button>
           ) : (
             <div />
           )}
         </div>
 
-        <p className="mt-2 text-sm leading-6 text-slate-400">
+        <p className="mt-2 h-12 overflow-hidden text-sm leading-6 text-slate-400">
           {savedDescription || "一款轻量好玩的网页小游戏，点击即可开始。"}
         </p>
-        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs text-slate-500">
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 text-xs text-slate-500">
           <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
             {showAuthor ? (
               <span className="whitespace-nowrap">作者：{game.author_name}</span>
             ) : null}
-            <span>{formatTime(game.updated_at)}</span>
           </div>
           {isOwner ? (
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="grid shrink-0 grid-cols-[2rem_4.5rem_2rem] items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
@@ -242,13 +282,14 @@ function GameCard({
               </button>
               <button
                 type="button"
-                onClick={() => void togglePublic()}
-                disabled={isTogglingPublic}
-                className="inline-flex h-8 items-center justify-center rounded-full border border-amber-400/40 px-3 text-xs text-amber-200 transition hover:border-amber-300 hover:text-amber-100 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
-                aria-label={isPublic ? "下架游戏" : "上架游戏"}
-                title={isPublic ? "下架" : "上架"}
+                onClick={() => {
+                  router.push(`/games/${game.id}/studio`);
+                }}
+                className="inline-flex h-8 w-[4.5rem] items-center justify-center rounded-full border border-cyan-400/45 px-0 text-xs text-cyan-200 transition hover:border-cyan-300 hover:text-cyan-100"
+                aria-label="更新游戏"
+                title="更新"
               >
-                {isTogglingPublic ? "处理中" : isPublic ? "下架" : "上架"}
+                更新
               </button>
               <button
                 type="button"
@@ -386,6 +427,26 @@ function GameCard({
             </div>
           </div>
         </div>
+      ) : null}
+      {message ? (
+        (() => {
+          const tone = resolveToastTone(message);
+          const toneClass =
+            tone === "error"
+              ? "border-rose-200/90 bg-rose-500 text-rose-50 shadow-[0_16px_48px_rgba(244,63,94,0.45)]"
+              : tone === "warning"
+                ? "border-amber-200/90 bg-amber-400 text-amber-950 shadow-[0_16px_48px_rgba(245,158,11,0.45)]"
+              : tone === "success"
+                ? "border-emerald-200/90 bg-emerald-400 text-emerald-950 shadow-[0_16px_48px_rgba(16,185,129,0.45)]"
+              : "border-slate-300/70 bg-slate-500 text-slate-100 shadow-[0_16px_48px_rgba(100,116,139,0.45)]";
+          return (
+            <div
+              className={`pointer-events-none fixed left-1/2 top-20 z-[70] -translate-x-1/2 rounded-full border px-5 py-2 text-sm font-semibold ${toneClass}`}
+            >
+              {message}
+            </div>
+          );
+        })()
       ) : null}
     </>
   );

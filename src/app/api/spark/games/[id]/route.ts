@@ -6,6 +6,7 @@ const patchSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   coverUrl: z.string().trim().url().max(2048).nullable().optional(),
   isPublic: z.boolean().optional(),
+  submitReview: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -38,7 +39,7 @@ export async function PATCH(
   const { id } = await params;
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("spark_snapshots")
-    .select("id, user_id")
+    .select("id, user_id, review_status, reviewed_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -61,11 +62,47 @@ export async function PATCH(
       ? undefined
       : parsed.data.coverUrl?.trim() || null;
   const isPublic = parsed.data.isPublic;
+  const submitReview = parsed.data.submitReview === true;
+
+  if (isPublic === true && existing.review_status !== "approved") {
+    return Response.json(
+      { error: "该版本尚未审核通过，暂时不能上架" },
+      { status: 409 }
+    );
+  }
+  if (submitReview) {
+    if (existing.review_status === "pending") {
+      return Response.json({ error: "该版本已在审核中，请勿重复发布" }, { status: 409 });
+    }
+
+    const reviewedAtMs = existing.reviewed_at
+      ? new Date(String(existing.reviewed_at)).getTime()
+      : null;
+    const updatedAtMs = existing.updated_at
+      ? new Date(String(existing.updated_at)).getTime()
+      : null;
+    const hasNewVersion =
+      reviewedAtMs == null || updatedAtMs == null || updatedAtMs > reviewedAtMs;
+
+    if (!hasNewVersion) {
+      return Response.json(
+        { error: "当前版本已审核通过且无更新，无需重复发布" },
+        { status: 409 }
+      );
+    }
+  }
 
   const updates: Record<string, string | boolean | null> = {};
   if (description !== undefined) updates.description = description;
   if (coverUrl !== undefined) updates.cover_url = coverUrl;
   if (typeof isPublic === "boolean") updates.is_public = isPublic;
+  if (submitReview) {
+    updates.review_status = "pending";
+    updates.is_public = false;
+    updates.review_note = null;
+    updates.reviewed_by = null;
+    updates.reviewed_at = null;
+  }
 
   if (Object.keys(updates).length === 0) {
     return Response.json({ error: "没有可更新的字段" }, { status: 400 });
@@ -76,7 +113,7 @@ export async function PATCH(
     .update(updates)
     .eq("id", id)
     .eq("user_id", user.userId)
-    .select("id, description, cover_url, is_public")
+    .select("id, description, cover_url, is_public, review_status")
     .single();
 
   if (error) {
@@ -91,6 +128,12 @@ export async function PATCH(
         typeof data.description === "string" ? data.description : null,
       coverUrl: typeof data.cover_url === "string" ? data.cover_url : null,
       isPublic: data.is_public !== false,
+      reviewStatus:
+        data.review_status === "pending" ||
+        data.review_status === "approved" ||
+        data.review_status === "rejected"
+          ? data.review_status
+          : "pending",
     },
   });
 }

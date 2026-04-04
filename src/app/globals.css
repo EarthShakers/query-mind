@@ -1,6 +1,19 @@
+@import "monaco-editor/min/vs/editor/editor.main.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 全局默认隐藏滚动条（不影响滚动能力） */
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
 
 /* 输入栏：禁止长按选中文字、禁止系统菜单 */
 .input-bar {

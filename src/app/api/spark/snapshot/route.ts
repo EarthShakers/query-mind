@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/auth";
+import { normalizeSparkSlug, prettifySparkSlug } from "@/lib/spark/slug";
 import { supabaseAdmin } from "@/lib/supabase";
 
 const bodySchema = z.object({
@@ -34,12 +35,6 @@ function validateFiles(files: Record<string, string>): string | null {
   return null;
 }
 
-function prettifySlug(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) {
@@ -52,7 +47,7 @@ export async function GET(req: Request) {
     );
   }
   const url = new URL(req.url);
-  const slug = (url.searchParams.get("slug") || "default").trim() || "default";
+  const slug = normalizeSparkSlug(url.searchParams.get("slug") || "default") || "default";
 
   const { data, error } = await supabaseAdmin
     .from("spark_snapshots")
@@ -71,7 +66,7 @@ export async function GET(req: Request) {
   if (!data) {
     return Response.json({
       slug,
-      title: prettifySlug(slug),
+      title: prettifySparkSlug(slug),
       description: null,
       cover_url: null,
       is_public: true,
@@ -85,7 +80,7 @@ export async function GET(req: Request) {
   return Response.json({
     id: data.id,
     slug: data.slug,
-    title: (data as { title?: string | null }).title ?? prettifySlug(data.slug),
+    title: (data as { title?: string | null }).title ?? prettifySparkSlug(data.slug),
     description: (data as { description?: string | null }).description ?? null,
     cover_url: (data as { cover_url?: string | null }).cover_url ?? null,
     is_public: (data as { is_public?: boolean }).is_public ?? true,
@@ -129,8 +124,8 @@ export async function POST(req: Request) {
     return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const slug = (parsed.data.slug || "default").trim() || "default";
-  const title = (parsed.data.title || prettifySlug(slug)).trim();
+  const slug = normalizeSparkSlug(parsed.data.slug || "default") || "default";
+  const title = (parsed.data.title || prettifySparkSlug(slug)).trim();
   const description = parsed.data.description?.trim() || null;
   const coverUrl = parsed.data.coverUrl?.trim() || null;
   const isPublic = parsed.data.isPublic ?? true;

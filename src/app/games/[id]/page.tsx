@@ -68,6 +68,7 @@ export default async function GameDetailPage({
   }
 
   if (!game) notFound();
+  const isOwner = Boolean(user && user.userId === game.user_id);
   const playBase = isOwnerPrivateView
     ? `/api/spark/private/${game.id}`
     : `/api/spark/public/${game.id}`;
@@ -86,6 +87,14 @@ export default async function GameDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {isOwner ? (
+              <Link
+                href={`/games/${game.id}/studio`}
+                className="rounded-full border border-emerald-400/45 px-4 py-2 text-sm text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100"
+              >
+                进入创作台
+              </Link>
+            ) : null}
             <Link
               href="/games"
               className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-cyan-300"

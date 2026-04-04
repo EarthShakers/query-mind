@@ -47,8 +47,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": getContentTypeForPath(relPath),
-      "Cache-Control": "private, max-age=60",
+      "Cache-Control": "private, no-store, max-age=0",
     },
   });
 }
-

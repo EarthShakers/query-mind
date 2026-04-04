@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { prettifySparkSlug } from "@/lib/spark/slug";
 
 export interface SparkPublicGame {
   id: string;
@@ -13,12 +14,6 @@ export interface SparkPublicGame {
   files?: Record<string, string> | null;
   review_status?: "pending" | "approved" | "rejected";
   is_public?: boolean;
-}
-
-export function prettifySparkSlug(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 export async function getPublicGames(): Promise<SparkPublicGame[]> {
