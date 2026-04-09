@@ -85,15 +85,43 @@ jobs:
   # 失败时钉钉通知（需在仓库 Secrets 添加 DINGTALK_WEBHOOK，可选 DINGTALK_SECRET 用于加签）
   notify-failure:
     runs-on: ubuntu-latest
+    environment: SUPABASE_URL
     needs: eval
-    if: failure()
+    if: ${{ always() && needs.eval.result != 'success' }}
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Notify DingTalk
         env:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$DINGTALK_WEBHOOK" ]; then echo "Skipping: DINGTALK_WEBHOOK not set"; exit 0; fi
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RESULT="${{ needs.eval.result }}"
+
+          JOB_JSON=$(curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?per_page=100" || true)
+
+          EVAL_JOB=$(echo "$JOB_JSON" | jq -c '.jobs[]? | select(.name=="eval")' 2>/dev/null || true)
+          if [ -z "$EVAL_JOB" ] || [ "$EVAL_JOB" = "null" ]; then
+            FAILED_STEPS="(未解析到失败步骤)"
+            CONCLUSION="$RESULT"
+          else
+            FAILED_STEPS=$(echo "$EVAL_JOB" | jq -r '[.steps[]? | select(.conclusion=="failure") | .name] | if length>0 then join(", ") else "(无明确失败步骤，可能超时/取消)" end')
+            CONCLUSION=$(echo "$EVAL_JOB" | jq -r '.conclusion // "'"$RESULT"'"')
+          fi
+
+          CONTENT="⚠️ RAG Eval 失败
+          结果: ${RESULT}
+          结论: ${CONCLUSION}
+          失败步骤: ${FAILED_STEPS}
+          ${RUN_URL}"
+
           TIMESTAMP=$(date +%s)000
           if [ -n "$DINGTALK_SECRET" ]; then
             SIGN=$(printf '%s\n%s' "$TIMESTAMP" "$DINGTALK_SECRET" | openssl dgst -sha256 -hmac "$DINGTALK_SECRET" -binary | base64 -w 0 | sed 's/+/%2B/g;s/\//%2F/g;s/=/%3D/g')
@@ -103,5 +131,5 @@ jobs:
           fi
           curl -sS -X POST -H 'Content-type: application/json' --data "{
             \"msgtype\": \"text\",
-            \"text\": {\"content\": \"⚠️ RAG Eval 失败\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}
+            \"text\": {\"content\": $(echo "$CONTENT" | jq -Rs .)}
           }" "$URL"
