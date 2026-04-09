@@ -117,6 +117,7 @@ jobs:
           DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
           DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVAL_FAILURE_REASON: ${{ needs.eval.outputs.eval_failure_reason }}
         run: |
           if [ -z "$DINGTALK_WEBHOOK" ]; then echo "Skipping: DINGTALK_WEBHOOK not set"; exit 0; fi
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -136,13 +137,16 @@ jobs:
             CONCLUSION=$(echo "$EVAL_JOB" | jq -r '.conclusion // "'"$RESULT"'"')
           fi
 
-          CONTENT="⚠️ RAG Eval 失败
-          结果: ${RESULT}
-          结论: ${CONCLUSION}
-          失败步骤: ${FAILED_STEPS}
-          错误摘要:
-          ${{ needs.eval.outputs.eval_failure_reason }}
-          ${RUN_URL}"
+          CONTENT=$(cat <<EOF
+⚠️ RAG Eval 失败
+结果: ${RESULT}
+结论: ${CONCLUSION}
+失败步骤: ${FAILED_STEPS}
+错误摘要:
+${EVAL_FAILURE_REASON}
+${RUN_URL}
+EOF
+)
 
           TIMESTAMP=$(date +%s)000
           if [ -n "$DINGTALK_SECRET" ]; then
