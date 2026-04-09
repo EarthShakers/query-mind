@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: SUPABASE_URL
     timeout-minutes: 30
+    outputs:
+      eval_exit_code: ${{ steps.eval.outputs.exit_code }}
+      eval_failure_reason: ${{ steps.eval.outputs.failure_reason }}
 
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +43,24 @@ jobs:
 
       - name: Run RAG E2E Evaluation
         id: eval
-        run: pnpm eval:cron
+        run: |
+          set +e
+          pnpm eval:cron > eval-run.log 2>&1
+          CODE=$?
+
+          {
+            echo "exit_code=$CODE"
+            echo "failure_reason<<EOF"
+            if [ "$CODE" -ne 0 ]; then
+              grep -E "PermissionDeniedError|AllocationQuota|Error:|ELIFECYCLE|Process completed with exit code" eval-run.log | tail -n 12 || true
+            else
+              echo ""
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          cat eval-run.log
+          exit "$CODE"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -120,6 +140,8 @@ jobs:
           结果: ${RESULT}
           结论: ${CONCLUSION}
           失败步骤: ${FAILED_STEPS}
+          错误摘要:
+          ${{ needs.eval.outputs.eval_failure_reason }}
           ${RUN_URL}"
 
           TIMESTAMP=$(date +%s)000
