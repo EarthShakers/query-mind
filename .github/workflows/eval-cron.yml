@@ -137,16 +137,12 @@ jobs:
             CONCLUSION=$(echo "$EVAL_JOB" | jq -r '.conclusion // "'"$RESULT"'"')
           fi
 
-          CONTENT=$(cat <<EOF
-⚠️ RAG Eval 失败
-结果: ${RESULT}
-结论: ${CONCLUSION}
-失败步骤: ${FAILED_STEPS}
-错误摘要:
-${EVAL_FAILURE_REASON}
-${RUN_URL}
-EOF
-)
+          CONTENT=$(printf "⚠️ RAG Eval 失败\n结果: %s\n结论: %s\n失败步骤: %s\n错误摘要:\n%s\n%s" \
+            "$RESULT" \
+            "$CONCLUSION" \
+            "$FAILED_STEPS" \
+            "$EVAL_FAILURE_REASON" \
+            "$RUN_URL")
 
           TIMESTAMP=$(date +%s)000
           if [ -n "$DINGTALK_SECRET" ]; then
